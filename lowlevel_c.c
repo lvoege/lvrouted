@@ -731,6 +731,11 @@ CAMLprim value caml_syslog(value pri, value s) {
 	CAMLreturn(Val_unit);
 }
 
+CAMLprim value caml_sbrk(value unit) {
+	CAMLparam1(unit);
+	CAMLreturn(Val_int(sbrk(0)));
+}
+
 #if 0
 /* read a routing message from the given file descriptor and return what it
  * said. */
