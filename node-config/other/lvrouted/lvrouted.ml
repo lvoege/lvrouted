@@ -26,6 +26,15 @@ let routes = ref Route.Set.empty
 (* An entry means that neighbor was unreachable last iteration *)
 let unreachable = ref Neighbor.Set.empty
 
+(* This function is the main work horse. It:
+
+     - polls for interesting events
+     - merges received spanning trees into a new spanning tree.
+     - derives a new routing table from the merged spanning tree
+     - applies the changes between the old and the new routing table to
+       the kernel (if configured to do so)
+     - sends the new spanning tree to the neighbors
+ *)
 let alarm_handler _ =
 	Log.log Log.debug "in alarm_handler";
 
