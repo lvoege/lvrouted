@@ -31,7 +31,7 @@ let last_time = ref 0.0
 (* An entry means that neighbor was unreachable last iteration *)
 let unreachable = ref Neighbor.Set.empty
 (* *)
-let configfile = ref ""
+let configfile = ref "/usr/local/etc/lvrouted.conf"
 
 (* This function is the main work horse. It:
 
@@ -260,6 +260,20 @@ let dump_state _ =
 	let out = open_out (!Common.tmpdir ^ "lvrouted.state") in
 	output_string out (Marshal.to_string state []);
 	close_out out
+
+let read_state s =
+	let neighbors', neighbors_wireless', neighbors_wired',
+		neighbors_wired_ip', ifaces', direct', directnets',
+		unreachable', arptables' = Marshal.from_string s 0 in
+	neighbors := neighbors';
+	neighbors_wireless := neighbors_wireless';
+	neighbors_wired := neighbors_wired';
+	neighbors_wired_ip := neighbors_wired_ip';
+	ifaces := ifaces';
+	direct := direct';
+	directnets := directnets';
+	unreachable := unreachable';
+	MAC.arptables := arptables'
 
 let argopts = [
 	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
