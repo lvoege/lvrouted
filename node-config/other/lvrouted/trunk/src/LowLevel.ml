@@ -1,5 +1,9 @@
 (* Interface to functions in lowlevel_c.c *)
 
+(* Set hard limits on data and coredump size *)
+external set_limits: int -> int -> bool
+  = "set_limits"
+
 (* For debugging purposes it's handy to be able to print a file descriptor. *)
 external int_of_file_descr: Unix.file_descr -> int
   = "int_of_file_descr"
