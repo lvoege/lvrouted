@@ -56,7 +56,7 @@ let update iface =
 	   (iface.last_assoc_update < (now -. Common.iface_assoc_update)) then begin
 		if iface.itype = WIFI_MASTER then
 		  iface.associated <- Some (associated iface.name)
-		else
+		else if iface.itype = WIFI_CLIENT then
 		  iface.is_associated <- Some (LowLevel.iface_is_associated iface.name);
 		iface.last_assoc_update <- now
 	end;

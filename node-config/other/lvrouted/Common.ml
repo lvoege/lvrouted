@@ -1,4 +1,4 @@
-(* This module contains useful little things *)
+(* This module contains tunables and convenience types and functions *)
 
 (*s Constants *)
 
@@ -30,7 +30,7 @@ let iface_arp_update = arptables_update_every
 module StringMap = Map.Make(String)
 module IPStruct = struct
 	type t = Unix.inet_addr
-	let compare a b = compare a b
+	let compare = compare
 end
 module IPSet = Set.Make(IPStruct)
 module IPMap = Map.Make(IPStruct)
@@ -62,6 +62,7 @@ let get_addr_from_sockaddr sockaddr =
 	  Unix.ADDR_UNIX _	-> raise (Failure "Huh, got a unix address?!")
 	| Unix.ADDR_INET (a, _)	-> a
 
+(* Given an open read channel, return a list of all lines *)
 let snarf_lines_from_channel c =
 	let res = ref [] in
 	try
@@ -72,6 +73,10 @@ let snarf_lines_from_channel c =
 	with End_of_file ->
 		List.rev !res
 
+(* Given a channel, a regular expression and the number of groups to expect, return a list of
+   arrays. The arrays are the matched groups. Note that the number of groups should include
+   the 0th group, which is the entire matched string. So specify the number of parenthesis
+   pairs plus one for the whole string. *)
 let snarf_channel_for_re c re numgroups =
 	let lines = snarf_lines_from_channel c in
 	let res = ref [] in

@@ -2,7 +2,7 @@
 
 (* A neighbor has a name, an interface and address to reach it on, 
    a timestamp when we last successfully received something from the neighbor,
-   and optionally the last hoptable received *)
+   and optionally the last tree received *)
 type t = {
 	name: string;
 	iface: string;
@@ -35,10 +35,8 @@ let make name iface addr =
 let name n = n.name
 let iface n = n.iface
 
-(* send the given hoptable to the given neighbor under the current routing
-   table. hoptable entries going through the neighbor per the routing table
-   will be filtered to counter the count-to-infinity problem *)
-let send fd (routes: Route.Set.t) (nodes: Tree.node list) n =
+(* send the given tree to the given neighbor *)
+let send fd (nodes: Tree.node list) n =
 	try Tree.send nodes fd n.addr;
 	with _ -> ()
 
@@ -104,7 +102,7 @@ let check_reachable n iface =
 	let reachable = (Common.is_some n.macaddr) &&
 			(Iface.is_reachable iface (Common.from_some n.macaddr)) in
 	if not reachable then begin
-		Log.log Log.debug ("Setting " ^ n.name ^ "'s hoptable to None");
+		Log.log Log.debug ("Setting " ^ n.name ^ "'s tree to None");
 		n.tree <- None;
 		n.last_seen <- 0.0
 	end;

@@ -1,6 +1,6 @@
-- debug route updates
-- MAC.ml en Iface.ml integreren
-- iets van security. nu kan iedereen die een IP nummer spooft van een neighbor
-  bogus pakketten sturen.
-- testen op betrouwbaarheid. stuur bogus data en kijk of het ding niet
-  crashed.
+- integrate MAC.ml and Iface.ml
+- some kind of authentication scheme. A neighbor will not accept data from non-neighbor addresses,
+  but anyone that can spoof an address can send bogus data.
+- test for robustness. see what happens when bogus data does get through.
+- something to counter marginal links that flip between being associated and not being associated
+  relatively quickly.

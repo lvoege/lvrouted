@@ -79,7 +79,7 @@ let alarm_handler _ =
 	  output_string out (Tree.show nodes');
 	  close_out out;
 
-	  List.iter (Neighbor.send (!sockfd) newroutes nodes') (!neighbors);
+	  List.iter (Neighbor.send (!sockfd) nodes') (!neighbors);
 
 	  if !Common.real_route_updates then begin
 		let deletes, adds = Route.diff !routes newroutes in
@@ -110,6 +110,7 @@ let read_config _ =
 	let _ = Unix.sigprocmask Unix.SIG_BLOCK block_signals in
 
 	(* Get all routable addresses that also have a netmask *)
+	
 	let routableaddrs = List.filter (fun (_, _, a, n, _, _) ->
 			LowLevel.inet_addr_in_range a &&
 			Common.is_some n) (Array.to_list (LowLevel.getifaddrs())) in
@@ -160,6 +161,11 @@ let main =
 
 	Arg.parse argopts (fun _ -> ()) "lvrouted";
 	Log.log Log.info "Parsed commandline";
+
+	if !Common.real_route_updates then begin
+		Route.flush ();
+		Log.log Log.info "Flushed routes";
+	end;
 
 	read_config ();
 	Log.log Log.info "Read config";

@@ -13,7 +13,7 @@
 #include <sys/sysctl.h>
 #include <ifaddrs.h>
 #include <netinet/in.h>
-#ifndef __linux__
+#ifdef __FreeBSD__
 #include <net/if.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
@@ -29,7 +29,7 @@
 #endif
 #include <dev/wi/if_wavelan_ieee.h>
 #include <dev/wi/if_wireg.h>
-#else
+#elif defined(__linux__)
 #include <netinet/ether.h>
 #endif
 #include <net/ethernet.h>
@@ -43,8 +43,6 @@
 #include <caml/memory.h>
 #include <caml/mlvalues.h>
 
-static int sockfd = -1;
-
 #if __FreeBSD_version < 502000
 #define ROUNDUP(a) \
 	((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))
@@ -53,11 +51,6 @@ static int sockfd = -1;
 /* stolen from ocaml-3.08.1/byterun/weak.c */
 #define None_val (Val_int(0))
 #define Some_tag 0
-
-static inline void ensure_sockfd() {
-	if (sockfd == -1)
-	  sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-}
 
 static inline int bitcount(unsigned char i) {
 	int c;
@@ -72,32 +65,30 @@ CAMLprim value int_of_file_descr(value file_descr) {
 
 /* mostly stolen from /usr/src/sbin/ifconfig/ifmedia.c */
 static inline int iface_is_associated(const char *iface) {
-#ifdef __linux__
+#ifndef __FreeBSD__
 	return 1;
 #else
-	struct ifmediareq ifmr;
-	int *media_list;
+	struct ifreq ifr;
+	int sockfd;
+	struct wi_req wir;
 
-	ensure_sockfd();
-	memset(&ifmr, 0, sizeof(ifmr));
-	strncpy(ifmr.ifm_name, iface, sizeof(ifmr.ifm_name));
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd == -1)
+	  failwith("socket for get_associated_stations");
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
+	ifr.ifr_data = (caddr_t)&wir;
 
-	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0 ||
-	    ifmr.ifm_count == 0) {
-		/* huh? interface can't report media state */
-		fprintf(stderr, "warning: %s can't report media state\n", iface);
-		return 1;
+	memset(&wir, 0, sizeof(wir));
+	wir.wi_len = WI_MAX_DATALEN;
+	wir.wi_type = WI_RID_CURRENT_SSID;
+
+	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1) {
+		close(sockfd);
+		failwith("SIOCGWAVELAN");
 	}
-	media_list = malloc(ifmr.ifm_count * sizeof(int));
-	ifmr.ifm_ulist = media_list;
-
-	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0) {
-		fprintf(stderr, "error ioctl()ing iface %s\n", iface);
-		return 1;
-	}
-	free(media_list);
-	return (ifmr.ifm_status & IFM_AVALID) &&
-	       (ifmr.ifm_status & IFM_ACTIVE);
+	close(sockfd);
+	return wir.wi_val[0];
 #endif
 }
 
@@ -116,10 +107,7 @@ static inline in_addr_t get_addr(value addr) {
 }
 
 static inline in_addr_t mask_addr_impl(in_addr_t addr, int mask) {
-	unsigned int bitmask;
-
-	bitmask = -1 - ((1 << (32 - mask)) - 1);
-	return addr & bitmask;
+	return addr & (0xffffffff << (32 - mask));
 }
 
 CAMLprim value mask_addr(value addr, value mask) {
@@ -170,6 +158,7 @@ CAMLprim value string_compress(value s) {
 		free(buffer);
 		CAMLreturn(result);
 	} else {
+		free(buffer);
 		failwith("Cannot handle error in string_compress");
 	}
 }
@@ -199,13 +188,14 @@ CAMLprim value string_decompress(value s) {
 		free(buffer);
 		CAMLreturn(result);
 	} else {
+		free(buffer);
 		failwith("Cannot handle error in string_decompress");
 	}
 }
 
 static int routemsg_add(unsigned char *buffer, int type,
 			value dest, value masklen, value gw) {
-#ifdef __linux__
+#ifndef __FreeBSD__
 	assert(0);
 	return 0;
 #else
@@ -229,10 +219,10 @@ static int routemsg_add(unsigned char *buffer, int type,
 	addr->sin_family = AF_INET;			\
 	addr->sin_addr.s_addr = htonl(x);		\
 	addr++;
-	
-	ADD(get_addr(dest));
+
+	ADD(mask_addr_impl(get_addr(dest), Long_val(masklen)));
 	ADD(get_addr(gw));
-	ADD(-1 - ((1 << (32 - Long_val(masklen))) - 1));
+	ADD(0xffffffff << (32 - Long_val(masklen)));
 
 	msghdr->rtm_msglen = ((unsigned char *)addr) - buffer;
 	return msghdr->rtm_msglen;
@@ -241,7 +231,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 
 CAMLprim value routes_commit(value deletes, value numdeletes,
 			     value adds, value numadds) {
-#ifdef __linux__
+#ifndef __FreeBSD__
 	assert(0);
 #else
 	int i, sockfd, buflen;
@@ -250,19 +240,22 @@ CAMLprim value routes_commit(value deletes, value numdeletes,
 	sockfd = socket(PF_ROUTE, SOCK_RAW, AF_INET);
 	if (sockfd == -1)
 	  failwith("routing socket");
+	shutdown(sockfd, SHUT_RD); 
 	buflen = sizeof(struct rt_msghdr) + 3 * sizeof(struct sockaddr_in);
 	buffer = malloc(buflen);
-	if (buffer == 0)
-	  failwith("malloc");
-	for (i = 0; i < Long_val(numdeletes); i++) {
-		value v = Field(deletes, i);
-		routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
-	// FIXME: error checking
-		write(sockfd, buffer, buflen);
+	if (buffer == 0) {
+		close(sockfd);
+		failwith("malloc");
 	}
 	for (i = 0; i < Long_val(numadds); i++) {
 		value v = Field(adds, i);
 		routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
+	// FIXME: error checking
+		write(sockfd, buffer, buflen);
+	}
+	for (i = 0; i < Long_val(numdeletes); i++) {
+		value v = Field(deletes, i);
+		routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
 	// FIXME: error checking
 		write(sockfd, buffer, buflen);
 	}
@@ -298,7 +291,8 @@ CAMLprim value caml_getifaddrs(value unit) {
 	in_addr_t a;
 	CAMLlocal4(result, tuple, addr, option);
 
-	getifaddrs(&ifap);
+	if (getifaddrs(&ifap) == -1)
+	  failwith("getifaddrs");
 
 	num_ifaces = 0;
 	for (ifp = ifap; ifp; ifp = ifp->ifa_next)
@@ -369,8 +363,7 @@ CAMLprim value inet_addr_in_range(value addr) {
 	in_addr_t a;
 
 	a = get_addr(addr);
-	result = Val_bool(mask_addr_impl(a, 12) == 0xac100000 &&
-			  a < 0xac1fff00);
+	result = Val_bool(a >= 0xac100000 && a < 0xac1fff00);
 	CAMLreturn(result);
 }
 
@@ -382,6 +375,8 @@ CAMLprim value get_addrs_in_block(value addr, value mask) {
 
 	a = mask_addr_impl(get_addr(addr), Long_val(mask)) + 1;
 	numaddrs = (1 << (32 - Long_val(mask))) - 2;
+	if (numaddrs < 0) /* happens if the netmask was 32 to begin with */
+	  numaddrs = 0;
 	result = alloc(numaddrs, 0);
 	for (i = 0; i < numaddrs; i++) {
 		em = alloc_string(sizeof(in_addr_t));
@@ -397,6 +392,7 @@ CAMLprim value get_arp_entries(value unit) {
 	CAMLparam1(unit);
 	CAMLlocal4(result, tuple, ipaddr, macaddr);
 
+#ifdef __FreeBSD__
 	int mib[6], numentries;
 	size_t needed;
 	char *lim, *buf, *next;
@@ -417,8 +413,10 @@ CAMLprim value get_arp_entries(value unit) {
 		buf = malloc(needed);
 		if (buf == 0)
 		  failwith("malloc");
-		if (sysctl(mib, 6, buf, &needed, 0, 0) < 0)
-		  failwith("fetch of arp table");
+		if (sysctl(mib, 6, buf, &needed, 0, 0) < 0) {
+			free(buf);
+			failwith("fetch of arp table");
+		}
 		numentries = 0;
 		lim = buf + needed;
 		for (next = buf; next < lim; next += rtm->rtm_msglen) {
@@ -474,7 +472,9 @@ CAMLprim value get_arp_entries(value unit) {
 			numentries++;
 		}
 		free(buf);
-	} else result = alloc_tuple(0);
+	} else
+#endif
+		result = alloc_tuple(0);
 
 	CAMLreturn(result);
 }
@@ -482,14 +482,17 @@ CAMLprim value get_arp_entries(value unit) {
 CAMLprim value get_associated_stations(value iface) {
 	CAMLparam1(iface);	
 	CAMLlocal2(result, mac);
+#ifdef __FreeBSD__
 	struct ifreq ifr;
-	int i;
+	int sockfd, i;
 #if __FreeBSD_version >= 502000
 	int n;
 	struct wi_req wir;
 	struct wi_apinfo *s;
 
-	ensure_sockfd();
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd == -1)
+	  failwith("socket for get_associated_stations");
 	memset(&ifr, 0, sizeof(ifr));
 	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
 	ifr.ifr_data = (caddr_t)&wir;
@@ -498,8 +501,10 @@ CAMLprim value get_associated_stations(value iface) {
 	wir.wi_len = WI_MAX_DATALEN;
 	wir.wi_type = WI_RID_READ_APS;
 
-	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1)
-	  failwith("SIOCGWAVELAN");
+	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1) {
+		close(sockfd);
+		failwith("SIOCGWAVELAN");
+	}
 
 	n = *(int *)(wir.wi_val);
 	result = alloc_tuple(n);
@@ -514,7 +519,9 @@ CAMLprim value get_associated_stations(value iface) {
 	struct hostap_getall    reqall;
 	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
 
-	ensure_sockfd();
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd == -1)
+	  failwith("socket for get_associated_stations");
 	memset(&ifr, 0, sizeof(ifr));
 	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
 	ifr.ifr_data = (caddr_t) &reqall;
@@ -525,14 +532,97 @@ CAMLprim value get_associated_stations(value iface) {
 
 	memset(&stas, 0, sizeof(stas));
 
-	if (ioctl(sockfd, SIOCHOSTAP_GETALL, &ifr) < 0)
-	  failwith("SIOCHOSTAP_GETALL");
+	if (ioctl(sockfd, SIOCHOSTAP_GETALL, &ifr) < 0) {
+		close(sockfd);
+		failwith("SIOCHOSTAP_GETALL");
+	}
 	result = alloc_tuple(reqall.nstations);
 	for (i = 0; i < reqall.nstations; i++) {
 		mac = alloc_string(ETHER_ADDR_LEN);
 		memcpy(String_val(mac), stas[i].addr, ETHER_ADDR_LEN);
 		Store_field(result, i, mac);
 	}
+#endif
+#else
+	result = alloc_tuple(0);
+#endif
+	close(sockfd);
+	CAMLreturn(result);
+}
+
+CAMLprim value routes_fetch(value unit) {
+	CAMLparam1(unit);
+	CAMLlocal3(result, tuple, addr);
+#ifndef __FreeBSD__
+	result = alloc_tuple(0);
+#else
+	int sockfd, numentries;
+	int mib[6] = { CTL_NET, PF_ROUTE, 0, 0, NET_RT_DUMP, 0 };
+	size_t needed;
+	unsigned char *buf, *p, *lim;
+	struct rt_msghdr *rtm;
+	struct sockaddr_in *sin;
+
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd == -1)
+	  failwith("socket for routes_fetch");
+	shutdown(sockfd, SHUT_RD);
+	if (sysctl(mib, 6, 0, &needed, 0, 0) == -1) {
+		close(sockfd);
+		failwith("fetch of route table size");
+	}
+	buf = malloc(needed);
+	if (buf == 0) {
+		close(sockfd);
+		failwith("malloc in routes_fetch");
+	}
+	if (sysctl(mib, 6, buf, &needed, 0, 0) == -1) {
+		close(sockfd);
+		free(buf);
+		failwith("route retrieval in routes_fetch");
+	}
+	numentries = 0;
+	lim = buf + needed;
+	for (p = buf; p < lim; p += rtm->rtm_msglen) {
+		rtm = (struct rt_msghdr *)p;
+		if ((rtm->rtm_flags & RTF_GATEWAY) == 0)
+		  continue;
+		sin = (struct sockaddr_in *)(rtm + 1);
+		if (sin->sin_family != AF_INET)
+		  continue;
+		numentries++;
+	}
+	result = alloc_tuple(numentries);
+	numentries = 0;
+	for (p = buf; p < lim; p += rtm->rtm_msglen) {
+		rtm = (struct rt_msghdr *)p;
+		if ((rtm->rtm_flags & RTF_GATEWAY) == 0)
+		  continue;
+		sin = (struct sockaddr_in *)(rtm + 1);
+		if (sin->sin_family != AF_INET)
+		  continue;
+
+		tuple = alloc_tuple(3);
+
+		/* fill in destination */
+		addr = alloc_string(sizeof(in_addr_t));
+		*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
+		Store_field(tuple, 0, addr);
+		sin++;
+	
+		/* gateway */
+		addr = alloc_string(sizeof(in_addr_t));
+		*(in_addr_t *)(String_val(addr)) = ntohl(sin->sin_addr.s_addr);
+		Store_field(tuple, 2, addr);
+
+		/* netmask */
+		Store_field(tuple, 1, Long_val(bitcount(sin->sin_addr.s_addr)));
+		sin++;
+
+		Store_field(result, numentries++, tuple);
+	}
+	free(buf);
+	close(sockfd);
 #endif
 	CAMLreturn(result);
 }

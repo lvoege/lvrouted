@@ -98,10 +98,27 @@ let diff oldroutes newroutes =
 	Set.elements (Set.diff oldroutes newroutes),
 	Set.elements (Set.diff newroutes oldroutes)
 
-(* Don't use, call commit instead *)
+(* Don't use, call commit instead. TODO: move to LowLevel.ml. This is
+   not trivial because of a then cyclic include, which would need to
+   be broken. *)
 external routes_commit: route array -> int -> route array -> int -> int
   = "routes_commit"
 
 let commit deletes adds =
 	ignore(routes_commit (Array.of_list deletes) (List.length deletes)
 			     (Array.of_list adds) (List.length adds))
+
+external routes_fetch: unit -> route array
+  = "routes_fetch"
+
+let fetch () = Array.to_list (routes_fetch ())
+
+let flush () =
+	(* TODO, figure out why this doesn't work:
+	commit (fetch ()) []
+
+	I suspect the route deletes need all the sockaddrs that were
+	specified for a route to be able to delete it, and this only
+	propagates dst, gw and netmask.  *)
+	let c = Unix.open_process_in "/sbin/route -q flush" in
+	ignore(Unix.close_process_in c);

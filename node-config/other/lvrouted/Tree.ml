@@ -7,7 +7,9 @@ type node = {
 
 let make a = { addr = a; nodes = [] }
 
-(* Traverse a tree breadth-first, calling a function for every node *)
+(* Traverse a list of nodes breadth-first, calling a function for every node. The
+   callback function is fed three parameters: the gateway address to use, the parent
+   node and the node itself. *)
 let rec traverse f l = match l with
 	  []		-> ()
 	| (a,p,x)::xs	-> f x p a;
@@ -48,7 +50,7 @@ let merge nodes directips =
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
 	traverse (fun node parent gw ->
 			if IPMap.mem node.addr !routes then
-			  parent.nodes <- List.filter ((!=) node) parent.nodes
+			  parent.nodes <- List.filter (fun n -> n.addr != node.addr) parent.nodes
 			else
 			  routes := IPMap.add node.addr gw !routes)
 		 (List.map (fun node -> node.addr, fake, node) nodes);

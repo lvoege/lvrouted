@@ -1,4 +1,6 @@
-This is a very simple UDP-based, shortest-path routing daemon.
+This is a very simple UDP-based, shortest-path routing daemon. It doesn't
+require per-node configuration, it doesn't suffer from count-to-infinity
+and it tries to keep a close eye on links going down.
 
 All addresses on all interfaces are examined to see if they fall
 within some defined range. The subnets of all addresses are examined
@@ -7,27 +9,38 @@ If so, all possible addresses on that subnet are designated as neighbor
 addresses and the daemon will try to link up to daemons on those
 addresses.
 
-The algorithm in this branch of the code is OSPF-like. A node gets sent
-packets from its neighbors listing the paths to the routable addresses they
-know about. From these, the node can derive a routing table by picking the
-shortest path for every routable address. Unlike OSPF, the complete path is
-sent instead of the hop count. The WirelessLeiden network is small enough to
-do this, and it makes count-to-infinity easily solvable.
+The algorithm in this branch of the code is OSPF-like. Every node has a
+current spanning tree for the part of the network the node knows about. At
+startup, this is just the collection of local routable addresses. At some
+tunable interval, it derives a new tree from the trees it has received from
+neighbors by a breadth-first traversal of all those trees, building up a
+new routing table and removing superfluous nodes along the way. It then
+sends the new tree to its neighbors and updates the kernel routing table. A
+subtree is superfluous if the top address is already in the routing table
+(this makes it shortest-path) or is one of the node's own addresses (this
+solves count-to-infinity).
+
+The ocaml marshalling of such trees seems to be very efficient, taking an
+average of just over eight bytes per node. This includes the four-byte IP
+address, so that's pretty good. For 30 nodes with 155 routable addresses,
+on-the-wire packets are 1261 bytes. CPU usage on a Soekris is generally a
+few percent, peaking to about five percent. RSS is about three to four MB.
 
 A couple of other assumptions about the WirelessLeiden network are in the
 code and would need to be adapted for other surroundings:
 
   - lowlevel_c.c, inet_addr_in_range() says whether or not an address is
-    routable. For WirelessLeiden, this is if it's in 172.16.0.0/12 but
-    not in 172.31.255.0/24. Re-implement as needed.
+    routable. For WirelessLeiden, this is the range from 172.16.0.0 up to
+    and not including 172.31.255.0. Re-implement as needed.
   - Common.ml has a definition for the narrowest interlink netmask. This is
     /28 in WirelessLeiden, with the vast majority of interlink subnets being
     /30's. 
+  - some code in lowlevel_c.c assumes FreeBSD and contains only skeleton
+    implementations for other systems. Routing table updates, querying link
+    states (associated or not and media type mainly), arp table reading.
 
 Common.ml also contains some other settings like the port to use and some
-timeouts. There is also a compress_data flag. If set, the packets are bzip2ed
-before sending. If your network is big enough that the packets could become
-larger than 64KB, this'll help, but it hasn't been tested much.
+timeouts. The most interesting flags are also commandline-settable.
 
 Lodewijk Voge
 lvoge@cs.vu.nl
