@@ -13,23 +13,19 @@ MLIS= $(SOURCES:.ml=.mli)
 BYTECODE= $(SOURCES:.ml=.cmo)
 OBJCODE= $(SOURCES:.ml=.cmx)
 
-all: depend lvrouted lvrouted.opt crashme
+all: depend lvrouted lvrouted.opt 
 
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
 clean:
 	rm -f lvrouted lvrouted.opt lowlevel_c.o $(MLIS) $(BYTECODE)
 	rm -f $(OBJCODE) $(SOURCES:.ml=.o) $(SOURCES:.ml=.cmi) *~
-	rm -f crashme crashme.cm*
 
 lvrouted.opt: $(OBJCODE) lowlevel_c.o Version.cmx
 	$(OCAMLOPT) -o $@ $(OBJCODE) lowlevel_c.o $(LIBS)
 
 lvrouted: $(MLIS) $(BYTECODE) lowlevel_c.o Version.cmo
 	$(OCAMLC) -o $@ -custom lowlevel_c.o $(BYTECODE) $(LIBS)
-
-crashme: Common.cmo lowlevel_c.o
-	$(OCAMLC) -o $@ -custom lowlevel_c.o Common.cmo crashme.ml $(LIBS)
 
 .o: %.c
 	$(CC) $(CFLAGS) -c $<
@@ -57,6 +53,7 @@ Version.ml: .svn/entries
 	@echo Extracting svn version info
 	@echo \(\* DO NOT EDIT BY HAND \*\) > Version.ml
 	@echo let version=`svn info . | grep Revision | sed "s/.* //g"` >> Version.ml
+	@echo let branch=\"`pwd | sed "s/.*lvrouted\///g"`\" >> Version.ml
 	@echo let date=\"`date`\" >> Version.ml
 	@echo let host=\"`uname -a`\" >> Version.ml
 	@echo let ocamlopt=\"`ocamlopt -v | head -1`\" >> Version.ml
