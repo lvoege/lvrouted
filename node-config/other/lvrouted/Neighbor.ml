@@ -1,9 +1,4 @@
 (* Neighbor type definition, management and utility functions *)
-open HopInfo
-open Common
-open LowLevel
-open Route
-open Iface
 
 (* A neighbor has a name, an interface and address to reach it on, 
    a timestamp when we last successfully received something from the neighbor,
@@ -50,16 +45,22 @@ let handle_data ns s sockaddr =
 	try	
 		let addr = Common.get_addr_from_sockaddr sockaddr in
 		let n = List.find (fun n -> n.addr = addr) ns in
+		Log.log Log.debug ("This data is from neighbor " ^ n.name);
 		n.hoptable <- Some (HopInfo.from_string s addr);
+		Log.log Log.debug (n.name ^ "'s hoptable has been set");
 		n.last_seen <- Unix.gettimeofday ()
 	with _ -> 
+		Log.log Log.debug ("Cannot find neighbor for this data");
 		()
 
 (* Given a list of neighbors and interface i, invalidate the hoptables 
    for all the neighbors on that interface *)
 let nuke_hoptable_for_iface ns i =
-	List.iter (fun n -> if n.iface = i then
-			      n.hoptable <- None) ns
+	Log.log Log.debug ("nuking interface " ^ i);
+	List.iter (fun n -> if n.iface = i then begin
+				n.hoptable <- None;
+				Log.log Log.debug ("neighbor " ^ n.name ^ "canned")
+			    end) ns
 
 (* Given a list of neighbors and a number of seconds, invalidate the 
    hoptables of all neighbors not heard from since numsecs ago *)
@@ -68,6 +69,7 @@ let nuke_old_hoptables ns numsecs =
 	let res = ref false in
 	List.iter (fun n -> 
 		if n.last_seen < limit then begin
+		  Log.log Log.debug (n.name ^ " expired");
 		  n.hoptable <- None;
 		  res := true
 		end) ns;
@@ -77,11 +79,13 @@ let nuke_old_hoptables ns numsecs =
    (unaggregated) routes and a merged hoptable. *)
 let derive_routes_and_hoptable direct direct_hash ns = 
 	let ns' = List.filter (fun n -> Common.is_some n.hoptable) ns in
+	Log.log Log.debug ("Number of eligible neighbors: " ^ string_of_int (List.length ns'));
 	if List.length ns' = 0 then
 	  Route.RouteSet.empty, [| |]
 	else begin
 	  let h = Hashtbl.create (Array.length (Common.from_some (List.hd ns').hoptable)) in
 	  List.iter (fun n ->
+		Log.log Log.debug ("Considering " ^ n.name ^ "'s hoptable");
 		Array.iter (fun e ->
 			let addr = HopInfo.addr e in
 			try
@@ -109,7 +113,6 @@ let derive_routes_and_hoptable direct direct_hash ns =
 (* Fill the given hashtable with a mapping of interface name to Iface.t
    as extracted from the given list of neighbors *)
 let extract_ifaces h ns =
-	let h = Hashtbl.create 8 in
 	List.iter (fun n -> Hashtbl.replace h n.iface (Iface.make n.iface)) ns
 
 let check_reachable n iface = 
@@ -118,9 +121,12 @@ let check_reachable n iface =
 		try  n.macaddr <- Some (Hashtbl.find arptable n.addr)
 		with Not_found -> ()
 	end;
+	if Common.is_none n.macaddr then
+	  Log.log Log.debug ("Cannot determine MAC address for neighbor " ^ n.name);
 	let reachable = (Common.is_some n.macaddr) &&
 			(Iface.is_reachable iface (Common.from_some n.macaddr)) in
 	if not reachable then begin
+		Log.log Log.debug ("Setting " ^ n.name ^ "'s hoptable to None");
 		n.hoptable <- None;
 		n.last_seen <- 0.0
 	end;

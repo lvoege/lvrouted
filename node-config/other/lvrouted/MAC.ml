@@ -18,13 +18,15 @@ let ether_ntoa s =
 	s'
 
 let arptable iface : arptable = 
-	let c = Unix.open_process_in ("/usr/sbin/arp -a -i " ^ iface) in
-	let re = Str.regexp "^[^ ]+ (\\([^)]+\\)) at \\([^ ]+\\) on \\([^ ]+\\) .*" in
-	let l = Common.snarf_channel_for_re c re 3 in
+	let c = Unix.open_process_in ("/usr/sbin/arp -a -n") in
+	let re = Str.regexp "^[^ ]+ (\\([^)]+\\)) at \\([0-9a-f:]+\\) on \\([^ ]+\\) .*" in
+	let l = Common.snarf_channel_for_re c re 4 in
 	let h = Hashtbl.create (List.length l) in
 	List.iter (fun a ->
-		Hashtbl.add h (Unix.inet_addr_of_string a.(1))
-			      (ether_aton a.(2))) l;
+		if a.(3) = iface then
+		  Hashtbl.add h (Unix.inet_addr_of_string a.(1))
+			        (ether_aton a.(2))) l;
+	ignore(Unix.close_process_in c);
 	h
 
 let show_arptable (h: arptable) =

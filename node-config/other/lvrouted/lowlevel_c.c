@@ -373,12 +373,21 @@ CAMLprim value bits_in_inet_addr(value addr) {
 	CAMLreturn(result);
 }
 
+CAMLprim value caml_strstr(value big, value little) {
+	char *p;
+
+	p = strstr(String_val(big), String_val(little));
+	return Val_int(p ? p - String_val(big) : -1);
+}
+
 CAMLprim value inet_addr_in_range(value addr) {
 	CAMLparam1(addr);
 	CAMLlocal1(result);
 	in_addr_t a;
 
 	memcpy(&a, String_val(addr), sizeof(in_addr_t));
-	result = Val_bool(mask_addr_impl(ntohl(a), 12) == 0xac100000);
+	a = ntohl(a);
+	result = Val_bool(mask_addr_impl(a, 12) == 0xac100000 &&
+			  a < 0xac1fff00);
 	CAMLreturn(result);
 }

@@ -43,6 +43,9 @@ external getifaddrs: unit -> (string *		(* iface name *)
 external bits_in_inet_addr: Unix.inet_addr -> int
   = "bits_in_inet_addr"
 
+external strstr: string -> string -> int
+  = "caml_strstr"
+
 (* HIGHLY WirelessLeiden SPECIFIC: is the given address in the 172.16.0.0/12
    range we route? *)
 external inet_addr_in_range: Unix.inet_addr -> bool

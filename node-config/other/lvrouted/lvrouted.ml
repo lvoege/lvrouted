@@ -2,11 +2,7 @@
    sending to neighbors and the updating of the route table. *)
 open Neighbor
 open Common
-open Route
-open Config
-open LowLevel
-open HopInfo
-open Iface
+open Log
 
 (* First some globals. these are global because the signal handlers need to be
    able to use them *)
@@ -29,9 +25,14 @@ let last_time = ref 0.0
 (* The current routing table. This starts out empty. *)
 let routes = ref Route.RouteSet.empty
 (* Neighbor -> 1. An entry means that neighbor was unreachable last iteration *)
-let unreachable: (Neighbor.t, int) Hashtbl.t = Hashtbl.create 4
+(*let unreachable: (Neighbor.t, int) Hashtbl.t = Hashtbl.create 4*)
+let unreachable = ref (Hashtbl.create 4)
+(* Path to the config file *)
+let configfile = ref "/tmp/lvrouted.conf"
 
 let alarm_handler _ =
+	Log.log Log.debug "in alarm_handler";
+
 	(* re-trigger het alarm *)
 	let _ = Unix.alarm Common.alarm_timeout in
 
@@ -42,16 +43,19 @@ let alarm_handler _ =
 		if not (Neighbor.check_reachable n iface) then begin
 		  Hashtbl.add new_unreachable n 1;
 		  try
-		  	let _ = Hashtbl.find unreachable n in
+		  	let _ = Hashtbl.find !unreachable n in
 			()
 		  with Not_found ->
+		  	Log.log Log.info (n.name ^ " became unreachable");
 		  	someone_became_unreachable := true
 		end) !neighbors;
+	unreachable := new_unreachable;
 
 	let now = Unix.gettimeofday () in
 	let its_time = (now -. !last_time) > bcast_interval in
 	
 	if !someone_became_unreachable || its_time then begin
+	  Log.log Log.debug "starting broadcast run";
 	  last_time := now;
 
 	  (* leidt uit de huidige informatie een routetabel en een hoptable af *)
@@ -75,13 +79,9 @@ let alarm_handler _ =
 		Route.RouteSet.iter (fun r ->
 			output_string out ("\t" ^ Route.show r ^ "\n")) routes';
 		close_out out;
-
-		let out = open_out "/tmp/lvrouted.neighbors" in
-		List.iter (fun n ->
-			output_string out (Neighbor.show n)) !neighbors;
-		close_out out
 	  end;
-	  routes := routes'
+	  routes := routes';
+	  Log.log Log.debug "finished broadcast run";
 	end
 
 let abort_handler _ = ()
@@ -96,22 +96,33 @@ let read_config _ =
 	direct := Array.of_list (List.map (fun a ->
 			Hashtbl.add direct_hash a 1;
 			HopInfo.make a) wleidenaddrs);
-	let n = Config.parse_file (open_in "/tmp/lvrouted.conf") in
+	let n = Config.parse_file (open_in !configfile) in
 	neighbors := n;
 	Neighbor.extract_ifaces ifaces n;
 
 	let _ = Unix.sigprocmask Unix.SIG_UNBLOCK block_signals in
 	()
 
+let argopts = [
+	"-f", Arg.Set_string configfile, "Path to the config file";
+	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
+]
+
 let main =
+	Arg.parse argopts (fun _ -> ()) "lvrouted";
 	read_config ();
+
+	Log.log Log.debug "Config file read";
 
 	let set_handler f = List.iter (fun i -> Sys.set_signal i (Sys.Signal_handle f)) in
 	set_handler alarm_handler [Sys.sigalrm];
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 
-	(*LowLevel.daemon false false; *)
+	Log.log Log.debug "Handlers installed";
+
+	LowLevel.daemon false false;
+	Log.log Log.debug "daemonized";
 
 	let _  = Unix.alarm 1 in
 
@@ -123,6 +134,11 @@ let main =
 	while true do 
 		try
 			let _, sockaddr = Unix.recvfrom !sockfd s 0 (String.length s) [] in
-			Neighbor.handle_data !neighbors s sockaddr
+			Log.log Log.debug ("got data from " ^
+					Unix.string_of_inet_addr (
+					Common.get_addr_from_sockaddr
+					sockaddr));
+			Neighbor.handle_data !neighbors s sockaddr;
+			Log.log Log.debug ("data handled");
 		with _ -> ()
 	done
