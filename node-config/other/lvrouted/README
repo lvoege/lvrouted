@@ -1,0 +1,20 @@
+This is a very simple UDP-based, shortest-path routing daemon.
+
+Each node has a configuration file that lists the directly accessible
+ranges and its neighbors. Example:
+
+direct 192.168.3.0/24
+neighbor foo 172.17.136.1 wi0
+
+Directly accessible ranges are assumed to be infallible, with the reasoning
+that if your ethernet does fail, you have bigger problems than a suboptimal
+routing table.
+
+Neighbors have a name, a peer address where it can be reached, and the
+interface that address belongs to. I could've written code to figure out
+which interface a neighbor is on at runtime, but that would've been a lot of
+trouble, unportable and generally not necessary as these configuration files
+are going to be script-generated anyway. 
+
+Lodewijk Voge
+lvoge@cs.vu.nl
