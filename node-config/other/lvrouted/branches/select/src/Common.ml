@@ -113,6 +113,14 @@ let snarf_channel_for_re c re numgroups =
 			a::acc
 		end else acc) [] lines
 
+let read_file fname =
+	let chan = open_in fname in
+	let size = in_channel_length chan in
+	let s = String.create size in
+	let numread = input chan s 0 size in
+	if size <> numread then String.sub s 0 numread
+	else s
+
 let sign_string s = 
 	if !secret = "" then s
 	else (LowLevel.sha_string (!secret ^ s)) ^ s

@@ -5,7 +5,7 @@ open Log
 open Neighbor
 
 (* First some globals. these are global because the signal handlers need to be
-   able to use them *)
+   able to set them when re-reading the node's configuration. *)
 
 (* A set of all neighbors *)
 let neighbors = ref Neighbor.Set.empty
@@ -22,17 +22,16 @@ let ifaces = ref StringMap.empty
 let direct : Tree.node list ref = ref []
 (* A list of address, netmask tuples of the same *)
 let directnets : (Unix.inet_addr * int) list ref = ref []
-(* A socket file handle for everything to use. Unix.file_descr is an abstract
-   type, initialize it with Unix.stdout so it typechecks, then have main
-   replace it with a real handle before any use. *)
-let sockfd = ref Unix.stdout
 (* last broadcast timestamp *)
 let last_time = ref 0.0
 (* An entry means that neighbor was unreachable last iteration *)
 let unreachable = ref Neighbor.Set.empty
 (* *)
 let configfile = ref "/usr/local/etc/lvrouted.conf"
+(* Resume from saved state on startup instead of a new, clean state *)
+let resume = ref false
 
+(* See if any previously reachable neighbors became reachable or vice-versa *)
 let check_reachable _ =
 	(* See what neighbors are unreachable. Per neighbor, fetch the
 	   corresponding Iface.t and see if it's reachable. *)
@@ -41,8 +40,6 @@ let check_reachable _ =
 		let iface = StringMap.find (Neighbor.iface n) !ifaces in
 		not (Neighbor.check_reachable n iface)) !neighbors in
 
-	(* See what is now unreachable that wasn't before, and what wasn't
-	   reachable before but now is. *)
 	let newly_unreachable = Neighbor.Set.diff new_unreachable !unreachable in
 	let newly_reachable = Neighbor.Set.diff !unreachable new_unreachable in
 	let reachable_changed = not (Neighbor.Set.is_empty newly_unreachable)
@@ -66,7 +63,7 @@ let check_reachable _ =
        the kernel (if configured to do so)
      - sends the new spanning tree to the neighbors
  *)
-let periodic_check _ =
+let periodic_check sockfd =
 	Log.log Log.debug "in alarm_handler";
 
 	let expired = Neighbor.nuke_old_trees !neighbors Common.timeout in
@@ -98,22 +95,25 @@ let periodic_check _ =
 	  (* DEBUG: dump the derived tree to the filesystem *)
 	  Tree.dump_tree "lvrouted.mytree" nodes;
 
-	  (* If there's no wired neighbors, send the new tree to the (wireless)
-	     neighbors outright. If there are wired neighbors, send them the
-	     tree first, then create a new tree with the wired neighbors'
-	     children promoted to peers and send that to the wireless
-	     neighbors. *)
+	  (* If there's no wired neighbors or wired links are not to be
+	     treated as zero-cost, send the new tree to all neighbors
+	     outright.
+	     
+	     If wired links are zero-cost and there are wired neighbors,
+	     send them the tree first, then create a new tree with the
+	     wired neighbors' children promoted to peers and send that
+	     to the wireless neighbors. *)
 	  if not (Common.wired_links_are_zero_cost) ||
 	     IPSet.is_empty !neighbors_wired_ip then
-	    Neighbor.bcast !sockfd nodes !neighbors
+	    Neighbor.bcast sockfd nodes !neighbors
 	  else begin
 	  	let nodes' = Tree.promote_children !neighbors_wireless_ip nodes in
-	  	Neighbor.bcast !sockfd nodes' !neighbors_wired;
+	  	Neighbor.bcast sockfd nodes' !neighbors_wired;
 
 		Tree.dump_tree "lvrouted.mytree-wired" nodes;
 
 		let nodes' = Tree.promote_children !neighbors_wired_ip nodes in
-	  	Neighbor.bcast !sockfd nodes' !neighbors_wireless;
+	  	Neighbor.bcast sockfd nodes' !neighbors_wireless;
 
 		Tree.dump_tree "lvrouted.mytree-wireless" nodes;
 	  end;
@@ -154,17 +154,10 @@ let periodic_check _ =
 	end
 
 let abort_handler _ =
-	Log.log Log.warnings "Exiting. Sending neighbors empty trees...";
-	Neighbor.bcast !sockfd [] !neighbors;
-	Log.log Log.warnings "Empty trees sent, now exiting for real.";
+	Log.log Log.info "Exiting.";
 	exit 0
 
 let read_config _ =
-	(* Block the alarm signal while we're meddling with globals. *)
-	let block_signals = [ Sys.sigalrm ] in
-	Log.log Log.debug ("blocking");
-	ignore(Unix.sigprocmask Unix.SIG_BLOCK block_signals);
-
 	(* Get all routable addresses that also have a netmask. *)
 	let routableaddrs = List.fold_left (fun l (iface, _, a, n, _, _) ->
 		if Common.addr_in_range a && Common.is_some n then
@@ -228,11 +221,8 @@ let read_config _ =
 	neighbors_wired_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
 						!neighbors_wired IPSet.empty;
 	neighbors_wireless_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
-						!neighbors_wireless IPSet.empty;
+						!neighbors_wireless IPSet.empty
 	
-	Log.log Log.debug ("unblocking");
-	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
-
 let version_info =
 		["Version info: ";
 		 "svn rev: " ^ string_of_int Version.version;
@@ -251,6 +241,10 @@ let dump_version _ =
 	List.iter (fun s -> output_string out (s ^ "\n")) version_info;
 	close_out out
 
+(* This, and the converse read_state, aid in the debugging of problems on live
+   installations on cramped nodes. kill -USR2 the daemon and all state will
+   be dumped to lvrouted.state. copy to the development machine and read_state
+   it and go from there. *)
 let dump_state _ =
 	let state = !neighbors, !neighbors_wireless, !neighbors_wired,
 		!neighbors_wired_ip, !neighbors_wireless_ip,
@@ -284,6 +278,7 @@ let argopts = [
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
 	"-p", Arg.Set_int Common.port, "UDP port to use";
+	"-r", Arg.Set resume, "Resume from saved state";
 	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
 	"-t", Arg.Set_string Common.tmpdir, "Temporary directory";
 	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
@@ -300,9 +295,14 @@ let _ =
 		LowLevel.daemon false false;
 		Log.log Log.info "daemonized";
 	end;
-	
-	read_config ();
-	Log.log Log.info "Read config";
+
+	if not !resume then begin
+		read_config ();
+		Log.log Log.info "Read config";
+	end else begin
+		read_state (Common.read_file (!Common.tmpdir ^ "lvrouted.state"));
+		Log.log Log.info "Resumed from saved state";
+	end;
 
 	let set_handler f = List.iter (fun i -> Sys.set_signal i (Sys.Signal_handle f)) in
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
@@ -311,9 +311,9 @@ let _ =
 	set_handler dump_state [Sys.sigusr2];
 	Log.log Log.info "Set signal handlers";
 
-	sockfd := Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0;
-	Unix.setsockopt !sockfd Unix.SO_REUSEADDR true;
-	Unix.bind !sockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
+	let sockfd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
+	Unix.setsockopt sockfd Unix.SO_REUSEADDR true;
+	Unix.bind sockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
 	Log.log Log.info "Opened and bound socket";
 
 	let logfrom s = Log.log Log.debug
@@ -321,17 +321,17 @@ let _ =
 			 Unix.string_of_inet_addr
 				(Common.get_addr_from_sockaddr s)) in
 	let s = String.create 65536 in
-	while true do 
-		try
-			let fds, _, _ = Unix.select [!sockfd] [] [] !Common.alarm_timeout in
-			if fds = [] then periodic_check ()
-			else begin
-				let len, sockaddr = Unix.recvfrom !sockfd s 0
-							(String.length s) [] in
-				logfrom sockaddr;
-				Neighbor.handle_data !neighbors
-						     (String.sub s 0 len) sockaddr;
-				Log.log Log.debug ("data handled");
-			end
-		with _ -> ()
+	while true do try
+		let fds, _, _ = Unix.select [sockfd] [] []
+					!Common.alarm_timeout in
+		if fds = [] then periodic_check sockfd
+		else begin
+			let len, sockaddr = Unix.recvfrom sockfd s 0
+						(String.length s) [] in
+			logfrom sockaddr;
+			Neighbor.handle_data !neighbors
+					     (String.sub s 0 len) sockaddr;
+			Log.log Log.debug ("data handled");
+		end
+	with _ -> ()
 	done
