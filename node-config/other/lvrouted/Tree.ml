@@ -41,6 +41,13 @@ let show l =
    3. Traverse the tree breadth-first. For every node, check if
       there is a route already. If so, remove this node from
       the list of children in the parent. If not, add a route.
+   4. Filter out routes that are included in a route from the
+      list of directly attached routes.
+
+TODO: 4 may be nothing more than cosmetics now that route addition
+      finally works right. 4 was added because some of the evidence
+      while debugging pointed to such routes acting up. check if it
+      is just cosmetic now and note it.
 
    To be able to do this, the callback to the traversal routine
    needs three pieces of information:
@@ -49,10 +56,10 @@ let show l =
      - the gateway. The top of every node in the 'nodes'
        parameter is the gateway to the tree under it.
 *)
-let merge nodes (directips: (Unix.inet_addr * int) list) =
+let merge nodes directnets =
 	let routes = ref (List.fold_left
 				(fun map (a, _) -> IPMap.add a a map)
-				IPMap.empty directips) in
+				IPMap.empty directnets) in
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
 	traverse (fun node parent gw ->
 			if IPMap.mem node.addr !routes then
@@ -62,7 +69,7 @@ let merge nodes (directips: (Unix.inet_addr * int) list) =
 		 (List.map (fun node -> node.addr, fake, node) nodes);
 	routes := IPMap.fold (fun a gw map ->
 			if List.exists (fun (a', n) ->
-				Route.includes_impl a' n a 32) directips then map
+				Route.includes_impl a' n a 32) directnets then map
 			else IPMap.add a gw map) !routes IPMap.empty;
 	fake.nodes, !routes
 

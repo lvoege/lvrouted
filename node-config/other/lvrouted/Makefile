@@ -13,12 +13,12 @@ MLIS= $(SOURCES:.ml=.mli)
 BYTECODE= $(SOURCES:.ml=.cmo)
 OBJCODE= $(SOURCES:.ml=.cmx)
 
-all: depend lvrouted
+all: depend lvrouted lvrouted.opt
 
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
 clean:
-	rm -f $(MLIS) $(BYTECODE) $(OBJCODE) $(SOURCES:.ml=.o) *~
+	rm -f lowlevel_c.o $(MLIS) $(BYTECODE) $(OBJCODE) $(SOURCES:.ml=.o) $(SOURCES:.ml=.cmi) *~
 
 lvrouted.opt: $(OBJCODE) lowlevel_c.o
 	$(OCAMLOPT) -o $@ $(OBJCODE) lowlevel_c.o $(LIBS)

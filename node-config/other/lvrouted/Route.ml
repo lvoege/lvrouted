@@ -104,17 +104,13 @@ let diff oldroutes newroutes =
 (* Don't use, call commit instead. TODO: move to LowLevel.ml. This is
    not trivial because of a then cyclic include, which would need to
    be broken. *)
-external routes_commit: route array -> int -> route array -> int -> int
+external commit: route list -> route list ->
+		 ( (route * string) list * (route * string) list )
+			
   = "routes_commit"
 
-let commit deletes adds =
-	ignore(routes_commit (Array.of_list deletes) (List.length deletes)
-			     (Array.of_list adds) (List.length adds))
-
-external routes_fetch: unit -> route array
+external fetch: unit -> route list
   = "routes_fetch"
-
-let fetch () = Array.to_list (routes_fetch ())
 
 let flush () =
 	(* TODO, figure out why this doesn't work:

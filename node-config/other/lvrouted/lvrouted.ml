@@ -80,12 +80,18 @@ let alarm_handler _ =
 
 	  if !Common.real_route_updates then begin
 		let deletes, adds = Route.diff !routes newroutes in
+		let logroute r = Log.log Log.info (Route.show r) in
+
 		Log.log Log.info "Deletes:";
-		List.iter (fun r -> Log.log Log.info (Route.show r)) deletes;
+		List.iter logroute deletes;
 		Log.log Log.info "Adds:";
-		List.iter (fun r -> Log.log Log.info (Route.show r)) adds;
+		List.iter logroute adds;
+
+		let logerr (r, s) = Log.log Log.info (Route.show r ^ " got " ^ s) in
 		try
-			Route.commit deletes adds
+			let delerrs, adderrs = Route.commit deletes adds in
+			List.iter logerr delerrs;
+			List.iter logerr adderrs;
 		with Failure s ->
 			Log.log Log.errors ("Couldn't update routing table: " ^ s)
 	  end else begin
@@ -110,7 +116,7 @@ let read_config _ =
 	
 	let routableaddrs = List.filter (fun (_, _, a, n, _, _) ->
 			LowLevel.inet_addr_in_range a &&
-			Common.is_some n) (Array.to_list (LowLevel.getifaddrs())) in
+			Common.is_some n) (LowLevel.getifaddrs ()) in
 	
 	(* Construct the direct and directnets sets. *)
 	let direct', directnets' =
@@ -134,7 +140,7 @@ let read_config _ =
 			let m = LowLevel.bits_in_inet_addr (Common.from_some n) in
 			let addrs = LowLevel.get_addrs_in_block a m in
 			let addrs' = List.filter (fun a' ->
-				compare a' a != 0) (Array.to_list addrs) in
+				compare a' a != 0) addrs in
 			List.map (fun a -> iface, a) addrs') interlinks) in
 
 	let ifaces', neighbors' = List.fold_left (fun (ifacemap, neighbors) (iface, a) ->
@@ -191,7 +197,7 @@ let main =
 
 	Log.log Log.info "Opened and bound socket";
 
-	let s = String.create 10240 in
+	let s = String.create 65536 in
 	while true do 
 		try
 			let len, sockaddr = Unix.recvfrom !sockfd s 0 (String.length s) [] in

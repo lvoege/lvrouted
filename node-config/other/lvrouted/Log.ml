@@ -1,3 +1,4 @@
+(* Simple logging functionality. should probably use syslog instead *)
 let quiet = 0
 let errors = 1
 let warnings = 2

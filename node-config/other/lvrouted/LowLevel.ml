@@ -38,7 +38,7 @@ external getifaddrs: unit -> (string *		(* iface name *)
 			      Unix.inet_addr option * (* netmask *)
 			      Unix.inet_addr option * (* broadcast *)
 			      Unix.inet_addr option)   (* dst addr *)
-			     array
+			     list
   = "caml_getifaddrs"
 
 external bits_in_inet_addr: Unix.inet_addr -> int
@@ -54,7 +54,7 @@ external inet_addr_in_range: Unix.inet_addr -> bool
 
 (* Given an address and a netmask, return all the usable addresses in that
    block *)
-external get_addrs_in_block: Unix.inet_addr -> int -> Unix.inet_addr array
+external get_addrs_in_block: Unix.inet_addr -> int -> Unix.inet_addr list
   = "get_addrs_in_block"
 
 external get_arp_entries: unit -> (string * Unix.inet_addr * string) array

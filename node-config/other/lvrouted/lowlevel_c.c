@@ -54,6 +54,19 @@
 #define None_val (Val_int(0))
 #define Some_tag 0
 
+/* prepend element e before list l and return the new list. the empty
+   list is to be passed as Val_int(0) */
+static value prepend_listelement(value e, value l) {
+	CAMLparam2(e, l);
+	CAMLlocal1(cell);
+
+	cell = alloc_small(2, 0);
+	Field(cell, 0) = e;
+	Field(cell, 1) = l;
+	
+	CAMLreturn(cell);
+}
+
 static inline int bitcount(unsigned char i) {
 	int c;
 	for (c = 0; i; i >>= 1)
@@ -65,7 +78,7 @@ CAMLprim value int_of_file_descr(value file_descr) {
 	return file_descr;
 }
 
-/* mostly stolen from /usr/src/sbin/ifconfig/ifmedia.c */
+/* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
 static inline int iface_is_associated(const char *iface) {
 #ifndef __FreeBSD__
 	return 1;
@@ -95,7 +108,8 @@ static inline int iface_is_associated(const char *iface) {
 }
 
 CAMLprim value caml_iface_is_associated(value iface) {
-	return Val_bool(iface_is_associated(String_val(iface)));
+	CAMLparam1(iface);
+	CAMLreturn(Val_bool(iface_is_associated(String_val(iface))));
 }
 
 static inline in_addr_t get_addr(value addr) {
@@ -129,13 +143,15 @@ CAMLprim value mask_addr(value addr, value mask) {
 }
 
 CAMLprim value caml_daemon(value nochdir, value noclose) {
+	CAMLparam2(nochdir, noclose);
 	daemon(Long_val(nochdir), Long_val(noclose));
-	return Val_unit;
+	CAMLreturn(Val_unit);
 }
 
 CAMLprim value caml_valaddr(value addr) {
+	CAMLparam1(addr);
 	assert(string_length(addr) == 4);
-	return Val_unit;
+	CAMLreturn(Val_unit);
 }
 
 CAMLprim value string_compress(value s) {
@@ -213,7 +229,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 	msghdr->rtm_type = type;
 	msghdr->rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
 	msghdr->rtm_pid = 0;
-	msghdr->rtm_flags = RTF_UP | RTF_GATEWAY | RTF_STATIC;
+	msghdr->rtm_flags = RTF_UP | RTF_GATEWAY | RTF_DYNAMIC;
 	msghdr->rtm_seq = seq++;
 
 	addr = (struct sockaddr_in *)(msghdr + 1);
@@ -241,12 +257,13 @@ static int routemsg_add(unsigned char *buffer, int type,
 }
 #endif
 
-CAMLprim value routes_commit(value deletes, value numdeletes,
-			     value adds, value numadds) {
+CAMLprim value routes_commit(value deletes, value adds) {
+	CAMLparam2(deletes, adds);
+	CAMLlocal4(result, adderrs, delerrs, tuple);
 #ifndef __FreeBSD__
 	assert(0);
 #else
-	int i, sockfd, buflen, len;
+	int sockfd, buflen, len;
 	unsigned char *buffer;
 
 	sockfd = socket(PF_ROUTE, SOCK_RAW, 0);
@@ -259,59 +276,77 @@ CAMLprim value routes_commit(value deletes, value numdeletes,
 		close(sockfd);
 		failwith("malloc");
 	}
-	for (i = 0; i < Long_val(numadds); i++) {
-		value v = Field(adds, i);
+
+	for (adderrs = Val_int(0); adds != Val_int(0); adds = Field(adds, 1)) {
+		value v = Field(adds, 0);
 		len = routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
-	// FIXME: error checking
-		write(sockfd, buffer, len);
+		if (write(sockfd, buffer, len) < 0) {
+			tuple = alloc_tuple(2);
+			Store_field(tuple, 0, v);
+			Store_field(tuple, 1, copy_string(strerror(errno)));
+			adderrs = prepend_listelement(tuple, adderrs);
+		}
 	}
-	for (i = 0; i < Long_val(numdeletes); i++) {
-		value v = Field(deletes, i);
+
+	for (delerrs = Val_int(0); deletes != Val_int(0); deletes = Field(deletes, 1)) {
+		value v = Field(deletes, 0);
 		len = routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
-	// FIXME: error checking
-		write(sockfd, buffer, len);
+		if (write(sockfd, buffer, len) < 0) {
+			tuple = alloc_tuple(2);
+			Store_field(tuple, 0, v);
+			Store_field(tuple, 1, copy_string(strerror(errno)));
+			delerrs = prepend_listelement(tuple, delerrs);
+		}
 	}
 	free(buffer);
 	close(sockfd);
+	result = alloc_tuple(2);
+	Store_field(result, 0, delerrs);
+	Store_field(result, 1, adderrs);
 #endif
-	return Val_long(1);
+	CAMLreturn(result);
 }
 
 CAMLprim value caml_ether_aton(value s, value mac) {
+	CAMLparam2(s, mac);
+	CAMLlocal1(res);
 	struct ether_addr *ea;
+
 	ea = ether_aton(String_val(s));
 	if (ea == 0)
-	  return Val_int(0);
-	memcpy(String_val(mac), ea, ETHER_ADDR_LEN);
-	return Val_int(1);
+	  res = Val_int(0);
+	else {
+		memcpy(String_val(mac), ea, ETHER_ADDR_LEN);
+		res = Val_int(1);
+	}
+	CAMLreturn(res);
 }
 
 CAMLprim value caml_ether_ntoa(value s, value res) {
+	CAMLparam2(s, res);
+	CAMLlocal1(rescode);
 	char *p;
 
 	p = ether_ntoa((struct ether_addr *)String_val(s));
 	if (p == 0 || strlen(p) > 17)
-	  return Val_int(0);
-	memcpy(String_val(res), p, strlen(p));
-	return Val_int(1);
+	  rescode = Val_int(0);
+	else {
+		memcpy(String_val(res), p, strlen(p));
+		rescode = Val_int(1);
+	}
+	CAMLreturn(rescode);
 }
 
 CAMLprim value caml_getifaddrs(value unit) {
 	CAMLparam1(unit);
 	struct ifaddrs *ifap, *ifp;
-	int i, num_ifaces;
 	in_addr_t a;
 	CAMLlocal4(result, tuple, addr, option);
 
 	if (getifaddrs(&ifap) == -1)
 	  failwith("getifaddrs");
 
-	num_ifaces = 0;
-	for (ifp = ifap; ifp; ifp = ifp->ifa_next)
-	  num_ifaces += ifp->ifa_addr->sa_family == AF_INET;
-
-	result = alloc(num_ifaces, 0);
-	i = 0;
+	result = Val_int(0);
 	for (ifp = ifap; ifp; ifp = ifp->ifa_next) {
 		if (ifp->ifa_addr->sa_family != AF_INET)
 		  continue;
@@ -339,8 +374,7 @@ CAMLprim value caml_getifaddrs(value unit) {
 		STORE_OPTIONAL_ADDR(ifa_broadaddr, 4);
 		STORE_OPTIONAL_ADDR(ifa_dstaddr, 5);
 
-		Store_field(result, i, tuple);
-		i++;
+		result = prepend_listelement(tuple, result);
 	}
 
 	freeifaddrs(ifap);
@@ -363,10 +397,11 @@ CAMLprim value bits_in_inet_addr(value addr) {
 }
 
 CAMLprim value caml_strstr(value big, value little) {
+	CAMLparam2(big, little);
 	char *p;
 
 	p = strstr(String_val(big), String_val(little));
-	return Val_int(p ? p - String_val(big) : -1);
+	CAMLreturn(Val_int(p ? p - String_val(big) : -1));
 }
 
 CAMLprim value inet_addr_in_range(value addr) {
@@ -389,12 +424,12 @@ CAMLprim value get_addrs_in_block(value addr, value mask) {
 	numaddrs = (1 << (32 - Long_val(mask))) - 2;
 	if (numaddrs < 0) /* happens if the netmask was 32 to begin with */
 	  numaddrs = 0;
-	result = alloc(numaddrs, 0);
+	result = Val_int(0);
 	for (i = 0; i < numaddrs; i++) {
 		em = alloc_string(sizeof(in_addr_t));
 		*(in_addr_t *)(String_val(em)) = htonl(a);
 		a++;
-		Store_field(result, i, em);
+		result = prepend_listelement(em, result);
 	}
 	CAMLreturn(result);
 }
@@ -566,10 +601,11 @@ CAMLprim value get_associated_stations(value iface) {
 CAMLprim value routes_fetch(value unit) {
 	CAMLparam1(unit);
 	CAMLlocal3(result, tuple, addr);
+
 #ifndef __FreeBSD__
-	result = alloc_tuple(0);
+	result = Val_int(0);
 #else
-	int sockfd, numentries;
+	int sockfd;
 	int mib[6] = { CTL_NET, PF_ROUTE, 0, 0, NET_RT_DUMP, 0 };
 	size_t needed;
 	unsigned char *buf, *p, *lim;
@@ -594,19 +630,9 @@ CAMLprim value routes_fetch(value unit) {
 		free(buf);
 		failwith("route retrieval in routes_fetch");
 	}
-	numentries = 0;
+
 	lim = buf + needed;
-	for (p = buf; p < lim; p += rtm->rtm_msglen) {
-		rtm = (struct rt_msghdr *)p;
-		if ((rtm->rtm_flags & RTF_GATEWAY) == 0)
-		  continue;
-		sin = (struct sockaddr_in *)(rtm + 1);
-		if (sin->sin_family != AF_INET)
-		  continue;
-		numentries++;
-	}
-	result = alloc_tuple(numentries);
-	numentries = 0;
+	result = Val_int(0);
 	for (p = buf; p < lim; p += rtm->rtm_msglen) {
 		rtm = (struct rt_msghdr *)p;
 		if ((rtm->rtm_flags & RTF_GATEWAY) == 0)
@@ -632,7 +658,7 @@ CAMLprim value routes_fetch(value unit) {
 		Store_field(tuple, 1, Long_val(bitcount(sin->sin_addr.s_addr)));
 		sin++;
 
-		Store_field(result, numentries++, tuple);
+		result = prepend_listelement(tuple, result);
 	}
 	free(buf);
 	close(sockfd);
