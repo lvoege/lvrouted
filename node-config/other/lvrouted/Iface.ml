@@ -11,7 +11,8 @@ type t = {
 	itype: ifacetype;
 
 	(* when was the last arpentries and associated update? *)
-	mutable last_update: float;
+	mutable last_assoc_update: float;
+	mutable last_arp_update: float;
 	mutable arpentries: MAC.Set.t option;
 	(* is type is master, this is the set of associated macaddrs*)
 	mutable associated: MAC.Set.t option;
@@ -35,36 +36,43 @@ let make n =
 		  WIRED in
 	{ name = n;
 	  itype = iface_type n;
-	  last_update = -1.0;
+	  last_assoc_update = -1.0;
+	  last_arp_update = -1.0;
 	  arpentries = None;
 	  associated = None;
 	  is_associated = None }
 
 (* Return a MAC.Set of addresses that are associated with the given interface *)
-let associated iface =
-	let c = Unix.open_process_in ("/usr/sbin/wicontrol -i " ^ iface.name ^ " -l") in
-	let re = Str.regexp "^\\([^ ]+\\) .*ASSOC.*" in
-	let l = Common.snarf_channel_for_re c re 2 in
-	ignore(Unix.close_process_in c);
-	List.fold_left (fun a e -> MAC.Set.add (MAC.ether_aton e.(1)) a) MAC.Set.empty l
+let associated ifname =
+	Array.fold_left (fun a e -> MAC.Set.add e a)
+			MAC.Set.empty
+			(LowLevel.get_associated_stations ifname)
 
 (* Update the information about associations on the given interface, if it's
    been long enough since the last update. *)
 let update iface =
 	let now = Unix.gettimeofday () in
 	if (iface.itype = WIFI_MASTER && (Common.is_none iface.associated)) ||
-	   (iface.last_update < (now -. 1.0)) then begin
+	   (iface.last_assoc_update < (now -. Common.iface_assoc_update)) then begin
 		if iface.itype = WIFI_MASTER then
-		  iface.associated <- Some (associated iface)
+		  iface.associated <- Some (associated iface.name)
 		else
 		  iface.is_associated <- Some (LowLevel.iface_is_associated iface.name);
-		iface.last_update <- now
+		iface.last_assoc_update <- now
+	end;
+	if iface.last_arp_update < (now -. Common.iface_arp_update) then begin
+		iface.arpentries <- Some
+			(Hashtbl.fold (fun a m s -> MAC.Set.add m s)
+				      (MAC.arptable iface.name) MAC.Set.empty);
+		iface.last_arp_update <- now
 	end
 
 (* Is the given MAC address in the given interface's arp table? *)
 let in_arptable iface mac =
 	(* If the interface's table isn't there (hasn't been read, or expired)
-	   try and read it *)
+	   try and read it. This shouldn't happen, but check just in case
+	   we get called from another module that doesn't call update prior to
+	   this *)
 	if Common.is_none iface.arpentries then
 	  iface.arpentries <- Some
 	  	(Hashtbl.fold (fun a m s -> MAC.Set.add m s)

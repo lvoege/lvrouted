@@ -72,10 +72,11 @@ let nuke_old_hoptables ns numsecs =
 	let limit = (Unix.gettimeofday ()) -. numsecs in
 	let res = ref false in
 	List.iter (fun n -> 
-		if n.last_seen < limit then begin
-		  Log.log Log.debug (n.name ^ " expired");
-		  n.tree <- None;
-		  res := true
+		if n.last_seen < limit &&
+		   Common.is_some n.tree then begin
+			Log.log Log.debug (n.name ^ " expired");
+			n.tree <- None;
+			res := true
 		end) ns;
 	!res
 

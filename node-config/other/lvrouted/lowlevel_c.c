@@ -1,26 +1,39 @@
 /* implementation of the definitions in LowLevel.ml */
+/* There's plenty of code from FreeBSD's /usr/src here. For the BSD
+ * license blurbs see the end of the file. */
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/sysctl.h>
 #include <ifaddrs.h>
+#include <netinet/in.h>
 #ifndef __linux__
 #include <net/if.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
+#include <netinet/if_ether.h>
+#include <sys/param.h>
+#if __FreeBSD_version < 502000
+#include <net/if_ieee80211.h>
+#include <dev/wi/wi_hostap.h>
+#else
+#include <net80211/ieee80211.h>
+#include <net80211/ieee80211_ioctl.h>
+#endif
+#include <dev/wi/if_wavelan_ieee.h>
+#include <dev/wi/if_wireg.h>
 #else
 #include <netinet/ether.h>
 #endif
 #include <net/ethernet.h>
 #include <arpa/inet.h>   
 #include <net/route.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <unistd.h>
 
 #include <bzlib.h>
 
@@ -31,9 +44,19 @@
 
 static int sockfd = -1;
 
+#if __FreeBSD_version < 502000
+#define ROUNDUP(a) \
+	((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))
+#endif
+
 /* stolen from ocaml-3.08.1/byterun/weak.c */
 #define None_val (Val_int(0))
 #define Some_tag 0
+
+static inline void ensure_sockfd() {
+	if (sockfd == -1)
+	  sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+}
 
 static inline int bitcount(unsigned char i) {
 	int c;
@@ -54,8 +77,7 @@ static inline int iface_is_associated(const char *iface) {
 	struct ifmediareq ifmr;
 	int *media_list;
 
-	if (sockfd == -1)
-	  sockfd = socket(PF_INET, SOCK_DGRAM, 0);
+	ensure_sockfd();
 	memset(&ifmr, 0, sizeof(ifmr));
 	strncpy(ifmr.ifm_name, iface, sizeof(ifmr.ifm_name));
 
@@ -183,48 +205,6 @@ CAMLprim value string_decompress(value s) {
 	} else {
 		failwith("Cannot handle error in string_decompress");
 	}
-}
-
-int route_add(in_addr_t dest, int masklen, in_addr_t gw) {
-#ifndef __linux__
-	unsigned char buffer[sizeof(struct rt_msghdr) + 3 * sizeof(struct sockaddr_in)];
-	int sockfd;
-	struct rt_msghdr *msghdr;
-	struct sockaddr_in *addr;
-
-	assert(sockfd != -1);
-	sockfd = socket(PF_ROUTE, SOCK_RAW, AF_INET);
-	memset(buffer, 0, sizeof(buffer));
-	msghdr = (struct rt_msghdr *)buffer;	
-	msghdr->rtm_version = RTM_VERSION;
-	msghdr->rtm_type = RTM_ADD;
-	msghdr->rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
-	msghdr->rtm_pid = getpid();
-	msghdr->rtm_flags = RTF_UP | RTF_GATEWAY | RTF_STATIC;
-
-	addr = (struct sockaddr_in *)(msghdr + 1);
-	addr->sin_len = sizeof(struct sockaddr_in);
-	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = dest;
-	addr++;
-	addr->sin_len = sizeof(struct sockaddr_in);
-	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = -1 - ((1 << (32 - masklen)) - 1);
-	addr++;
-	addr->sin_len = sizeof(struct sockaddr_in);
-	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = gw;
-
-	write(sockfd, buffer, sizeof(buffer));
-	close(sockfd);
-#else
-	assert(0);
-#endif
-	return 0;
-}
-
-CAMLprim value caml_route_add(value dest, value masklen, value gw) {
-	return Val_long(route_add(get_addr(dest), Long_val(masklen), get_addr(gw)));
 }
 
 static int routemsg_add(unsigned char *buffer, int type,
@@ -409,3 +389,214 @@ CAMLprim value get_addrs_in_block(value addr, value mask) {
 	}
 	CAMLreturn(result);
 }
+
+/* stolen from /usr/src/usr.sbin/arp/arp.c */
+CAMLprim value get_arp_entries(value unit) {
+	CAMLparam1(unit);
+	CAMLlocal4(result, tuple, ipaddr, macaddr);
+
+	int mib[6], numentries;
+	size_t needed;
+	char *lim, *buf, *next;
+	struct rt_msghdr *rtm;
+	struct sockaddr_inarp *sin2;
+	struct sockaddr_dl *sdl;
+	char ifname[IF_NAMESIZE];
+
+	mib[0] = CTL_NET;
+	mib[1] = PF_ROUTE;
+	mib[2] = 0;
+	mib[3] = AF_INET;
+	mib[4] = NET_RT_FLAGS;
+	mib[5] = RTF_LLINFO;
+	if (sysctl(mib, 6, NULL, &needed, 0, 0) < 0)
+	  failwith("fetch of arp table size");
+	if (needed) {
+		buf = malloc(needed);
+		if (buf == 0)
+		  failwith("malloc");
+		if (sysctl(mib, 6, buf, &needed, 0, 0) < 0)
+		  failwith("fetch of arp table");
+		numentries = 0;
+		lim = buf + needed;
+		for (next = buf; next < lim; next += rtm->rtm_msglen) {
+			rtm = (struct rt_msghdr *)next;
+			sin2 = (struct sockaddr_inarp *)(rtm + 1);
+			sdl = (struct sockaddr_dl *)((char *)sin2 +
+#if __FreeBSD_version < 502000
+				ROUNDUP(sin2->sin_len)
+#else
+				SA_SIZE(sin2)
+#endif
+			);
+			if (sdl->sdl_alen == 0)
+			  continue; /* incomplete entry */
+			if (sdl->sdl_type != IFT_ETHER ||
+			    sdl->sdl_alen != ETHER_ADDR_LEN)
+			  continue; /* huh? */
+			if (if_indextoname(sdl->sdl_index, ifname) == 0)
+			  continue; /* entry without interface? shouldn't happen */
+			numentries++;
+		}
+		result = alloc_tuple(numentries);
+		numentries = 0;
+		for (next = buf; next < lim; next += rtm->rtm_msglen) {
+			rtm = (struct rt_msghdr *)next;
+			sin2 = (struct sockaddr_inarp *)(rtm + 1);
+			sdl = (struct sockaddr_dl *)((char *)sin2 +
+#if __FreeBSD_version < 502000
+				ROUNDUP(sin2->sin_len)
+#else
+				SA_SIZE(sin2)
+#endif
+			);
+			if (sdl->sdl_alen == 0)
+			  continue; /* incomplete entry */
+			if (sdl->sdl_type != IFT_ETHER ||
+			    sdl->sdl_alen != ETHER_ADDR_LEN)
+			  continue; /* huh? */
+			if (if_indextoname(sdl->sdl_index, ifname) == 0)
+			  continue; /* entry without interface? shouldn't happen */
+			macaddr = alloc_string(ETHER_ADDR_LEN);
+			memcpy(String_val(macaddr), ((struct ether_addr *)LLADDR(sdl))->octet, ETHER_ADDR_LEN);
+
+			ipaddr = alloc_string(sizeof(in_addr_t));
+			memcpy(String_val(ipaddr), &sin2->sin_addr.s_addr, sizeof(in_addr_t));
+
+			tuple = alloc_tuple(3);
+			Store_field(tuple, 0, copy_string(ifname));
+			Store_field(tuple, 1, ipaddr);
+			Store_field(tuple, 2, macaddr);
+
+			Store_field(result, numentries, tuple);
+			numentries++;
+		}
+		free(buf);
+	} else result = alloc_tuple(0);
+
+	CAMLreturn(result);
+}
+
+CAMLprim value get_associated_stations(value iface) {
+	CAMLparam1(iface);	
+	CAMLlocal2(result, mac);
+	struct ifreq ifr;
+	int i;
+#if __FreeBSD_version >= 502000
+	int n;
+	struct wi_req wir;
+	struct wi_apinfo *s;
+
+	ensure_sockfd();
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
+	ifr.ifr_data = (caddr_t)&wir;
+
+	memset(&wir, 0, sizeof(wir));
+	wir.wi_len = WI_MAX_DATALEN;
+	wir.wi_type = WI_RID_READ_APS;
+
+	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1)
+	  failwith("SIOCGWAVELAN");
+
+	n = *(int *)(wir.wi_val);
+	result = alloc_tuple(n);
+	s = (struct wi_apinfo *)(wir.wi_val + sizeof(int));
+	for (i = 0; i < n; i++) {
+		mac = alloc_string(6);
+		memcpy(String_val(mac), s->bssid, ETHER_ADDR_LEN);
+		s++;
+		Store_field(result, i, mac);
+	}
+#else
+	struct hostap_getall    reqall;
+	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
+
+	ensure_sockfd();
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
+	ifr.ifr_data = (caddr_t) &reqall;
+
+	memset(&reqall, 0, sizeof(reqall));
+	reqall.size = sizeof(stas);
+	reqall.addr = stas;
+
+	memset(&stas, 0, sizeof(stas));
+
+	if (ioctl(sockfd, SIOCHOSTAP_GETALL, &ifr) < 0)
+	  failwith("SIOCHOSTAP_GETALL");
+	result = alloc_tuple(reqall.nstations);
+	for (i = 0; i < reqall.nstations; i++) {
+		mac = alloc_string(ETHER_ADDR_LEN);
+		memcpy(String_val(mac), stas[i].addr, ETHER_ADDR_LEN);
+		Store_field(result, i, mac);
+	}
+#endif
+	CAMLreturn(result);
+}
+
+/* from wicontrol.c: */
+/*
+ * Copyright (c) 1997, 1998, 1999
+ *	Bill Paul <wpaul@ctr.columbia.edu>.  All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. All advertising materials mentioning features or use of this software
+ *    must display the following acknowledgement:
+ *	This product includes software developed by Bill Paul.
+ * 4. Neither the name of the author nor the names of any co-contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY Bill Paul AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL Bill Paul OR THE VOICES IN HIS HEAD
+ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/* from arp.c: */
+/*
+ * Copyright (c) 1984, 1993
+ *	The Regents of the University of California.  All rights reserved.
+ *
+ * This code is derived from software contributed to Berkeley by
+ * Sun Microsystems, Inc.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 4. Neither the name of the University nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */

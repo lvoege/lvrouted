@@ -12,7 +12,6 @@ module Set = Set.Make(String)
    then.  *)
 let arptables = ref StringMap.empty
 let arptables_last_update = ref (-1.0)
-let arptables_update_every = 60.0
 
 let ether_aton s =
 	let s' = String.create 6 in
@@ -30,20 +29,16 @@ let ether_ntoa s =
    global arptable hash, do so. Dereference the arp hash. *)
 let arptable iface : arptable = 
 	let now = Unix.gettimeofday () in
-	if !arptables_last_update < now -. arptables_update_every then begin
-		let c = Unix.open_process_in ("/usr/sbin/arp -a -n") in
-		let re = Str.regexp "^[^ ]+ (\\([^)]+\\)) at \\([0-9a-f:]+\\) on \\([^ ]+\\) .*" in
-		let l = Common.snarf_channel_for_re c re 4 in
-		let h = Hashtbl.create (List.length l) in
-		List.iter (fun a ->
-			let h = try StringMap.find a.(3) !arptables
+	if !arptables_last_update < now -. Common.arptables_update_every then begin
+		Log.log Log.debug "getting arp entries";
+		let a = LowLevel.get_arp_entries () in
+		Array.iter (fun (iface, ipaddr, macaddr) ->
+			let h = try StringMap.find iface !arptables
 				with Not_found ->
 					let h' = Hashtbl.create 8 in
-					arptables := StringMap.add a.(3) h' !arptables;
+					arptables := StringMap.add iface h' !arptables;
 					h' in
-			Hashtbl.add h (Unix.inet_addr_of_string a.(1))
-				      (ether_aton a.(2))) l;
-		ignore(Unix.close_process_in c);
+			Hashtbl.add h ipaddr macaddr) a;
 		arptables_last_update := now
 	end;
 	try StringMap.find iface !arptables

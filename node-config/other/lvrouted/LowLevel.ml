@@ -56,3 +56,9 @@ external inet_addr_in_range: Unix.inet_addr -> bool
    block *)
 external get_addrs_in_block: Unix.inet_addr -> int -> Unix.inet_addr array
   = "get_addrs_in_block"
+
+external get_arp_entries: unit -> (string * Unix.inet_addr * string) array
+  = "get_arp_entries"
+
+external get_associated_stations: string -> string array
+  = "get_associated_stations"

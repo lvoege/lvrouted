@@ -16,6 +16,14 @@ let compress_data = false
 let real_route_updates = false
 (* the netmask that's just narrow enough to be an interlink subnet.*)
 let interlink_netmask = 28
+(* at least how many seconds between updating interface association information? *)
+let iface_assoc_update = 5.0
+(* How many seconds between updates of the actual arp table in MAC.ml? *)
+let arptables_update_every = 60.0
+(* At least how many seconds between updating an iface's arp table?
+   Note that MAC.ml also caches this, but Iface.ml post-processes the result,
+   so this is really about how often to do the post-processing *)
+let iface_arp_update = arptables_update_every
 
 (* Types *)
 
