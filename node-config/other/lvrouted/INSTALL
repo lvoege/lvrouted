@@ -1,0 +1,8 @@
+To install this program:
+
+FreeBSD: 
+	pkg_add -r ocml
+	pkg_add -r ocaml-findlib
+
+General:
+	make

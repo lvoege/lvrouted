@@ -12,6 +12,9 @@ OBJCODE= $(SOURCES:.ml=.cmx)
 
 all: depend lvrouted
 
+clean: 
+	rm *.cmi *.cmo lvrouted
+
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
 lvrouted.opt: $(OBJCODE) lowlevel.o
