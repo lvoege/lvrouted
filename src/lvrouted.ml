@@ -113,6 +113,7 @@ let broadcast_run udpsockfd rtsockfd =
 		output_string out (Route.showroutes newroutes);
 		close_out out;
 	  end;
+	  Gc.minor ();
 	  Log.log Log.debug "finished broadcast run"
 
 (* This function is called periodically from the select() loop. It decides
@@ -315,24 +316,27 @@ let _ =
 				(Common.get_addr_from_sockaddr s)) in
 	let s = String.create 65536 in
 	let readfds = [ udpsockfd; rtsockfd ] in
+	let last_periodic_check = ref 0.0 in
 	while true do try
 		let fds, _, _ = Unix.select readfds [] []
 					!Common.alarm_timeout in
-		if fds = [] then
-		  periodic_check udpsockfd rtsockfd
-		else begin
-			if List.mem udpsockfd fds then begin
-				let len, sockaddr = Unix.recvfrom udpsockfd s 0
-							(String.length s) [] in
-				logfrom sockaddr;
-				Neighbor.handle_data !neighbors
-						     (String.sub s 0 len)
-						     sockaddr;
-				Log.log Log.debug ("data handled");
-			end;
-			if List.mem rtsockfd fds then
-			  handle_routemsg udpsockfd rtsockfd
-					  (LowLevel.read_routemsg rtsockfd);
+		if List.mem udpsockfd fds then begin
+			let len, sockaddr = Unix.recvfrom udpsockfd s 0
+						(String.length s) [] in
+			logfrom sockaddr;
+			Neighbor.handle_data !neighbors
+					     (String.sub s 0 len)
+					     sockaddr;
+			Log.log Log.debug ("data handled");
+		end;
+		if List.mem rtsockfd fds then
+		  handle_routemsg udpsockfd rtsockfd
+				  (LowLevel.read_routemsg rtsockfd);
+
+		let now = Unix.gettimeofday () in
+		if !last_periodic_check < now -. !Common.alarm_timeout then begin
+			periodic_check udpsockfd rtsockfd;
+			last_periodic_check := now;
 		end;
 	with _ -> ()
 	done
