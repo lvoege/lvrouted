@@ -241,9 +241,13 @@ static int routemsg_add(unsigned char *buffer, int type,
 			value dest, value masklen, value gw) {
 	struct rt_msghdr *msghdr;
 	struct sockaddr_in *addr;
+	struct sockaddr_in6 *addr6;
 	static int seq = 1;
 	unsigned char *p;
 	CAMLparam3(dest, masklen, gw);
+	static unsigned char mask64[16] =
+		{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 	msghdr = (struct rt_msghdr *)buffer;	
 	memset(msghdr, 0, sizeof(struct rt_msghdr));
@@ -253,8 +257,9 @@ static int routemsg_add(unsigned char *buffer, int type,
 	msghdr->rtm_pid = 0;
 	msghdr->rtm_flags = RTF_UP | RTF_GATEWAY | RTF_DYNAMIC;
 	msghdr->rtm_seq = seq++;
-
-	addr = (struct sockaddr_in *)(msghdr + 1);
+	
+	if (string_length(dest) == sizeof(in_addr_t)) {
+		addr = (struct sockaddr_in *)(msghdr + 1);
 #define ADD(x) \
 	memset(addr, 0, sizeof(struct sockaddr_in));	\
 	addr->sin_len = sizeof(struct sockaddr_in);	\
@@ -262,28 +267,60 @@ static int routemsg_add(unsigned char *buffer, int type,
 	addr->sin_addr.s_addr = htonl(x);		\
 	addr++;
 
-	ADD(mask_addr_impl(get_addr4(dest), Long_val(masklen)));
-	ADD(get_addr4(gw));
-	ADD(bitmask(Long_val(masklen)));
+		ADD(mask_addr_impl(get_addr4(dest), Long_val(masklen)));
+		ADD(get_addr4(gw));
+		ADD(bitmask(Long_val(masklen)));
 
-	/*
-	 * for some reason, the sin_len for the netmask's sockaddr_in should
-	 * not be the length of the sockaddr_in at all, but the offset of
-	 * the sockaddr_in's last non-zero byte. I don't know why. From
-	 * the last byte of the sockaddr_in, step backwards until there's a
-	 * non-zero byte under the cursor, then set the length.
-	 */
-	addr--;
-	for (p = (unsigned char *)(addr + 1) - 1; p > (unsigned char *)addr; p--)
-	  if (*p) {
-		addr->sin_len = p - (unsigned char *)addr + 1;
-		break;
-	  }
-	addr->sin_family = 0; /* just to be totally in sync with /usr/sbin/route */
+		/*
+		 * for some reason, the sin_len for the netmask's sockaddr_in should
+		 * not be the length of the sockaddr_in at all, but the offset of
+		 * the sockaddr_in's last non-zero byte. I don't know why. From
+		 * the last byte of the sockaddr_in, step backwards until there's a
+		 * non-zero byte under the cursor, then set the length.
+		 */
+		addr--;
+		for (p = (unsigned char *)(addr + 1) - 1; p > (unsigned char *)addr; p--)
+		  if (*p) {
+			addr->sin_len = p - (unsigned char *)addr + 1;
+			break;
+		  }
+		addr->sin_family = 0; /* just to be totally in sync with /usr/sbin/route */
 
-	msghdr->rtm_msglen = (unsigned char *)addr +
-				ROUNDUP(addr->sin_len)
-				- buffer;
+		msghdr->rtm_msglen = (unsigned char *)addr +
+					ROUNDUP(addr->sin_len)
+					- buffer;
+	} else {
+		addr6 = (struct sockaddr_in6 *)(msghdr + 1);
+#define ADD6(x) \
+	memset(addr6, 0, sizeof(struct sockaddr_in6));	\
+	addr6->sin6_len = sizeof(struct sockaddr_in6);	\
+	addr6->sin6_family = AF_INET6;			\
+	memcpy(addr6->sin6_addr.s6_addr, String_val(x), sizeof(struct sockaddr_in6)); \
+	addr6++;
+
+		ADD6(dest);
+		ADD6(gw);
+		ADD6(mask64);
+
+		/*
+		 * for some reason, the sin_len for the netmask's sockaddr_in should
+		 * not be the length of the sockaddr_in at all, but the offset of
+		 * the sockaddr_in's last non-zero byte. I don't know why. From
+		 * the last byte of the sockaddr_in, step backwards until there's a
+		 * non-zero byte under the cursor, then set the length.
+		 */
+		addr6--;
+		for (p = (unsigned char *)(addr6 + 1) - 1; p > (unsigned char *)addr6; p--)
+		  if (*p) {
+			addr6->sin6_len = p - (unsigned char *)addr6 + 1;
+			break;
+		  }
+		addr6->sin6_family = 0; /* just to be totally in sync with /usr/sbin/route */
+
+		msghdr->rtm_msglen = (unsigned char *)addr6 +
+					ROUNDUP(addr6->sin6_len)
+					- buffer;
+	}
 	
 	CAMLreturn(msghdr->rtm_msglen);
 }

@@ -82,7 +82,8 @@ let aggregate routes =
 		match todo with
 		  []		-> done_
 		| r :: rs	->
-			if r.mask = !Common.min_mask then
+			if LowLevel.addr_is_ipv6 r.addr ||
+			   r.mask = !Common.min_mask then
 			  aggregate' rs (r::done_)
 			else if r.addr = r.gw && r.mask = 32 then
 			  aggregate' rs done_
