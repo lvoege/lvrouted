@@ -17,18 +17,17 @@ module Set = Set.Make(struct
 	let compare a b = compare a.addr b.addr
 end)
 
-let show n =
-	n.name ^ ": " ^ Unix.string_of_inet_addr n.addr ^ " on " ^
-			n.iface ^ "\n"
+let show n = Unix.string_of_inet_addr n.addr ^ " on " ^ n.iface ^ "\n"
 
 (* constructor *)
-let make name iface addr =
-	{ name = name; iface = iface; addr = addr;
+let make iface addr =
+	{ iface = iface;
+	  addr = addr;
+	  name = Unix.string_of_inet_addr addr;
 	  last_seen = -1.0;
 	  macaddr = None;
 	  tree = None }
 
-let name n = n.name
 let iface n = n.iface
 
 (* send the given tree to the given neighbor *)
@@ -73,15 +72,12 @@ let nuke_trees_for_iface ns i =
    trees of all neighbors not heard from since numsecs ago *)
 let nuke_old_trees ns numsecs =
 	let limit = (Unix.gettimeofday ()) -. numsecs in
-	let res = ref false in
-	Set.iter (fun n -> 
-		if n.last_seen < limit &&
-		   Common.is_some n.tree then begin
-			Log.log Log.debug (n.name ^ " expired");
-			n.tree <- None;
-			res := true
-		end) ns;
-	!res
+	let expired = Set.filter (fun n ->
+		n.last_seen < limit && Common.is_some n.tree) ns in
+	Set.iter (fun n ->
+		Log.log Log.debug (n.name ^ " expired");
+		n.tree <- None) expired;
+	not (Set.is_empty expired)
 
 (* From the given set of direct IPs and list of neighbors, derive a list of
    (unaggregated) routes and a merged tree. *)
@@ -101,12 +97,12 @@ let check_reachable n iface =
 	if Common.is_none n.macaddr then begin
 		let arptable = MAC.arptable n.iface in
 		try  n.macaddr <- Some (Hashtbl.find arptable n.addr)
-		with Not_found -> ()
+		with Not_found ->
+			Log.log Log.debug ("Cannot determine MAC address for " ^
+					   "neighbor " ^ n.name);
 	end;
-	if Common.is_none n.macaddr then
-	  Log.log Log.debug ("Cannot determine MAC address for neighbor " ^ n.name);
-	let reachable = (Common.is_some n.macaddr) &&
-			(Iface.is_reachable iface (Common.from_some n.macaddr)) in
+	let reachable = Common.is_some n.macaddr &&
+			Iface.is_reachable iface (Common.from_some n.macaddr) in
 	if not reachable then begin
 		Log.log Log.debug ("Setting " ^ n.name ^ "'s tree to None");
 		n.tree <- None;

@@ -18,12 +18,12 @@ all: depend lvrouted lvrouted.opt
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
 clean:
-	rm -f lowlevel_c.o $(MLIS) $(BYTECODE) $(OBJCODE) $(SOURCES:.ml=.o) $(SOURCES:.ml=.cmi) *~
+	rm -f lowlevel_c.o $(MLIS) $(BYTECODE) $(OBJCODE) $(SOURCES:.ml=.o) $(SOURCES:.ml=.cmi) *~ version.h
 
-lvrouted.opt: $(OBJCODE) lowlevel_c.o
+lvrouted.opt: $(OBJCODE) version.h lowlevel_c.o
 	$(OCAMLOPT) -o $@ $(OBJCODE) lowlevel_c.o $(LIBS)
 
-lvrouted: $(MLIS) $(BYTECODE) lowlevel_c.o
+lvrouted: $(MLIS) $(BYTECODE) version.h lowlevel_c.o
 	$(OCAMLC) -o $@ -custom lowlevel_c.o $(BYTECODE) $(LIBS)
 
 .o: %.c
@@ -47,6 +47,11 @@ lvrouted: $(MLIS) $(BYTECODE) lowlevel_c.o
 
 .ml.s:
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -S -c $<
+
+version.h:
+	echo Extracting svn version info
+	@echo /\* DO NOT EDIT BY HAND \*/ > version.h
+	@echo char *version=\"lvrouted v`svn info . | grep Revision | sed "s/.* //g"`\"\; >> version.h
 
 depend:
 	$(OCAMLDEP) $(INCLUDES) *.mli *.ml > .depend

@@ -36,7 +36,7 @@ let max_route_flush_tries = 10
 (* Log to syslog instead of /tmp/lvrouted.log *)
 let use_syslog = ref false
 (* What is the minimum (or widest) netmask Route.aggregate can produce? *)
-let min_mask = ref 12
+let min_mask = ref 24
 
 (* Types *)
 

@@ -48,6 +48,8 @@
 #include <caml/memory.h>
 #include <caml/mlvalues.h>
 
+#include "version.h"
+
 #if __FreeBSD_version < 502000
 #define ROUNDUP(a) \
 	((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))

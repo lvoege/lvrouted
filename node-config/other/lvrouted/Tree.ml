@@ -1,5 +1,6 @@
 (* This module defines and implements the tree structure that is passed
-   between nodes *)
+   between nodes. It also implements the merging of trees, which is the
+   core of the whole routing scheme. *)
 open Common
 
 type node = {
@@ -29,7 +30,7 @@ let show l =
 	let rec show' indent l =
 		let i = String.make indent '\t' in
 		List.iter (fun n ->
-			s := !s ^ i ^ (Unix.string_of_inet_addr n.addr) ^ "\n";
+			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ "\n";
 			show' (indent + 1) n.nodes) l in
 	show' 0 l;
 	!s

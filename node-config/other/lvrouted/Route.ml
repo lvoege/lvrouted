@@ -84,17 +84,17 @@ let aggregate routes =
 		  []		-> done_
 		| r :: rs	->
 			if r.mask = !Common.min_mask then
-			  [ r ]
+			  aggregate' rs (r::done_)
 			else if r.addr = r.gw && r.mask = 32 then
 			  aggregate' rs done_
 			else begin
 			  let r' = { r with mask = r.mask - 1 } in
 			  let f t = t.gw <> r.gw && includes r' t in
-			    if List.exists f (rs@done_) then
-				  aggregate' rs (r::done_)
-			    else let rs' = List.filter (fun t ->
+			  if List.exists f (rs@done_) then
+				aggregate' rs (r::done_)
+			  else let rs' = List.filter (fun t ->
 						not (includes r' t)) rs in
-				  aggregate' (r'::rs') done_
+				   aggregate' (r'::rs') done_
 			end in
 	List.fold_left (fun set r ->
 			Set.add { r with addr = LowLevel.mask_addr r.addr r.mask} set)

@@ -31,14 +31,4 @@ let log level msg =
    This is to be used for messages that are relatively expensive to generate. *)
 let lazylog level msgf =
 	if !loglevel >= level then
-	  if !Common.use_syslog then
-	    List.iter (LowLevel.syslog level) (msgf ())
-	  else try
-		if !logfile = stderr then
-		  logfile := open_out "/tmp/lvrouted.log";
-		List.iter (fun s ->
-			output_string !logfile
-				(string_of_int (int_of_float (Unix.time ())) ^ ": " ^
-				 s ^ "\n")) (msgf ());
-		flush !logfile
-	  with _ -> ()
+	  List.iter (log level) (msgf ())

@@ -29,13 +29,13 @@ let unreachable = ref Neighbor.Set.empty
 let alarm_handler _ =
 	Log.log Log.debug "in alarm_handler";
 
-	(* re-trigger the alarm *)
-	ignore(Unix.alarm !Common.alarm_timeout);
+	let block_signals = [ Sys.sigalrm ] in
+	ignore(Unix.sigprocmask Unix.SIG_BLOCK block_signals);
 
 	(* See what neighbors are unreachable. Per neighbor, fetch the
 	   corresponding Iface.t and see if it's reachable. *)
 	let new_unreachable = Neighbor.Set.filter (fun n ->
-		Log.log Log.debug ("looking at " ^ (Neighbor.name n));
+		Log.log Log.debug ("looking at " ^ n.name);
 		let iface = StringMap.find (Neighbor.iface n) !ifaces in
 		not (Neighbor.check_reachable n iface)) !neighbors in
 
@@ -97,7 +97,6 @@ let alarm_handler _ =
 			["Changes:"] @
 			List.map Route.show (Route.Set.elements changes));
 
-		let logerr (r, s) = Log.log Log.info (Route.show r ^ " got " ^ s) in
 		try
 			let delerrs, adderrs, changeerrs =
 				Route.commit deletes adds changes in
@@ -116,7 +115,12 @@ let alarm_handler _ =
 	  end;
 	  routes := newroutes; 
 	  Log.log Log.debug "finished broadcast run";
-	end
+	end;
+
+	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals);
+	(* re-trigger the alarm *)
+	ignore(Unix.alarm !Common.alarm_timeout)
+
 
 let abort_handler _ =
 	Log.log Log.warnings "Exiting. Sending neighbors empty trees...";
@@ -164,7 +168,7 @@ let read_config _ =
 			let name = Unix.string_of_inet_addr a in
 			Log.log Log.debug ("neighbor " ^ name ^ " on " ^ iface);
 			let i = Iface.make iface in
-			let n = Neighbor.make name iface a in
+			let n = Neighbor.make iface a in
 			StringMap.add iface i ifacemap, Neighbor.Set.add n neighbors)
 		(StringMap.empty, Neighbor.Set.empty) neighboraddrs in
 	ifaces := ifaces';
@@ -221,14 +225,15 @@ let main =
 
 	Log.log Log.info "Opened and bound socket";
 
+	let logfrom s = Log.log Log.debug
+			("got data from " ^
+			 Unix.string_of_inet_addr
+				(Common.get_addr_from_sockaddr s)) in
 	let s = String.create 65536 in
 	while true do 
 		try
 			let len, sockaddr = Unix.recvfrom !sockfd s 0 (String.length s) [] in
-			Log.log Log.debug
-				("got data from " ^
-				 Unix.string_of_inet_addr
-				 	(Common.get_addr_from_sockaddr sockaddr));
+			logfrom sockaddr;
 			Neighbor.handle_data !neighbors (String.sub s 0 len) sockaddr;
 			Log.log Log.debug ("data handled");
 		with _ -> ()

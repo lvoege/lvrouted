@@ -13,6 +13,7 @@ external mask_addr: Unix.inet_addr -> int -> Unix.inet_addr
 external iface_is_associated: string -> bool
   = "caml_iface_is_associated"
 
+(* daemon(3) *)
 external daemon: bool -> bool -> unit
   = "caml_daemon"
 
@@ -24,24 +25,29 @@ external string_compress: string -> string
 external string_decompress: string -> string
   = "string_decompress"
 
+(* ether_aton(3) *)
 external ether_aton: string -> string -> bool
   = "caml_ether_aton"
 
+(* ether_ntoa(3) *)
 external ether_ntoa: string -> string -> bool
   = "caml_ether_ntoa"
 
-external getifaddrs: unit -> ( string		(* iface name *)
-			     * int		(* iface flags *)
-			     * Unix.inet_addr 	(* iface addr *)
+(* getifaddrs(3) *)
+external getifaddrs: unit -> ( string			(* iface name *)
+			     * int			(* iface flags *)
+			     * Unix.inet_addr 		(* iface addr *)
 			     * Unix.inet_addr option	(* netmask *)
 			     * Unix.inet_addr option	(* broadcast *)
 			     * Unix.inet_addr option)	(* dst addr *)
 			     list
   = "caml_getifaddrs"
 
+(* How many bits in the given address are set? *)
 external bits_in_inet_addr: Unix.inet_addr -> int
   = "bits_in_inet_addr"
 
+(* strstr(3) *)
 external strstr: string -> string -> int
   = "caml_strstr"
 
@@ -67,6 +73,7 @@ external get_arp_entries: unit -> ( string		(* iface name *)
 external get_associated_stations: string -> string array
   = "get_associated_stations"
 
+(* SHA1(3) *)
 external sha_string: string -> string
   = "sha_string"
 

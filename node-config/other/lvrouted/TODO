@@ -1,6 +1,3 @@
 - integrate MAC.ml and Iface.ml
-- test for robustness. see what happens when bogus data does get through.
 - something to counter marginal links that flip between being associated
   and not being associated relatively quickly.
-- some of the stuff logged under Log.debug is relatively heavy to construct.
-  either figure out how ocaml's version of laziness works or remove them.
