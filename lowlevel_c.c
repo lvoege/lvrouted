@@ -720,6 +720,78 @@ CAMLprim value caml_sbrk(value unit) {
 	CAMLreturn(Val_int(sbrk(0)));
 }
 
+static unsigned char *tree_to_string_rec(value node, unsigned char *buffer) {
+	CAMLparam1(node);
+	CAMLlocal1(t);
+	unsigned char *buffer_tmp;
+	int i;
+
+	buffer_tmp = buffer + sizeof(int);
+	i = 0;
+	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
+		buffer_tmp = tree_to_string_rec(Field(t, 0), buffer_tmp);
+		i++;
+	}
+	i <<= 20;
+	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
+	*(int *)buffer = i;
+	CAMLreturn(buffer_tmp);
+}
+
+CAMLprim value tree_to_string(value node) {
+	CAMLparam1(node);
+	CAMLlocal1(result);
+	unsigned char *buffer, *t;
+
+	buffer = malloc(65536);
+	t = tree_to_string_rec(node, buffer);
+	result = alloc_string(t - buffer);
+	memcpy(String_val(result), buffer, t - buffer);
+	free(buffer);
+	CAMLreturn(result);
+}
+
+static CAMLprim value string_to_tree_rec(unsigned char **pp,
+					 unsigned char *limit) {
+	CAMLparam0();
+	int i;
+	CAMLlocal4(a, node, child, chain);
+
+	if (*pp >= limit)
+	  failwith("faulty packet");
+	i = *(int *)(*pp);
+	*pp += sizeof(int);
+	a = alloc_string(4);
+	*(int *)(String_val(a)) = ntohl(0xac100000 + (i & ((1 << 20) - 1)));
+	node = alloc_small(2, 0);
+	Field(node, 0) = a;
+	Field(node, 1) = Val_int(0);
+
+	/* new children get hooked on the second field of chain. by luck,
+	 * the list itself is in the second field of node, so chain can be
+	 * assigned to node. if the node struct changes so the list of
+	 * children is no longer the second field, this must be changed */
+	chain = node;
+	for (i >>= 20; i > 0; i--) {
+		child = alloc_small(2, 0);
+		Field(child, 0) = Val_unit;
+		Field(child, 1) = Val_int(0);
+		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
+		modify(&Field(chain, 1), child);
+		chain = child;
+	}
+	CAMLreturn(node);
+}
+
+CAMLprim value string_to_tree(value s) {
+	CAMLparam1(s);
+	CAMLlocal2(res, a);
+	unsigned char *p;
+
+	p = String_val(s);
+	CAMLreturn(string_to_tree_rec(&p, p + string_length(s)));
+}
+
 #if 0
 /* read a routing message from the given file descriptor and return what it
  * said. */

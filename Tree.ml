@@ -8,10 +8,6 @@ type node = {
 	mutable nodes: node list;
 }
 
-(* Tree.from_string will verify the signature of a packet and will throw this
-   exception if the signature turns out wrong *)
-exception InvalidSignature
-
 (* Constructor *)
 let make a = { addr = a; nodes = [] }
 
@@ -88,23 +84,19 @@ let merge nodes directnets =
 			else IPMap.add a gw map) routes IPMap.empty in
 	fake.nodes, routes
 
+external serialize: node -> string = "tree_to_string"
+external deserialize: string -> node = "string_to_tree"
+
 let to_string (nodes: node list) =
-	let s = Marshal.to_string nodes [] in
-	let s = if Common.compress_data then LowLevel.string_compress s
-		else s in
-	Common.sign_string s
+	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
+	Common.pack_string (serialize fake)
 
 (* Read a list of nodes from the given string and return a new node. Node as
    in tree node, not wireless network node. *)
 let from_string s from_addr : node =
-	let goodsig, s' = Common.verify_string s in
-	if not goodsig then
-	  raise InvalidSignature;
-	let s'' = if Common.compress_data then LowLevel.string_decompress s'
-		  else s' in
+	let s = Common.unpack_string s in
 	(* This is the most dangerous bit in all of the code: *)
-	let nodes = (Marshal.from_string s'' 0: node list) in
-	{ addr = from_addr; nodes = nodes }
+	{ (deserialize s) with addr = from_addr }
 
 (* This is basically a hack. Given a list of first-level nodes and a set for
    which membership entails being connected to this node through an ethernet
@@ -120,3 +112,4 @@ let promote_wired_children wired nodes =
 					n::children
 				else [n]) nodes in
 	List.concat l'
+
