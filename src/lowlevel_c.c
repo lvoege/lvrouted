@@ -224,6 +224,7 @@ CAMLprim value string_decompress(value s) {
 #endif
 }
 
+#ifdef HAVE_RTMSG
 static int routemsg_add(unsigned char *buffer, int type,
 			value dest, value masklen, value gw) {
 	struct rt_msghdr *msghdr;
@@ -274,12 +275,14 @@ static int routemsg_add(unsigned char *buffer, int type,
 	
 	CAMLreturn(msghdr->rtm_msglen);
 }
+#endif
 
 CAMLprim value routes_commit(value rtsock,
 			value deletes, value adds, value changes) {
 	CAMLparam4(rtsock, deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
 	CAMLlocal1(v);
+#ifdef HAVE_RTMSG
 	int sockfd, buflen, len;
 	unsigned char *buffer;
 #ifdef DUMP_ROUTEPACKET
@@ -335,6 +338,12 @@ CAMLprim value routes_commit(value rtsock,
 	Store_field(result, 0, delerrs);
 	Store_field(result, 1, adderrs);
 	Store_field(result, 2, cherrs);
+#else
+	result = alloc_tuple(3);
+	Store_field(result, 0, alloc_tuple(0));
+	Store_field(result, 1, alloc_tuple(0));
+	Store_field(result, 2, alloc_tuple(0));
+#endif
 	CAMLreturn(result);
 }
 
@@ -804,10 +813,13 @@ CAMLprim value open_rtsock(value unit) {
 	if (sockfd == -1)
 	  failwith("Routing socket");
 	opt = 0;
+#ifdef SO_USELOOPBACK
 	setsockopt(sockfd, SOL_SOCKET, SO_USELOOPBACK, &opt, sizeof(opt));
+#endif
 	CAMLreturn(Val_int(sockfd));
 }
 
+#ifdef HAVE_RTMSG
 static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	CAMLparam0();
 	CAMLlocal2(res, addr);
@@ -849,12 +861,14 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	} else res = Val_int(0);
 	CAMLreturn(res);
 }
+#endif
 
 /* read a routing message from the given file descriptor and return what it
  * said. */
 CAMLprim value read_routemsg(value fd) {
 	CAMLparam1(fd);
 	CAMLlocal2(res, addr);
+#ifdef HAVE_RTMSG
 	char *p, *buffer;
 	int buflen, toread, numread;
 	struct rt_msghdr *rtm;
@@ -884,6 +898,9 @@ CAMLprim value read_routemsg(value fd) {
 			res = Val_int(0);
 	}
 	free(buffer);
+#else
+	res = Val_int(0);
+#endif
 	CAMLreturn(res);
 }
 

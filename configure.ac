@@ -135,6 +135,9 @@ AC_SUBST(EXE)
 
 AC_CONFIG_HEADERS(src/config.h)
 AC_CHECK_HEADERS([ net/if_dl.h net/if_ieee80211.h net80211/ieee80211.h sys/param.h netinet/ether.h dev/wi/if_wavelan_ieee.h ])
+AC_CHECK_TYPE(struct rt_msghdr, [ AC_DEFINE(HAVE_RTMSG,, [struct rt_msghdr]) ],, [
+	#include <net/route.h>
+])
 
 # Finally create the Makefile from Makefile.in
 AC_OUTPUT([
