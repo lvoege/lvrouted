@@ -78,6 +78,7 @@ let handle_data ns s sockaddr =
 	let nodes = (Marshal.from_string s 0: (Tree.node list)) in
 	n.tree <- Some (Tree.make addr nodes);
 	n.seqno <- stamp;
+	n.last_seen <- Unix.gettimeofday ();
 	Log.log Log.debug (name n ^ "'s tree has been set")
 
 (* Given a list of neighbors and interface i, invalidate the trees
