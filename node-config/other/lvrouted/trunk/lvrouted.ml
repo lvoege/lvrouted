@@ -15,15 +15,15 @@ let neighbors_wireless = ref Neighbor.Set.empty
 let neighbors_wired = ref Neighbor.Set.empty
 (* The set of IP addresses of wired neighbors *)
 let neighbors_wired_ip = ref IPSet.empty
-(* A list of strings with interface names. 'ep0', 'sis1' etc *)
+(* A dictionary mapping from interface name ('ep0', 'sis1', etc) to Iface.t *)
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
 let direct : Tree.node list ref = ref []
-(* A set of address, netmask tuples *)
+(* A list of address, netmask tuples of the same *)
 let directnets : (Unix.inet_addr * int) list ref = ref []
 (* A socket file handle for everything to use. Unix.file_descr is an abstract
-   type, initialize it with Unix.stdout to it typechecks, then have main
-   immediately replace it with a real handle. *)
+   type, initialize it with Unix.stdout so it typechecks, then have main
+   replace it with a real handle before any use. *)
 let sockfd = ref Unix.stdout
 (* last broadcast timestamp *)
 let last_time = ref 0.0
@@ -114,6 +114,7 @@ let alarm_handler _ =
 	  if !Common.real_route_updates then begin
 		let deletes, adds, changes = Route.diff (Route.fetch ()) newroutes in
 
+		(* log the updates *)
 		let log_set t s =
 			if Route.Set.is_empty s then [] 
 			else t::List.map Route.show
@@ -123,6 +124,7 @@ let alarm_handler _ =
 			log_set "Adds:" adds @
 			log_set "Changes:" changes);
 
+		(* commit the updates to the kernel *)
 		try
 			let delerrs, adderrs, changeerrs =
 				Route.commit deletes adds changes in
@@ -145,7 +147,6 @@ let alarm_handler _ =
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals);
 	(* re-trigger the alarm *)
 	ignore(Unix.alarm !Common.alarm_timeout)
-
 
 let abort_handler _ =
 	Log.log Log.warnings "Exiting. Sending neighbors empty trees...";
@@ -216,7 +217,8 @@ let read_config _ =
 			Iface.itype i = Iface.WIRED) neighbors' in
 	neighbors_wired := p;
 	neighbors_wireless := q;
-	neighbors_wired_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr) !neighbors_wired IPSet.empty;
+	neighbors_wired_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
+						!neighbors_wired IPSet.empty;
 
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
@@ -272,14 +274,13 @@ let _ =
 	set_handler dump_version [Sys.sigusr1];
 	Log.log Log.info "Set signal handlers";
 
-	ignore(Unix.alarm 1);
-	Log.log Log.info "Triggered the alarm";
-
 	sockfd := Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0;
 	Unix.setsockopt !sockfd Unix.SO_REUSEADDR true;
 	Unix.bind !sockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
-
 	Log.log Log.info "Opened and bound socket";
+
+	ignore(Unix.alarm 1);
+	Log.log Log.info "Triggered the alarm";
 
 	let logfrom s = Log.log Log.debug
 			("got data from " ^
