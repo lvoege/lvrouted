@@ -70,6 +70,7 @@ static inline value prepend_listelement(value e, value l) {
 	CAMLreturn(cell);
 }
 
+/* how many bits set in int i? */
 static inline int bitcount(unsigned int i) {
 	int c;
 	for (c = 0; i; i >>= 1)
@@ -143,7 +144,8 @@ CAMLprim value mask_addr(value addr, value mask) {
 
 CAMLprim value caml_daemon(value nochdir, value noclose) {
 	CAMLparam2(nochdir, noclose);
-	daemon(Long_val(nochdir), Long_val(noclose));
+	if (daemon(Long_val(nochdir), Long_val(noclose)) < 0)
+	  failwith(strerror(errno));
 	CAMLreturn(Val_unit);
 }
 
@@ -429,16 +431,6 @@ CAMLprim value caml_strstr(value big, value little) {
 
 	p = strstr(String_val(big), String_val(little));
 	CAMLreturn(Val_int(p ? p - String_val(big) : -1));
-}
-
-CAMLprim value inet_addr_in_range(value addr) {
-	CAMLparam1(addr);
-	CAMLlocal1(result);
-	in_addr_t a;
-
-	a = get_addr(addr);
-	result = Val_bool(a >= 0xac100000 && a < 0xac1fff00);
-	CAMLreturn(result);
 }
 
 CAMLprim value get_addrs_in_block(value addr, value mask) {

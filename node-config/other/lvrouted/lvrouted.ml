@@ -144,7 +144,7 @@ let read_config _ =
 
 	(* Get all routable addresses that also have a netmask *)
 	let routableaddrs = List.filter (fun (_, _, a, n, _, _) ->
-			LowLevel.inet_addr_in_range a &&
+			Common.addr_in_range a &&
 			Common.is_some n) (LowLevel.getifaddrs ()) in
 	
 	(* Construct the direct and directnets lists. *)

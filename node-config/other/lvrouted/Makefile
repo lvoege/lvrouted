@@ -60,6 +60,10 @@ Version.ml: .svn/entries
 	@echo let ocamlopt=\"`ocamlopt -v | head -1`\" >> Version.ml
 	@echo let who=\"`whoami`\" >> Version.ml
 
+tags:
+	otags $(SOURCES)
+	ctags -a -f TAGS lowlevel_c.c
+
 depend:
 	$(OCAMLDEP) $(INCLUDES) *.mli *.ml > .depend
 
