@@ -3,31 +3,35 @@
    core of the whole routing scheme. *)
 open Common
 
-type node = {
+type edge = {
+	edge_speed: int;
+	edge_node: node;
+} and node = {
 	addr: Unix.inet_addr;
-	mutable nodes: node list;
+	mutable edges: edge list;
 }
 
-module Map = Map.Make(struct
-	type t = node
+module IntQueue = PrioQueue.Make(struct 
+	type priority = int
 	let compare = compare
 end)
 
 (* Constructor *)
-let make a nodes = { addr = a; nodes = nodes }
+let make a edges = { addr = a; edges = edges }
 
 (* Accessors *)
 let addr n = n.addr
-let nodes n = n.nodes
+let edges n = n.edges
+let nodes n = List.map (fun e -> e.edge_node) n.edges
 
-(* Show the given list of nodes *)
+(* Show the given list of edges *)
 let show l =
 	let s = ref "" in
 	let rec show' indent l =
 		let i = String.make indent '\t' in
 		List.iter (fun n ->
 			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ "\n";
-			show' (indent + 1) n.nodes) l in
+			show' (indent + 1) (nodes n)) l in
 	show' 0 l;
 	!s
 
@@ -37,7 +41,9 @@ let show l =
    
    1. Initialize a routing table with routes to our own addresses.
    2. Make a new node to hang the new, merged and pruned tree under
-   3. Traverse the tree breadth-first.  For every node, check if
+   3. Traverse the tree according to a priority queue ordered according to
+      the slowest link on the path.
+   breadth-first.  For every node, check if
       there is a route already. If so, produce no new node. If not,
       add a route and create a new node and prepend it to the parent's
       list of children.
@@ -60,33 +66,44 @@ let show l =
    which will create a top node based on the address it received the
    packet from.
 *)
-let merge nodes directnets =
+let merge edges directnets =
 	(* step 1 *)
 	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
 				    IPMap.empty directnets in
 	(* step 2 *)
 	let fake = make Unix.inet_addr_any [] in
 	(* step 3 *)
-	let rec traverse routes = function
-		  []			-> routes
-		| (node,parent,gw)::xs	-> 
+	let rec traverse routes queue =
+		try
+			let (mbps, (node, parent, gw), queue') =
+				PrioQueue.extract queue in
 			if IPMap.mem node.addr routes then
-			  traverse routes xs (* ignore this node *)
+			  traverse routes queue' (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
 				let newnode = make node.addr [] in
 				parent.nodes <- newnode::parent.nodes;
+				(* push the children on the queue *)
+				let queue'' = List.fold_left (fun queue e ->
+					let mbps' = min mbps e.edge_speed in
+					let c = (e.node, newnode, gw) in
+					PrioQueue.insert queue mbps' c)
+						PrioQueue.empty node.edges in
+				(* and continue traversing *)
 				traverse (IPMap.add node.addr gw routes)
-					 (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
-			end in
-	let todo = List.map (fun node -> node, fake, node.addr) nodes in
+					 queue''
+			end
+		with PrioQueue.Queue_is_empty -> routes in
+	let todo = List.fold_left (fun queue e ->
+		let c = e.node, fake, e.node.addr in
+		PrioQueue.insert queue e.edge_speed c) PrioQueue.empty edges in
 	let routes = traverse routes todo in
 	(* step 4 *)
 	let routes = IPMap.fold (fun a gw map ->
 			if List.exists (fun (a', n) ->
 				Route.includes_impl a' n a 32) directnets then map
 			else IPMap.add a gw map) routes IPMap.empty in
-	fake.nodes, routes
+	fake.edges, routes
 
 external serialize: node -> string = "tree_to_string"
 external deserialize: string -> node = "string_to_tree"
