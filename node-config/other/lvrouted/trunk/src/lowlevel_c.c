@@ -174,9 +174,6 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 }
 
 CAMLprim value string_compress(value s) {
-	assert(0); /* TESTME first */
-	return Val_unit;
-#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
@@ -194,7 +191,8 @@ CAMLprim value string_compress(value s) {
 				1,
 				0,
 				0);
-		buflen *= 2;
+		if (code == BZ_OUTBUFF_FULL)
+		  buflen *= 2;
 	} while (code == BZ_OUTBUFF_FULL);	
 	if (code == BZ_OK) {
 		result = alloc_string(buflen);
@@ -205,13 +203,9 @@ CAMLprim value string_compress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_compress");
 	}
-#endif
 }
 
 CAMLprim value string_decompress(value s) {
-	assert(0); /* TESTME first */
-	return Val_unit;
-#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
@@ -228,7 +222,8 @@ CAMLprim value string_decompress(value s) {
 				string_length(s),
 				0,
 				0);
-		buflen *= 2;
+		if (code == BZ_OUTBUFF_FULL)
+		  buflen *= 2;
 	} while (code == BZ_OUTBUFF_FULL);	
 	if (code == BZ_OK) {
 		result = alloc_string(buflen);
@@ -239,7 +234,6 @@ CAMLprim value string_decompress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_decompress");
 	}
-#endif
 }
 
 #ifdef HAVE_RTMSG
