@@ -169,7 +169,7 @@ let read_config _ =
 	let direct', directnets' =
 		List.fold_left
 			(fun (direct, nets) (_, _, a, n, _, _) ->
-				(Tree.make a)::direct,
+				(Tree.make a [])::direct,
 				(a, LowLevel.bits_in_inet_addr (Common.from_some n))::nets)
 			([], []) routableaddrs in
 	direct := direct';

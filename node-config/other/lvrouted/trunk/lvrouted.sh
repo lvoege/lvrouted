@@ -1,6 +1,8 @@
 #!/bin/sh
 # sample /usr/local/etc/rc.d/lvrouted.sh script to start the thing when
 # booting
+lvrouted="/usr/local/sbin/lvrouted.opt"
+options="-u"
 
 pid=`ps ax | grep lvrouted.opt | grep -v grep | sed "s/^ *//" | sed "s/ .*//g"`
 case "$1" in
@@ -9,7 +11,7 @@ start)
 		echo "Already running" >&2
 	else
 		/sbin/sysctl net.inet.ip.forwarding=1
-		/usr/local/sbin/lvrouted.opt -u
+		$lvrouted $options
 	fi
 	;;
 reload)
@@ -17,17 +19,17 @@ reload)
 		kill -HUP $pid
 	else
 		echo "Not running, will start now"
-		/usr/local/sbin/lvrouted.opt -u
+		$lvrouted $options
 	fi
 	;;
 restart)
 	if test "$pid" != ""; then
 		kill -9 $pid
 		route flush; route flush; route flush; route flush; route flush
-		/usr/local/sbin/lvrouted.opt -u
+		$lvrouted $options
 	else
 		echo "Not running, will start now"
-		/usr/local/sbin/lvrouted.opt -u
+		$lvrouted $options
 	fi
 	;;
 stop)

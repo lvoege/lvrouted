@@ -8,6 +8,8 @@ This is a very simple shortest-path routing daemon, featuring:
     masters
   - the ability to sign packets for some measure of security against malicious
     packets
+  - sequence number against replay attacks. yes I know this is not
+    bulletproof.
 
 No per node configuration: If your network has both a well-defined routable
 range (for us, that's 172.16.0.0/12) and well-defined interlink netmasks
@@ -66,6 +68,18 @@ packet content. This hash is the hash of the concatenation of the secret key
 with the packet content. On receipt, the hash is checked with the rest of the
 packet before any interpretation of the packet contents, so attacks that try
 to subvert the ocaml marshal module or inject faulty data are averted.
+
+This version sends the current time prepended to the actual data, and this is
+included in any signature. If a packet comes in from a neighbor that hasn't
+sent anything before, that timestamp is accepted as the base, and subsequent
+packets are only accepted if their sequence number is greater. This leaves a
+hole where a replayed packet will get accepted if an attacker is quicker to
+respond to a newly booted daemon than the legitimate neighbor. That packet
+would still have to have been a legitimate packet once for the hash to check
+out, so replaying that one is not that bad. Even if the attacker replays a
+whole bucketload of intercepted packets, that fun is over when the real
+neighbor gets its first packet through and pulls the timestamp up to beyond
+what the attacker has intercepted.
 
 Lodewijk Voge
 lvoge@cs.vu.nl
