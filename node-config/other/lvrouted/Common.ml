@@ -74,14 +74,3 @@ let snarf_channel_for_re c re numgroups =
 		end
 	) lines;
 	List.rev (!res)
-
-(* Split string $s$ along delimiter $d$ and return a list of pieces. *)
-let rec split d s =
-	try
-		let pos = String.index s d in
-		let piece = String.sub s 0 pos in
-		let rest = String.sub s (pos + 1) ((String.length s) - pos - 1) in
-		piece::(split d rest)
-	with Not_found -> 
-		[ s ]
-
