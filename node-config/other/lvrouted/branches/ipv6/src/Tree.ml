@@ -8,11 +8,13 @@ type node = {
 	mutable nodes: node list;
 }
 
+module Map = Map.Make(struct
+	type t = node
+	let compare = compare
+end)
+
 (* Constructor *)
 let make a nodes = { addr = a; nodes = nodes }
-
-(* Deep-copy the given tree *)
-let rec copy t = { t with nodes = List.map copy t.nodes }
 
 (* Accessors *)
 let addr n = n.addr
@@ -28,6 +30,15 @@ let show l =
 			show' (indent + 1) n.nodes) l in
 	show' 0 l;
 	!s
+
+let compare n1 n2 =
+	n1.addr = n2.addr && (List.length n1.nodes = List.length n2.nodes) &&
+	let m1 = List.fold_left (fun s n -> Map.add n n s) Map.empty n1.nodes in
+	List.for_all (fun n2 ->
+		try
+			let n1 = Map.find n2 m1 in
+			compare n1 n2 = 0
+		with Not_found -> false) n2.nodes
 
 (* Given a list of spanning trees received from neighbors and a set of our
    own addresses, return the spanning tree for this node, plus a routing
@@ -60,7 +71,7 @@ TODO: 4 may be nothing more than cosmetics now that route addition
    packet from.
 *)
 let merge nodes directnets =
-	(* step 1*)
+	(* step 1 *)
 	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
 				    IPMap.empty directnets in
 	(* step 2 *)
@@ -103,17 +114,7 @@ let from_string s from_addr : node =
 	  (* This is the most dangerous bit in all of the code: *)
 	  { addr = from_addr; nodes = (Marshal.from_string s 0: node list) }
 
-(* This is basically a hack. Given a list of first-level nodes and a set for
-   which membership entails being connected to this node through an ethernet
-   wire (as opposed to wireless), return a list of first-level nodes with
-   the children of every wired neighbor promoted to direct neighbor. This
-   then gets advertised and hides them from other neighbors, making the wired
-   nodes essentially act as one. *)
-let promote_children set nodes =
-	let l' = List.map (fun n ->
-				if IPSet.mem n.addr set then
-					let children = n.nodes in
-					n.nodes <- [];
-					n::children
-				else [n]) nodes in
-	List.concat l'
+let dump_tree fname nodes =
+	let out = open_out (!Common.tmpdir ^ fname) in
+	output_string out (show nodes);
+	close_out out;

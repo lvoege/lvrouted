@@ -1,6 +1,6 @@
 (* Neighbor type definition, management and utility functions *)
 
-type t = {
+type neighbor = {
 	iface: string;			(* "wi0", "ep0", etc *)
 	addr: Unix.inet_addr;		(* address to reach this neighbor on *)
 	mutable macaddr: MAC.t option;	(* MAC address, if known *)
@@ -11,16 +11,13 @@ type t = {
 	mutable tree: Tree.node option; (* the tree last received *)
 }
 
+(* the exception handle_data will throw if given a faulty packet *)
 exception InvalidPacket
 
-type neighbor = t
 module Set = Set.Make(struct
 	type t = neighbor
 	let compare a b = compare a.addr b.addr
 end)
-
-let show n = Unix.string_of_inet_addr n.addr ^ " on " ^ n.iface ^ "\n"
-let name n = Unix.string_of_inet_addr n.addr
 
 (* constructor *)
 let make iface addr =
@@ -32,6 +29,9 @@ let make iface addr =
 	  tree = None }
 
 let iface n = n.iface
+let name n = Unix.string_of_inet_addr n.addr
+
+let show n = Unix.string_of_inet_addr n.addr ^ " on " ^ n.iface ^ "\n"
 
 (* Broadcast the given list of tree nodes to the given Set of neighbors over
    the given file descriptor. *)
@@ -48,8 +48,8 @@ let bcast fd nodes ns =
 		with _ -> ()) ns
 
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
-   handle it. Find the neighbor associated with the address, parse the
-   tree and mark the time. *)
+   handle it. Verify the signature, find the neighbor associated with the
+   address, verify the sequence number, parse the tree and mark the time. *)
 let handle_data ns s sockaddr =
 	let addr = Common.get_addr_from_sockaddr sockaddr in
 	let addr_s = Unix.string_of_inet_addr addr in
@@ -86,7 +86,7 @@ let handle_data ns s sockaddr =
    for all the neighbors on that interface *)
 let nuke_trees_for_iface ns i =
 	Log.log Log.debug ("nuking interface " ^ i);
-	List.iter (fun n -> if n.iface = i then begin
+	Set.iter (fun n -> if n.iface = i then begin
 				n.tree <- None;
 				Log.log Log.debug ("neighbor " ^ name n ^ " canned")
 			    end) ns

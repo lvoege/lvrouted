@@ -48,7 +48,7 @@ bytes. CPU usage on a Soekris is generally a few percent, peaking to about
 five percent. RSS is about three to four MB.
 
 A couple of other assumptions about the WirelessLeiden network are in the
-code and would need to be adapted for other surroundings:
+code and would need to be adapted for other environments:
 
   - Common.min_routable and Common.max_routable specify the bounds of the
     routable range. For WirelessLeiden, this is the range from 172.16.0.0
@@ -85,9 +85,9 @@ hole where a replayed packet will get accepted if an attacker is quicker to
 respond to a newly booted daemon than the legitimate neighbor. That packet
 would still have to have been a legitimate packet once for the hash to check
 out, so replaying that one is not that bad. Even if the attacker replays a
-whole bucketload of intercepted packets, that fun is over when the real
+whole bucketload of intercepted packets, the fun is over when the real
 neighbor gets its first packet through and pulls the timestamp up to beyond
 what the attacker has intercepted.
 
 Lodewijk Voge
-lvoge@cs.vu.nl
+lodewijk@wirelessleiden.nl / lvoge@cs.vu.nl

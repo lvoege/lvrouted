@@ -104,6 +104,9 @@ $(NAME).tex: $(SOURCES)
 .c.i:
 	$(CC) -c $(CFLAGS) $<
 
+.ml.mli:
+	$(OCAMLC) -i $< > $*.mli
+
 .mli.cmi:
 	$(OCAMLC) -c $(BFLAGS) $<
 

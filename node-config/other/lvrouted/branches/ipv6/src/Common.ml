@@ -13,7 +13,7 @@ let bcast_interval = ref 30.0
 (* How many seconds not hearing from a neighbor until considering it lost? *)
 let timeout: float = 4.0 *. !bcast_interval
 (* How many seconds between checking interfaces and expiry times? *)
-let alarm_timeout = ref 9
+let alarm_timeout = ref 9.0
 (* Whether or not to compress the data that goes over the wire *)
 let compress_data = false
 (* Whether or not to really update the kernel's routing table *)
@@ -52,6 +52,8 @@ let tmpdir = ref "/tmp/"
 (* The IPv6 prefix of the network. *)
 let prefix = Unix.inet_addr_of_string "2001:888:1084::"
 let prefixlen = 48
+(* An optional configuration file with extra addresses *)
+let configfile = ref "/usr/local/etc/lvrouted.conf"
 
 (* Types *)
 
@@ -113,6 +115,14 @@ let snarf_channel_for_re c re numgroups =
 				(fun i -> Str.matched_group i s) in
 			a::acc
 		end else acc) [] lines
+
+let read_file fname =
+	let chan = open_in fname in
+	let size = in_channel_length chan in
+	let s = String.create size in
+	let numread = input chan s 0 size in
+	if size <> numread then String.sub s 0 numread
+	else s
 
 let sign_string s = 
 	if !secret = "" then s
