@@ -60,10 +60,10 @@ byte: $(NAME).byte
 opt: $(NAME).opt
 
 $(NAME).byte: $(CMO) lowlevel_c.o
-	$(OCAMLC) $(BFLAGS) -o $@ $^
+	$(OCAMLC) $(BFLAGS) -o $@ $(CMO) lowlevel_c.o
 
 $(NAME).opt: $(CMX) lowlevel_c.o
-	$(OCAMLOPT) $(OFLAGS) -o $@ $^
+	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) lowlevel_c.o
 
 Version.ml: .svn/entries
 	@echo Extracting svn version info
