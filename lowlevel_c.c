@@ -280,7 +280,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	CAMLparam3(deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
-	CAMLlocal1(value);
+	CAMLlocal1(v);
 #ifndef __FreeBSD__
 	assert(0);
 #else
