@@ -8,13 +8,6 @@ open Neighbor
 
 (* A set of all neighbors *)
 let neighbors = ref Neighbor.Set.empty
-(* Subset of neighbors that are across wireless links *)
-let neighbors_wireless = ref Neighbor.Set.empty
-(* Subset of neighbors that are across wired links *)
-let neighbors_wired = ref Neighbor.Set.empty
-(* The set of IP addresses of wired neighbors *)
-let neighbors_wired_ip = ref IPSet.empty
-let neighbors_wireless_ip = ref IPSet.empty
 (* A dictionary mapping from interface name ('ep0', 'sis1', etc) to Iface.t *)
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
@@ -136,20 +129,68 @@ let abort_handler _ =
 	Log.log Log.info "Exiting.";
 	exit 0
 
+(* For the given interface and netblock, add all possible neighbors to the
+   global set *)
+let add_neighbors iface addr mask =
+	if not (StringMap.mem iface !ifaces) then begin
+		let i = Iface.make iface in
+		ifaces := StringMap.add iface i !ifaces
+	end;
+	let addrs = List.filter ((<>) addr)
+				(LowLevel.get_addrs_in_block addr mask) in
+	List.iter (fun a ->
+		let n = Neighbor.make iface a in
+		neighbors := Neighbor.Set.add n !neighbors) addrs
+
+let delete_neighbors iface addr mask = 
+	let addrs = List.filter ((<>) addr)
+				(LowLevel.get_addrs_in_block addr mask) in
+	let to_delete = List.fold_left (fun s a ->
+		let n = Neighbor.make iface a in
+		Neighbor.Set.add n s) Neighbor.Set.empty addrs in
+	neighbors := Neighbor.Set.diff !neighbors to_delete
+
+let add_address iface addr mask =
+	if Common.addr_in_range addr then begin
+		Log.log Log.info ("New address " ^
+			Unix.string_of_inet_addr addr ^ " on " ^ iface);
+		direct := (Tree.make addr [])::!direct;
+		directnets := (addr, mask)::!directnets;
+		if mask >= Common.interlink_netmask then
+		  add_neighbors iface addr mask;
+		true
+	end else false
+
+let handle_routemsg udpsockfd rtsockfd = function
+	  LowLevel.RTM_NEWADDR (iface, addr, mask) ->
+	  	if add_address iface addr mask then
+		  broadcast_run udpsockfd rtsockfd
+	| LowLevel.RTM_DELADDR (iface, addr, mask) ->
+		if Common.addr_in_range addr then begin
+			Log.log Log.info ("Deleted address " ^
+				Unix.string_of_inet_addr addr ^ " on " ^ iface);
+			direct := List.filter (fun n -> Tree.addr n <> addr)
+					      !direct;
+			directnets := List.filter (fun (a, _) -> a <> addr)
+						  !directnets;
+			if mask >= Common.interlink_netmask then
+			  delete_neighbors iface addr mask;
+			broadcast_run udpsockfd rtsockfd
+		end
+	| _ -> ()
+
+(* Clear and re-create the current configuration *)
 let read_config _ =
-	(* Get all routable addresses that also have a netmask. *)
-	let routableaddrs = List.fold_left (fun l (iface, _, a, n, _, _) ->
-		if Common.addr_in_range a && Common.is_some n then
-		  (iface, a, LowLevel.bits_in_inet_addr (Common.from_some n))::l
-		else
-		  l) [] (LowLevel.getifaddrs ()) in
-	
-	(* Construct the direct and directnets lists. direct is a list of
-	   Tree.node's for every directly attached address. directnets is
-	   a list of (address, masklength) tuples for every directly
-	   attached address.*)
-	direct := List.map (fun (_, a, _) -> Tree.make a []) routableaddrs;
-	directnets := List.map (fun (_, a, n) -> a, n) routableaddrs;
+	direct := [];
+	directnets := [];
+	ifaces := StringMap.empty;
+	neighbors := Neighbor.Set.empty;
+
+	List.iter (function
+		  (iface, _, addr, Some n, _, _) ->
+		  	let mask = LowLevel.bits_in_inet_addr n in
+			ignore(add_address iface addr mask)
+		| _ -> ()) (LowLevel.getifaddrs ());
 
 	if !configfile <> "" then begin try
 		let chan = open_in !configfile in
@@ -160,61 +201,8 @@ let read_config _ =
 		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
 	with _ ->
 		Log.log Log.warnings ("Couldn't read the specified config file");
-	end;
+	end
 
-	(* Interlinks can be recognised by routable addresses and a netmask
-	   geq Common.interlink_netmask. *)
-	let interlinks = List.filter (fun (_, _, n) -> n >= Common.interlink_netmask && n < 31) routableaddrs in
-
-	(* From the eligible interlinks, create a list of (interface name,
-	   address) tuples for all the usable addresses other than our own in
-	   the interlink blocks. *)
-	let neighboraddrs = List.concat (
-		List.map (fun (iface, a, n) ->
-			let addrs = LowLevel.get_addrs_in_block a n in
-			let addrs' = List.filter (fun a' -> a' <> a) addrs in
-			List.map (fun a -> iface, a) addrs') interlinks) in
-
-	(* Construct the global ifaces map and neighbors sets *)
-	let ifaces', neighbors' = List.fold_left (
-		fun (ifacemap, neighbors) (iface, a) ->
-			let name = Unix.string_of_inet_addr a in
-			Log.log Log.debug ("neighbor " ^ name ^ " on " ^ iface);
-			let i = Iface.make iface in
-			let n = Neighbor.make iface a in
-			StringMap.add iface i ifacemap,
-			Neighbor.Set.add n neighbors)
-		(StringMap.empty, Neighbor.Set.empty) neighboraddrs in
-	ifaces := ifaces';
-	neighbors := neighbors';
-
-	(* Split the set of neighbors into those neighbors attached over a
-	   wireless link and those attached over a wired link. For the wired
-	   neighbors, make a set of ip addresses to pass to
-	   Tree.promote_wired_children *)
-	let p, q = Neighbor.Set.partition (fun n ->
-			let i = StringMap.find n.iface ifaces' in
-			Iface.itype i = Iface.WIRED) neighbors' in
-	neighbors_wired := p;
-	neighbors_wireless := q;
-	neighbors_wired_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
-						!neighbors_wired IPSet.empty;
-	neighbors_wireless_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
-						!neighbors_wireless IPSet.empty
-
-let handle_routemsg udpsockfd rtsockfd = function
-	  LowLevel.RTM_NEWADDR (iface, addr, mask) ->
-	  	if Common.addr_in_range addr then begin
-			read_config ();
-			broadcast_run udpsockfd rtsockfd
-		end
-	| LowLevel.RTM_DELADDR (iface, addr, mask) ->
-		if Common.addr_in_range addr then begin
-			read_config ();
-			broadcast_run udpsockfd rtsockfd
-		end
-	| _ -> ()
-	
 let version_info =
 		["Version info: ";
 		 "svn rev: " ^ string_of_int Version.version;
@@ -238,8 +226,7 @@ let dump_version _ =
    be dumped to lvrouted.state. copy to the development machine and read_state
    it and go from there. *)
 let dump_state _ =
-	let state = !neighbors, !neighbors_wireless, !neighbors_wired,
-		!neighbors_wired_ip, !neighbors_wireless_ip,
+	let state = !neighbors,
 		!ifaces, !direct, !directnets,
 		!unreachable, !MAC.arptables in
 	let out = open_out (!Common.tmpdir ^ "lvrouted.state") in
@@ -247,15 +234,9 @@ let dump_state _ =
 	close_out out
 
 let read_state s =
-	let neighbors', neighbors_wireless', neighbors_wired',
-		neighbors_wired_ip', neighbors_wireless_ip',
-		ifaces', direct', directnets', unreachable',
+	let neighbors', ifaces', direct', directnets', unreachable',
 		arptables' = Marshal.from_string s 0 in
 	neighbors := neighbors';
-	neighbors_wireless := neighbors_wireless';
-	neighbors_wired := neighbors_wired';
-	neighbors_wired_ip := neighbors_wired_ip';
-	neighbors_wireless_ip := neighbors_wireless_ip';
 	ifaces := ifaces';
 	direct := direct';
 	directnets := directnets';
@@ -289,13 +270,11 @@ let _ =
 		Log.log Log.info "daemonized";
 	end;
 
-	if not !resume then begin
-		read_config ();
-		Log.log Log.info "Read config";
-	end else begin
-		read_state (Common.read_file (!Common.tmpdir ^ "lvrouted.state"));
-		Log.log Log.info "Resumed from saved state";
-	end;
+	let udpsockfd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
+	Unix.setsockopt udpsockfd Unix.SO_REUSEADDR true;
+	Unix.bind udpsockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
+	let rtsockfd = LowLevel.open_rtsock () in
+	Log.log Log.info "Opened and bound socket";
 
 	let set_handler f = List.iter (fun i -> Sys.set_signal i (Sys.Signal_handle f)) in
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
@@ -304,11 +283,13 @@ let _ =
 	set_handler dump_state [Sys.sigusr2];
 	Log.log Log.info "Set signal handlers";
 
-	let udpsockfd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
-	Unix.setsockopt udpsockfd Unix.SO_REUSEADDR true;
-	Unix.bind udpsockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
-	let rtsockfd = LowLevel.open_rtsock () in
-	Log.log Log.info "Opened and bound socket";
+	if not !resume then begin
+		read_config (); 
+		Log.log Log.info "Read config";
+	end else begin
+		read_state (Common.read_file (!Common.tmpdir ^ "lvrouted.state"));
+		Log.log Log.info "Resumed from saved state";
+	end;
 
 	let logfrom s = Log.log Log.debug
 			("got data from " ^
