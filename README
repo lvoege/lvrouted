@@ -43,7 +43,7 @@ the ocaml marshaller by setting Common.use_own_marshaller to false. The
 handwritten marshaller uses 4 bytes per node while the ocaml marshaller uses
 just over 8.
 
-For 30 nodes with 155 routable addresses, on-the-wire packets are 1261
+For 55 nodes with 286 routable addresses, on-the-wire packets are 1172
 bytes. CPU usage on a Soekris is generally a few percent, peaking to about
 five percent. RSS is about three to four MB.
 
