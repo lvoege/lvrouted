@@ -42,14 +42,6 @@ let matches route addr =
 	LowLevel.mask_addr route.addr route.mask =
 	LowLevel.mask_addr addr route.mask
 
-(* Given a list of routes, find the gateway for the given addr. *)
-let lookup routes addr =
-	let matches = Set.filter (fun r -> matches r addr) routes in
-	if Set.is_empty matches then
-	  raise Not_found
-	else
-	  (List.hd (Set.elements matches)).gw
-
 let show r =
 	Unix.string_of_inet_addr r.addr ^ "/" ^ string_of_int r.mask ^ " -> " ^
 	Unix.string_of_inet_addr r.gw
