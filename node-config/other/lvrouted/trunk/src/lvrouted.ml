@@ -15,6 +15,7 @@ let neighbors_wireless = ref Neighbor.Set.empty
 let neighbors_wired = ref Neighbor.Set.empty
 (* The set of IP addresses of wired neighbors *)
 let neighbors_wired_ip = ref IPSet.empty
+let neighbors_wireless_ip = ref IPSet.empty
 (* A dictionary mapping from interface name ('ep0', 'sis1', etc) to Iface.t *)
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
@@ -111,9 +112,10 @@ let alarm_handler _ =
 	  if IPSet.is_empty !neighbors_wired_ip then
 	    Neighbor.bcast !sockfd nodes !neighbors
 	  else begin
-	  	Neighbor.bcast !sockfd nodes !neighbors_wired;
-		let nodes = Tree.promote_wired_children !neighbors_wired_ip nodes in
-	  	Neighbor.bcast !sockfd nodes !neighbors_wireless;
+	  	let nodes' = Tree.promote_children !neighbors_wireless_ip nodes in
+	  	Neighbor.bcast !sockfd nodes' !neighbors_wired;
+		let nodes' = Tree.promote_children !neighbors_wired_ip nodes in
+	  	Neighbor.bcast !sockfd nodes' !neighbors_wireless;
 	  end;
 
 	  if !Common.real_route_updates then begin
@@ -227,6 +229,8 @@ let read_config _ =
 	neighbors_wireless := q;
 	neighbors_wired_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
 						!neighbors_wired IPSet.empty;
+	neighbors_wireless_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
+						!neighbors_wireless IPSet.empty;
 	
 	Log.log Log.debug ("unblocking");
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
