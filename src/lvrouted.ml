@@ -252,7 +252,7 @@ let dump_version _ =
 let dump_state _ =
 	let state = !neighbors, !neighbors_wireless, !neighbors_wired,
 		!neighbors_wired_ip, !ifaces, !direct, !directnets,
-		!unreachable in
+		!unreachable, !MAC.arptables in
 	let out = open_out (!Common.tmpdir ^ "lvrouted.state") in
 	output_string out (Marshal.to_string state []);
 	close_out out
