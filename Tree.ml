@@ -63,7 +63,7 @@ let merge nodes directnets =
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
 	(* step 3 *)
 	let rec traverse routes = function
-		  []		-> routes
+		  []			-> routes
 		| (node,p,gw)::xs	-> 
 			if IPMap.mem node.addr routes then
 			  traverse routes xs
