@@ -395,6 +395,11 @@
             <entry><varname>port</varname></entry>
           </row>
           <row>
+            <entry>-r</entry>
+            <entry>Resume from saved state, as saved by the SIGUSR2
+            handler.</entry>
+          </row>
+          <row>
             <entry>-s</entry>
             <entry><varname>secret</varname></entry>
           </row>
@@ -431,8 +436,28 @@
             <entry>Dump version information to
             <filename>/tmp/lvrouted.version</filename></entry>.
           </row>
+          <row>
+            <entry>SIGUSR2</entry>
+            <entry>Dump state to <filename>/tmp/lvrouted.state</filename>.
+              This is useful when the daemon does strange things on machines
+              you can't really debug on. Dump the state and copy it to a
+              machine you can debug on. </entry>.
+          </row>
         </tbody>
       </tgroup>
     </table>
+  </section>
+  <section>
+    <title>
+      Bugs
+    </title>
+    <para>
+      Only one that I know of: the memory image will grow. It grows very
+      slowly, but it grows nonetheless. The busiest node in &wleiden; will
+      start with a RSS of about 5MB, but will have grown to 10MB in a week.
+    </para>
+    <para>
+      The interim workaround is simply to restart the daemon once a week.
+    </para>
   </section>
 </article>
