@@ -8,11 +8,6 @@ type node = {
 	mutable nodes: node list;
 }
 
-module Map = Map.Make(struct
-	type t = node
-	let compare = compare
-end)
-
 (* Constructor *)
 let make a nodes = { addr = a; nodes = nodes }
 
