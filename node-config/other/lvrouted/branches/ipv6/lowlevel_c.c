@@ -665,6 +665,8 @@ CAMLprim value routes_fetch(value unit) {
 	unsigned char *buf, *p, *lim, *p2, *lim2;
 	struct rt_msghdr *rtm;
 	struct sockaddr_in *sin;
+	struct sockaddr_in6 *sin6;
+	struct sockaddr *sa;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
@@ -692,32 +694,61 @@ CAMLprim value routes_fetch(value unit) {
 		if ((rtm->rtm_flags & RTF_GATEWAY) == 0 ||
 		    (rtm->rtm_addrs & RTA_NETMASK) == 0)
 		  continue;
-		sin = (struct sockaddr_in *)(rtm + 1);
-		if (sin->sin_family != AF_INET)
+		sa = (struct sockaddr *)(rtm + 1);
+		if (sa->sa_family != AF_INET &&
+		    sa->sa_family != AF_INET6)
 		  continue;
 
 		tuple = alloc_tuple(3);
+		if (sa->sa_family == AF_INET) {
+			sin = (struct sockaddr_in *)(rtm + 1);
 
-		/* fill in destination */
-		addr = alloc_string(sizeof(in_addr_t));
-		*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
-		Store_field(tuple, 0, addr);
-		sin++;
-	
-		/* gateway */
-		addr = alloc_string(sizeof(in_addr_t));
-		*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
-		Store_field(tuple, 2, addr);
-		sin++;
+			/* fill in destination */
+			addr = alloc_string(sizeof(in_addr_t));
+			*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
+			Store_field(tuple, 0, addr);
+			sin++;
+		
+			/* gateway */
+			addr = alloc_string(sizeof(in_addr_t));
+			*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
+			Store_field(tuple, 2, addr);
+			sin++;
 
-		/* netmask. bwurk, why the fsck all this fudging with
-		   ->sin_len?! */
-		count = 0;
-		lim2 = (unsigned char *)sin + sin->sin_len;
-		p2 = (unsigned char *)&sin->sin_addr.s_addr;
-		for (; p2 < lim2; p2++)
-		  count += bitcount(*p2);
-		Store_field(tuple, 1, Val_long(count));
+			/* netmask. bwurk, why the fsck all this fudging with
+			   ->sin_len?! */
+			count = 0;
+			lim2 = (unsigned char *)sin + sin->sin_len;
+			p2 = (unsigned char *)&sin->sin_addr.s_addr;
+			for (; p2 < lim2; p2++)
+			  count += bitcount(*p2);
+			Store_field(tuple, 1, Val_long(count));
+		} else {
+			sin6 = (struct sockaddr_in6 *)(rtm + 1);
+
+			/* fill in destination */
+			addr = alloc_string(sizeof(struct in6_addr));
+			memcpy(String_val(addr), sin6->sin6_addr.s6_addr,
+					sizeof(struct in6_addr));
+			Store_field(tuple, 0, addr);
+			sin++;
+		
+			/* gateway */
+			addr = alloc_string(sizeof(struct in6_addr));
+			memcpy(String_val(addr), sin6->sin6_addr.s6_addr,
+					sizeof(struct in6_addr));
+			Store_field(tuple, 2, addr);
+			sin++;
+
+			/* netmask. bwurk, why the fsck all this fudging with
+			   ->sin_len?! */
+			count = 0;
+			lim2 = (unsigned char *)sin + sin->sin_len;
+			p2 = (unsigned char *)&sin->sin_addr.s_addr;
+			for (; p2 < lim2; p2++)
+			  count += bitcount(*p2);
+			Store_field(tuple, 1, Val_long(count));
+		}
 
 		result = prepend_listelement(tuple, result);
 	}
