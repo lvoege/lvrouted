@@ -69,7 +69,7 @@
     </itemizedlist>
   </section>
   <section>
-    <title>Autoconfiguration</title>
+    <title>Auto-configuration</title>
     <para>
       If your network has both a well-defined routable range <footnote>
         <para>
@@ -100,9 +100,9 @@
       This branch uses spanning trees to achieve shortest-path routing without
       cycles. A node knows its local addresses and will receive the spanning
       trees of its neighbors. It can then merge these pieces of information
-      into a spanning tree for the node plus a routing table. The spanning
-      tree is sent to the neighbors and the route table uploaded to the
-      kernel.
+      into a spanning tree for the node plus a routing table by simply
+      traversing the trees breadth-first. The new spanning tree is sent to
+      the neighbors and the route table is uploaded to the kernel.
     </para>
     <para>
       Note that while "spanning tree" and "network" may conjure up images of a
@@ -172,9 +172,31 @@
       beyond what the attacker can have captured. So be it, that's a hole
       small enough for me not to care.
     </para>
+    <warning>
+      <para>
+        This does pose a problem with machines that cannot keep time in their
+        CMOSs, like many old donated machines. If you have such machines,
+        either do not correct their time at all, or start the routing daemon
+        <emphasis>after</emphasis> correcting their time (like with
+        <application>ntpdate</application>). 
+      </para>
+      <para>
+        If you first start the routing daemon and then correct the time, the
+        following will happen. Unix timestamps are 32bit unsigned integers,
+        while &ocaml; integers are 31bit signed. The current Unix timestamp is
+        a large negative &ocaml; integer. Clocks that cannot keep time are
+        usually initialized to 1980, which is a large positive &ocaml;
+        integer. If the daemon manages to get a packet out before the time
+        correction, its neighbors will remember that timestamp. After the 
+        time correction, packets will have the very large negative sequence
+        number and will be rejected. The node will be ignored by its neighbors
+        for over twenty years. You'd have to restart the daemon on all
+        neighbors to fix this.
+      </para>
+    </warning>
   </section>
   <section>
-    <title>Tree marshalling</title>
+    <title>Tree marshaling</title>
     <para>
       Marshalling trees was done using &ocaml;'s generic
       <varname>Marshal</varname> module at first. This is completely network
@@ -182,10 +204,10 @@
       structure you pass it) and took just over eight bytes per tree node.
     </para>
     <para>
-      Recently, custom marshalling code was added. This assumes the
+      Recently, custom marshaling code was added. This assumes the
       172.16.0.0/12 range. For other ranges, either the original code must be
       used by setting the <varname>Common.use_own_marshaller</varname> to
-      false, or the marshalling code must be adapted.
+      false, or the marshaling code must be adapted.
     </para>
     <para>
       The idea behind the custom marshaller is that to store a node, it is

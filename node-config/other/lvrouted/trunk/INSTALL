@@ -9,3 +9,5 @@ General:
 	MacOS X uses GNU make by default and the one you need is called
 	"bsdmake". For Linux there's a port of the NetBSD make. For Debian,
 	this is the "pmake" package.
+
+	Then just "make". src/lvrouted.opt will be the machine code version.
