@@ -8,11 +8,13 @@ type node = {
 	mutable nodes: node list;
 }
 
+module Map = Map.Make(struct
+	type t = node
+	let compare = compare
+end)
+
 (* Constructor *)
 let make a nodes = { addr = a; nodes = nodes }
-
-(* Deep-copy the given tree *)
-let rec copy t = { t with nodes = List.map copy t.nodes }
 
 (* Accessors *)
 let addr n = n.addr
@@ -28,6 +30,15 @@ let show l =
 			show' (indent + 1) n.nodes) l in
 	show' 0 l;
 	!s
+
+let compare n1 n2 =
+	n1.addr = n2.addr && (List.length n1.nodes = List.length n2.nodes) &&
+	let m1 = List.fold_left (fun s n -> Map.add n n s) Map.empty n1.nodes in
+	List.for_all (fun n2 ->
+		try
+			let n1 = Map.find n2 m1 in
+			compare n1 n2 = 0
+		with Not_found -> false) n2.nodes
 
 (* Given a list of spanning trees received from neighbors and a set of our
    own addresses, return the spanning tree for this node, plus a routing
