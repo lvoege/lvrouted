@@ -1,0 +1,37 @@
+- integrate MAC.ml and Iface.ml. They deal in mostly the same issues, ethernet
+  interfaces and their addresses.
+
+- right now, a link is a link is a link. perhaps make a distinction between
+  wired and wireless interfaces in the tree merger. propagate the information
+  to the merger, and have it hoist the children of a wired neighbor up a
+  level (delete the neighbor node). this effectively advertises such
+  addresses as the nodes' own. make sure the routing table update behavior
+  stays the same though.
+
+- looking at -CURRENT's src/sys/net/route.c it appears they're going to be
+  pushing 802.11 events through the routing socket. blocking on such a
+  socket and waking up whenever something interesting occurs would be much
+  better than polling once every such-and-so seconds and checking everything
+  ourselves.
+
+- if the previous becomes feasible (right now there only appears to be stub
+  code in the freebsd kernel), the whole model can collapse back into a
+  select()-based model. open a routing socket, open a udp socket, and then
+  something like:
+
+  let rfds = [ routefd; udpfd ] in
+  while true do
+    try
+      let (rs, _, _) = Unix.select rfds [] [] !Common.bcast_interval in
+      if List.length rs = 0 then
+        (* timeout, do most of what alarm_handler does now *)
+      else List.iter (fun fd ->
+      	if fd = udpfd then
+	  (* like now, Neighbor.handle_data etc *)
+	else match LowLevel.read_routemsg fd with
+	  (* implement all cases of LowLevel.routemsg *)
+      ) rs
+    with _ -> ()
+  done
+
+  so there's one single loop, without an alarm handler.
