@@ -1,0 +1,37 @@
+digraph "lvrouted" {
+main -> parse_args
+daemonize [ label="daemonize()" ];
+main -> daemonize
+main -> open_sockets
+main -> install_handlers
+main -> read_config
+main -> select
+handle_data [ label = "Neighbor.handle_data" ];
+select -> handle_data [ label = "als data" ];
+select -> handle_routemsg [ label = "als routemsg" ];
+select -> periodic_check [ label = "als tijd" ];
+select -> select [ label = "main loop" ];
+broadcast_run -> newroutes
+newroutes [ label = "Neighbor.derive_routes_and_mytree" ];
+periodic_check -> broadcast_run [ label = "als reden" ];
+newroutes -> "Neighbor.bcast" [ label = "boom naar" ];
+newroutes -> "Route.diff" [ label = "routes naar" ];
+"Route.diff" -> "Route.commit" [ label = "naar" ];
+newroutes -> "Tree.merge" [ label = "gebruikt" ];
+
+read_config -> "LowLevel.getifaddrs"
+"LowLevel.getifaddrs" -> add_address [ label = "voor elk adres" ]
+read_config -> "configfile"
+
+add_address_handle_routemsg [ label = "add_address" ];
+handle_routemsg -> add_address_handle_routemsg [ label = "RTM_NEWADDR" ];
+add_address_handle_routemsg -> broadcast_run
+handle_routemsg -> delete_address [ label =" RTM_DELADDR" ];
+delete_address -> broadcast_run
+
+handle_data -> verify_sig
+verify_sig -> verify_length [ label = "als goede sig" ];
+verify_length -> verify_peer [ label = "als minimum lengte" ];
+verify_peer -> verify_seqno [ label = "als bekende peer" ];
+verify_seqno -> "Tree.from_string" [ label = "als goed seqno" ];
+}
