@@ -53,6 +53,7 @@ Version.ml: .svn/entries
 	@echo Extracting svn version info
 	@echo \(\* DO NOT EDIT BY HAND \*\) > Version.ml
 	@echo let version=`svn info . | grep Revision | sed "s/.* //g"` >> Version.ml
+	@echo let branch=\"`pwd | sed "s/.*lvrouted\///g"`\" >> Version.ml
 	@echo let date=\"`date`\" >> Version.ml
 	@echo let host=\"`uname -a`\" >> Version.ml
 	@echo let ocamlopt=\"`ocamlopt -v | head -1`\" >> Version.ml

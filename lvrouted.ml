@@ -222,6 +222,7 @@ let read_config _ =
 let version_info =
 		["Version info: ";
 		 "svn rev: " ^ string_of_int Version.version;
+		 "branch: " ^ Version.branch;
 		 "compile host: " ^ Version.host;
 		 "compile date: " ^ Version.date;
 		 "compiled by: " ^ Version.who;
