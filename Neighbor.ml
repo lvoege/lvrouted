@@ -34,8 +34,10 @@ let iface n = n.iface
 let bcast fd nodes ns =
 	let s = Tree.to_string nodes in
 	Set.iter (fun n ->
-		ignore(Unix.sendto fd s 0 (String.length s) []
-			   (Unix.ADDR_INET (n.addr, !Common.port)))) ns
+		try
+			ignore(Unix.sendto fd s 0 (String.length s) []
+				   (Unix.ADDR_INET (n.addr, !Common.port)))
+		with _ -> ()) ns
 
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Find the neighbor associated with the address, parse the
