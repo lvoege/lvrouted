@@ -79,6 +79,8 @@ let aggregate routes =
 		| r :: rs	->
 			if r.mask = 0 then
 			  [ r ]
+			else if r.addr = r.gw && r.mask = 32 then
+			  aggregate' rs done_
 			else begin
 			  let r' = { r with mask = r.mask - 1 } in
 			  let f t = t.gw != r.gw && includes r' t in

@@ -44,8 +44,7 @@ let alarm_handler _ =
 		if not (Neighbor.check_reachable n iface) then begin
 		  Hashtbl.add new_unreachable n 1;
 		  try
-		  	let _ = Hashtbl.find !unreachable n in
-			()
+		  	ignore(Hashtbl.find !unreachable n)
 		  with Not_found ->
 		  	Log.log Log.info ((Neighbor.name n) ^ " became unreachable");
 		  	someone_became_unreachable := true
@@ -82,9 +81,16 @@ let alarm_handler _ =
 
 	  List.iter (Neighbor.send (!sockfd) newroutes nodes') (!neighbors);
 
-	  if Common.real_route_updates then begin
+	  if !Common.real_route_updates then begin
 		let deletes, adds = Route.diff !routes newroutes in
-		Route.commit deletes adds
+		Log.log Log.debug "Deletes:";
+		List.iter (fun r -> Log.log Log.debug (Route.show r)) deletes;
+		Log.log Log.debug "Adds:";
+		List.iter (fun r -> Log.log Log.debug (Route.show r)) adds;
+		try
+			Route.commit deletes adds
+		with Failure s ->
+			Log.log Log.errors ("Couldn't update routing table: " ^ s)
 	  end else begin
 		let out = open_out "/tmp/lvrouted.routes" in
 		output_string out (Route.showroutes newroutes);
@@ -94,7 +100,9 @@ let alarm_handler _ =
 	  Log.log Log.debug "finished broadcast run";
 	end
 
-let abort_handler _ = exit 0
+let abort_handler _ =
+	Log.log Log.warnings "Exiting";
+	exit 0
 
 let read_config _ =
 	(* Block the alarm signal while we're meddling with globals. *)
@@ -144,27 +152,37 @@ let argopts = [
 	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
 	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
 	"-f", Arg.Set foreground, "Stay in the foreground";
+	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
 ]
 
 let main =
+	Log.log Log.info "Starting up";
+
 	Arg.parse argopts (fun _ -> ()) "lvrouted";
+	Log.log Log.info "Parsed commandline";
+
 	read_config ();
+	Log.log Log.info "Read config";
 
 	let set_handler f = List.iter (fun i -> Sys.set_signal i (Sys.Signal_handle f)) in
 	set_handler alarm_handler [Sys.sigalrm];
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
+	Log.log Log.info "Set signal handlers";
 
 	if not !foreground then begin
 		LowLevel.daemon false false;
-		Log.log Log.debug "daemonized";
+		Log.log Log.info "daemonized";
 	end;
 
 	ignore(Unix.alarm 1);
+	Log.log Log.info "Triggered the alarm";
 
 	sockfd := Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0;
 	Unix.setsockopt !sockfd Unix.SO_REUSEADDR true;
 	Unix.bind !sockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
+
+	Log.log Log.info "Opened and bound socket";
 
 	let s = String.create 10240 in
 	while true do 

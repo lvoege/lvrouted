@@ -1,7 +1,8 @@
 let quiet = 0
-let warnings = 1
-let info = 2
-let debug = 3
+let errors = 1
+let warnings = 2
+let info = 3
+let debug = 4
 
 let loglevel = ref quiet
 let logfile = ref stderr

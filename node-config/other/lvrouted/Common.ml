@@ -13,7 +13,7 @@ let alarm_timeout = ref 9
 (* Whether or not to compress the data that goes over the wire *)
 let compress_data = false
 (* Whether or not to really update the kernel's routing table *)
-let real_route_updates = false
+let real_route_updates = ref false
 (* the netmask that's just narrow enough to be an interlink subnet.*)
 let interlink_netmask = 28
 (* at least how many seconds between updating interface association information? *)

@@ -223,21 +223,16 @@ static int routemsg_add(unsigned char *buffer, int type,
 	msghdr->rtm_seq = seq++;
 
 	addr = (struct sockaddr_in *)(msghdr + 1);
-	memset(addr, 0, sizeof(struct sockaddr_in));
-	addr->sin_len = sizeof(struct sockaddr_in);
-	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = htonl(get_addr(dest));
+#define ADD(x) \
+	memset(addr, 0, sizeof(struct sockaddr_in));	\
+	addr->sin_len = sizeof(struct sockaddr_in);	\
+	addr->sin_family = AF_INET;			\
+	addr->sin_addr.s_addr = htonl(x);		\
 	addr++;
-	memset(addr, 0, sizeof(struct sockaddr_in));
-	addr->sin_len = sizeof(struct sockaddr_in);
-	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = -1 - ((1 << (32 - Long_val(masklen))) - 1);
-	addr++;
-	memset(addr, 0, sizeof(struct sockaddr_in));
-	addr->sin_len = sizeof(struct sockaddr_in);
-	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = htonl(get_addr(gw));
-	addr++;
+	
+	ADD(get_addr(dest));
+	ADD(get_addr(gw));
+	ADD(-1 - ((1 << (32 - Long_val(masklen))) - 1));
 
 	msghdr->rtm_msglen = ((unsigned char *)addr) - buffer;
 	return msghdr->rtm_msglen;
@@ -262,14 +257,14 @@ CAMLprim value routes_commit(value deletes, value numdeletes,
 	for (i = 0; i < Long_val(numdeletes); i++) {
 		value v = Field(deletes, i);
 		routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
-		if (write(sockfd, buffer, buflen) < 0)
-		  failwith(strerror(errno));
+	// FIXME: error checking
+		write(sockfd, buffer, buflen);
 	}
 	for (i = 0; i < Long_val(numadds); i++) {
 		value v = Field(adds, i);
 		routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
-		if (write(sockfd, buffer, buflen) < 0)
-		  failwith(strerror(errno));
+	// FIXME: error checking
+		write(sockfd, buffer, buflen);
 	}
 	free(buffer);
 	close(sockfd);
