@@ -7,8 +7,14 @@ open Neighbor
 (* First some globals. these are global because the signal handlers need to be
    able to use them *)
 
-(* A list of Neighbor.t's *)
+(* A set of all neighbors *)
 let neighbors = ref Neighbor.Set.empty
+(* Subset of neighbors that are across wireless links *)
+let neighbors_wireless = ref Neighbor.Set.empty
+(* Subset of neighbors that are across wired links *)
+let neighbors_wired = ref Neighbor.Set.empty
+(* The set of IP addresses of wired neighbors *)
+let neighbors_wired_ip = ref IPSet.empty
 (* A list of strings with interface names. 'ep0', 'sis1' etc *)
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
@@ -87,14 +93,23 @@ let alarm_handler _ =
 	  let newroutes, nodes =
 		Neighbor.derive_routes_and_mytree !directnets
 						  !neighbors in
-	  let nodes' = List.append nodes !direct in 
+	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
 	  let out = open_out ("/tmp/lvrouted.mytree") in
-	  output_string out (Tree.show nodes');
+	  output_string out (Tree.show nodes);
 	  close_out out;
 
-	  Neighbor.Set.iter (Neighbor.send !sockfd nodes') !neighbors;
+	  (* If there's no wired neighbors, send the new tree to the (wireless) neighbors outright.
+	     If there are wired neighbors, send them the tree first, then create a new tree with the
+	     wired neighbors' children promoted to peers and send that to the wireless neighbors *)
+	  if IPSet.is_empty !neighbors_wired_ip then
+	    Neighbor.Set.iter (Neighbor.send !sockfd nodes) !neighbors
+	  else begin
+	  	Neighbor.Set.iter (Neighbor.send !sockfd nodes) !neighbors_wired;
+		let nodes = Tree.promote_wired_children !neighbors_wired_ip nodes in
+		Neighbor.Set.iter (Neighbor.send !sockfd nodes) !neighbors_wireless
+	  end;
 
 	  if !Common.real_route_updates then begin
 		let deletes, adds, changes = Route.diff !routes newroutes in
@@ -172,17 +187,26 @@ let read_config _ =
 			let addrs' = List.filter (fun a' -> a' <> a) addrs in
 			List.map (fun a -> iface, a) addrs') interlinks) in
 
-	(* And finally construct the global ifaces map and neighbors set *)
+	(* And finally construct the global ifaces map and neighbors sets *)
 	let ifaces', neighbors' = List.fold_left (
 		fun (ifacemap, neighbors) (iface, a) ->
 			let name = Unix.string_of_inet_addr a in
 			Log.log Log.debug ("neighbor " ^ name ^ " on " ^ iface);
 			let i = Iface.make iface in
 			let n = Neighbor.make iface a in
-			StringMap.add iface i ifacemap, Neighbor.Set.add n neighbors)
-		(StringMap.empty, Neighbor.Set.empty) neighboraddrs in
+			StringMap.add iface i ifacemap,
+			Neighbor.Set.add n neighbors)
+		(StringMap.empty, Neighbor.Set.empty)
+		neighboraddrs in
 	ifaces := ifaces';
 	neighbors := neighbors';
+
+	let p, q = Neighbor.Set.partition (fun n ->
+			let i = StringMap.find n.iface ifaces' in
+			Iface.itype i = Iface.WIRED) neighbors' in
+	neighbors_wired := p;
+	neighbors_wireless := q;
+	neighbors_wired_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr) !neighbors_wired IPSet.empty;
 
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
