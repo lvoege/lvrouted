@@ -270,12 +270,14 @@ let _ =
 		Log.log Log.info "daemonized";
 	end;
 
+	(* Open the UDP and the routing socket *)
 	let udpsockfd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
 	Unix.setsockopt udpsockfd Unix.SO_REUSEADDR true;
 	Unix.bind udpsockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
 	let rtsockfd = LowLevel.open_rtsock () in
-	Log.log Log.info "Opened and bound socket";
+	Log.log Log.info "Opened and bound sockets";
 
+	(* Set up the signal handlers *)
 	let set_handler f = List.iter (fun i -> Sys.set_signal i (Sys.Signal_handle f)) in
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
@@ -283,6 +285,9 @@ let _ =
 	set_handler dump_state [Sys.sigusr2];
 	Log.log Log.info "Set signal handlers";
 
+	(* Read the configuration from the system, or restart from a saved
+	   checkpoint. Restarting doesn't work yet and the resume variable
+	   has been disabled until it's debugged. *)
 	if not !resume then begin
 		read_config (); 
 		Log.log Log.info "Read config";
@@ -295,14 +300,17 @@ let _ =
 			("got data from " ^
 			 Unix.string_of_inet_addr
 				(Common.get_addr_from_sockaddr s)) in
-	let s = String.create 65536 in
+	let s = String.create 65536 in		(* buffer to read into *)
 	let readfds = [ udpsockfd; rtsockfd ] in
 	let last_periodic_check = ref 0.0 in
 	while true do try
+		(* Clean up from the last iteration *)
 		Gc.minor ();
+		(* Wait for interesting events *)
 		let fds, _, _ = Unix.select readfds [] []
 					!Common.alarm_timeout in
 		if List.mem udpsockfd fds then begin
+			(* A packet came in on the UDP socket *)
 			let len, sockaddr = Unix.recvfrom udpsockfd s 0
 						(String.length s) [] in
 			logfrom sockaddr;
@@ -320,5 +328,8 @@ let _ =
 			periodic_check udpsockfd rtsockfd;
 			last_periodic_check := now;
 		end;
-	with _ -> ()
+	with _ ->
+		(* Exceptions should've been caught by now, so log this as a 
+		   program error *)
+		Log.log Log.errors "Unhandled exception in main loop"
 	done

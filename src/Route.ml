@@ -39,7 +39,8 @@ let matches route addr =
 	LowLevel.mask_addr addr route.mask
 
 let show r =
-	Unix.string_of_inet_addr r.addr ^ "/" ^ string_of_int r.mask ^ " -> " ^
+	Unix.string_of_inet_addr r.addr ^ "/" ^
+	string_of_int r.mask ^ " -> " ^
 	Unix.string_of_inet_addr r.gw
 
 (* turn a list of routes into a set of routes *)
@@ -70,10 +71,9 @@ let showroutes rs =
    with the addresses of the routes masked according to their netmask.
 *)
 let aggregate routes =
-	let rec aggregate' todo done_ =
-		match todo with
-		  []		-> done_
-		| r :: rs	->
+	let rec aggregate' todo done_ = match todo with
+		  []	-> done_
+		| r::rs	->
 			if r.mask = !Common.min_mask then
 			  aggregate' rs (r::done_)
 			else if r.addr = r.gw && r.mask = 32 then
