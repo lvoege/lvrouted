@@ -803,10 +803,12 @@ CAMLprim value string_to_tree(value s) {
 
 CAMLprim value open_rtsock(value unit) {
 	CAMLparam1(unit);
-	int sockfd;
+	int sockfd, opt;
 	sockfd = socket(PF_ROUTE, SOCK_RAW, 0);
 	if (sockfd == -1)
 	  failwith("Routing socket");
+	opt = 0;
+	setsockopt(sockfd, SOL_SOCKET, SO_USELOOPBACK, &opt, sizeof(opt));
 	CAMLreturn(Val_int(sockfd));
 }
 
