@@ -1,3 +1,9 @@
+
+module type OrderedType = sig
+	type priority
+	val compare: priority -> priority ->int
+end
+
 module type S = sig
 	type priority
 	type 'a queue
@@ -7,8 +13,8 @@ module type S = sig
 	val extract : 'a queue -> priority * 'a * 'a queue
 end
 
-module Make(P: Set.OrderedType) = struct
-	type priority = P.t
+module Make(P: OrderedType) = struct
+	type priority = P.priority
 	type 'a queue =
 		Empty
 	      | Node of priority * 'a * 'a queue * 'a queue

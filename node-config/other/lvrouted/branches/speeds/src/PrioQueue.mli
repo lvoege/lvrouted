@@ -1,4 +1,10 @@
 (* Functorized priority queue from the manual. *)
+
+module type OrderedType = sig
+	type priority
+	val compare: priority -> priority ->int
+end
+
 module type S = sig
 	type priority
 	type 'a queue
@@ -8,4 +14,4 @@ module type S = sig
 	val extract : 'a queue -> priority * 'a * 'a queue
 end
 
-module Make(P : Set.OrderedType) : S with type priority = P.t
+module Make(P: OrderedType): S with type priority = P.priority

@@ -76,27 +76,28 @@ let merge edges directnets =
 	let rec traverse routes queue =
 		try
 			let (mbps, (node, parent, gw), queue') =
-				PrioQueue.extract queue in
+				IntQueue.extract queue in
 			if IPMap.mem node.addr routes then
 			  traverse routes queue' (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
 				let newnode = make node.addr [] in
-				parent.nodes <- newnode::parent.nodes;
+				parent.edges <-  { edge_speed = mbps;
+						   edge_node = newnode}::parent.edges;
 				(* push the children on the queue *)
 				let queue'' = List.fold_left (fun queue e ->
 					let mbps' = min mbps e.edge_speed in
-					let c = (e.node, newnode, gw) in
-					PrioQueue.insert queue mbps' c)
-						PrioQueue.empty node.edges in
+					let c = (e.edge_node, newnode, gw) in
+					IntQueue.insert queue mbps' c)
+						IntQueue.empty node.edges in
 				(* and continue traversing *)
 				traverse (IPMap.add node.addr gw routes)
 					 queue''
 			end
-		with PrioQueue.Queue_is_empty -> routes in
+		with IntQueue.Queue_is_empty -> routes in
 	let todo = List.fold_left (fun queue e ->
-		let c = e.node, fake, e.node.addr in
-		PrioQueue.insert queue e.edge_speed c) PrioQueue.empty edges in
+		let c = e.edge_node, fake, e.edge_node.addr in
+		IntQueue.insert queue e.edge_speed c) IntQueue.empty edges in
 	let routes = traverse routes todo in
 	(* step 4 *)
 	let routes = IPMap.fold (fun a gw map ->
