@@ -777,8 +777,8 @@ CAMLprim value tree_to_string(value node) {
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
-	int i;
 	CAMLlocal4(a, node, child, chain);
+	int i;
 
 	if (*pp >= limit)
 	  failwith("faulty packet");
