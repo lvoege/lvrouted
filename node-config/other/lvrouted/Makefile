@@ -26,11 +26,9 @@ lvrouted: $(MLIS) $(BYTECODE) lowlevel_c.o
 
 .ml.mli:
 	$(OCAMLC_I) $(OCAMLFLAGS) -c $< > $@
+	$(OCAMLC) $(OCAMLFLAGS) -c $@
 
 .ml.cmo:
-	$(OCAMLC) $(OCAMLFLAGS) -c $<
-
-.mli.cmi:
 	$(OCAMLC) $(OCAMLFLAGS) -c $<
 
 .ml.cmx:
