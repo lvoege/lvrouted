@@ -574,7 +574,7 @@ CAMLprim value get_associated_stations(value iface) {
 
 	n = *(int *)(wir.wi_val);
 	result = alloc_tuple(n);
-	s = (struct wi_apinfo *)(wir.wi_val + sizeof(int));
+	s = (struct wi_apinfo *)((char *)wir.wi_val + sizeof(int));
 	for (i = 0; i < n; i++) {
 		mac = alloc_string(6);
 		memcpy(String_val(mac), s->bssid, ETHER_ADDR_LEN);
