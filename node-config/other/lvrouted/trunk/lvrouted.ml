@@ -100,9 +100,11 @@ let alarm_handler _ =
 	  output_string out (Tree.show nodes);
 	  close_out out;
 
-	  (* If there's no wired neighbors, send the new tree to the (wireless) neighbors outright.
-	     If there are wired neighbors, send them the tree first, then create a new tree with the
-	     wired neighbors' children promoted to peers and send that to the wireless neighbors *)
+	  (* If there's no wired neighbors, send the new tree to the (wireless)
+	     neighbors outright. If there are wired neighbors, send them the
+	     tree first, then create a new tree with the wired neighbors'
+	     children promoted to peers and send that to the wireless
+	     neighbors. *)
 	  if IPSet.is_empty !neighbors_wired_ip then
 	    Neighbor.bcast !sockfd nodes !neighbors
 	  else begin
