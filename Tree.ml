@@ -15,6 +15,8 @@ exception InvalidSignature
 (* Constructor *)
 let make a = { addr = a; nodes = [] }
 
+let rec copy t = { t with nodes = List.map copy t.nodes }
+
 let addr n = n.addr
 let nodes n = n.nodes
 
@@ -66,6 +68,7 @@ let merge nodes directnets =
 	let routes = ref (List.fold_left
 				(fun map (a, _) -> IPMap.add a a map)
 				IPMap.empty directnets) in
+	let nodes = List.map copy nodes in
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
 	traverse (fun node parent gw ->
 			if IPMap.mem node.addr !routes then
