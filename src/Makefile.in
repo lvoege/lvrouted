@@ -18,12 +18,11 @@ prefix=@prefix@
 exec_prefix=@exec_prefix@
 BINDIR=@bindir@
 
-# where to install the man page
-MANDIR=@mandir@
+REQUIRES= unix str
 
-# other variables set by ./configure
-OCAMLC   = @OCAMLC@
-OCAMLOPT = @OCAMLOPT@
+OCAMLFIND = @OCAMLFIND@
+OCAMLC   = $(OCAMLFIND) @OCAMLC@ -w p -g -linkpkg -package "$(REQUIRES)"
+OCAMLOPT = $(OCAMLFIND) @OCAMLOPT@ -w p -linkpkg -package "$(REQUIRES)"
 OCAMLDEP = @OCAMLDEP@
 OCAMLLEX = @OCAMLLEX@
 OCAMLYACC= @OCAMLYACC@
@@ -35,8 +34,10 @@ OCAMLWIN32 = @OCAMLWIN32@
 EXE = @EXE@
 
 INCLUDES = 
-BFLAGS = -g $(INCLUDES)
-OFLAGS = $(INCLUDES)
+LIBS=-cclib -lcrypto
+CFLAGS= -Wall -I`$(OCAMLFIND) printconf stdlib` -g
+BFLAGS = -g $(INCLUDES) $(LIBS)
+OFLAGS = $(INCLUDES) $(LIBS)
 
 # main target
 #############
@@ -58,10 +59,10 @@ GENERATED = Version.ml
 byte: $(NAME).byte
 opt: $(NAME).opt
 
-$(NAME).byte: $(CMO)
+$(NAME).byte: $(CMO) lowlevel_c.o
 	$(OCAMLC) $(BFLAGS) -o $@ $^
 
-$(NAME).opt: $(CMX)
+$(NAME).opt: $(CMX) lowlevel_c.o
 	$(OCAMLOPT) $(OFLAGS) -o $@ $^
 
 Version.ml: .svn/entries
@@ -100,6 +101,9 @@ $(NAME).tex: $(SOURCES)
 
 .SUFFIXES: .mli .ml .cmi .cmo .cmx .mll .mly .tex .dvi .ps .html
 
+.c.i:
+	$(CC) -c $(CFLAGS) $<
+
 .mli.cmi:
 	$(OCAMLC) -c $(BFLAGS) $<
 
@@ -132,18 +136,6 @@ $(NAME).tex: $(SOURCES)
 
 .tex.html:
 	hevea $<
-
-# Makefile is rebuilt whenever Makefile.in or configure.in is modified
-######################################################################
-
-Makefile: Makefile.in config.status
-	./config.status
-
-config.status: configure
-	./config.status --recheck
-
-configure: configure.in
-	autoconf 
 
 # clean
 #######

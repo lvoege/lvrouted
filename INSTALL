@@ -1,13 +1,3 @@
-To install this program:
+You need to have autoconf, ocaml and ocamlfind installed. Then just
 
-FreeBSD: 
-	pkg_add -r ocaml
-	pkg_add -r ocaml-findlib
-
-General:
-	You need a BSD make. On BSDs except MacOS X this is the default make.
-	MacOS X uses GNU make by default and the one you need is called
-	"bsdmake". For Linux there's a port of the NetBSD make. For Debian,
-	this is the "pmake" package.
-
-	Then just "make". src/lvrouted.opt will be the machine code version.
+  $ autoconf && ./configure && make
