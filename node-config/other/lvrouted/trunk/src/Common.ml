@@ -49,8 +49,6 @@ let max_routable = Unix.inet_addr_of_string "172.31.255.0"
 let own_marshaller = true
 (* Where to dump debug stuff and such *)
 let tmpdir = ref "/tmp/"
-(* Are wired links zero-cost? They are for us, but they may not be for you. *)
-let wired_links_are_zero_cost = true
 (* An optional configuration file with extra addresses *)
 let configfile = ref "/usr/local/etc/lvrouted.conf"
 

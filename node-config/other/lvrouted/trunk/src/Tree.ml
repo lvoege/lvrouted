@@ -114,20 +114,6 @@ let from_string s from_addr : node =
 	  (* This is the most dangerous bit in all of the code: *)
 	  { addr = from_addr; nodes = (Marshal.from_string s 0: node list) }
 
-(* This is basically a hack. Given a list of first-level nodes and a set for
-   which membership entails being connected to this node through an ethernet
-   wire (as opposed to wireless), return a list of first-level nodes with
-   the children of every wired neighbor promoted to direct neighbor. This
-   then gets advertised and hides them from other neighbors, making the wired
-   nodes essentially act as one. *)
-let promote_children set nodes =
-	let l' = List.map (fun n ->
-				if IPSet.mem n.addr set then
-					let children = n.nodes in
-					{ n with nodes = [] }::children
-				else [n]) nodes in
-	List.concat l'
-
 let dump_tree fname nodes =
 	let out = open_out (!Common.tmpdir ^ fname) in
 	output_string out (show nodes);
