@@ -86,7 +86,7 @@ let handle_data ns s sockaddr =
    for all the neighbors on that interface *)
 let nuke_trees_for_iface ns i =
 	Log.log Log.debug ("nuking interface " ^ i);
-	List.iter (fun n -> if n.iface = i then begin
+	Set.iter (fun n -> if n.iface = i then begin
 				n.tree <- None;
 				Log.log Log.debug ("neighbor " ^ name n ^ " canned")
 			    end) ns

@@ -271,8 +271,9 @@ static int routemsg_add(unsigned char *buffer, int type,
 }
 #endif
 
-CAMLprim value routes_commit(value deletes, value adds, value changes) {
-	CAMLparam3(deletes, adds, changes);
+CAMLprim value routes_commit(value rtsock,
+			value deletes, value adds, value changes) {
+	CAMLparam4(rtsock, deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
 	CAMLlocal1(v);
 #ifndef __FreeBSD__
@@ -284,16 +285,11 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	FILE *debug;
 #endif
 
-	sockfd = socket(PF_ROUTE, SOCK_RAW, 0);
-	if (sockfd == -1)
-	  failwith("routing socket");
-	shutdown(sockfd, SHUT_RD); 
+	sockfd = Long_val(rtsock);
 	buflen = sizeof(struct rt_msghdr) + 3 * sizeof(struct sockaddr_in);
 	buffer = malloc(buflen);
-	if (buffer == 0) {
-		close(sockfd);
-		failwith("malloc");
-	}
+	if (buffer == 0)
+	  failwith("malloc");
 
 	for (adderrs = Val_int(0); adds != Val_int(0); adds = Field(adds, 1)) {
 		v = Field(adds, 0);
@@ -334,7 +330,6 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	free(buffer);
-	close(sockfd);
 	result = alloc_tuple(3);
 	Store_field(result, 0, delerrs);
 	Store_field(result, 1, adderrs);
@@ -804,61 +799,93 @@ CAMLprim value string_to_tree(value s) {
 	CAMLreturn(string_to_tree_rec(&p, p + string_length(s)));
 }
 
-#if 0
+CAMLprim value open_rtsock(value unit) {
+	CAMLparam1(unit);
+	int sockfd;
+	sockfd = socket(PF_ROUTE, SOCK_RAW, 0);
+	if (sockfd == -1)
+	  failwith("Routing socket");
+	CAMLreturn(Val_int(sockfd));
+}
+
+static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
+	CAMLparam0();
+	CAMLlocal2(res, addr);
+	char *p, ifnam[IFNAMSIZ];
+	int i, masklen, okay_to_add;
+	struct sockaddr_in *sin;
+
+	if (if_indextoname(ifa->ifam_index, ifnam) == 0)
+	  failwith("Unknown interface in read_routemsg");
+	p = (char *)(ifa + 1);
+	okay_to_add = 1;
+	for (i = 1; i && okay_to_add; i <<= 1) {
+		if (ifa->ifam_addrs & i) {
+			sin = (struct sockaddr_in *)p;
+			switch (i) {
+				case RTA_NETMASK:
+					if (sin->sin_family != AF_INET)
+					  okay_to_add = 0;
+					else
+					  masklen = bitcount(sin->sin_addr.s_addr);
+					break;
+				case RTA_IFA:
+					if (sin->sin_family != AF_INET)
+					  okay_to_add = 0;
+					else {
+						addr = alloc_string(4);
+						memcpy(String_val(addr), &sin->sin_addr.s_addr, sizeof(in_addr_t));
+					}
+					break;
+			}
+			p += ROUNDUP(sin->sin_len);
+		}
+	}
+	if (okay_to_add) {
+		res = alloc_small(3, tag);
+		Field(res, 0) = copy_string(ifnam);
+		Field(res, 1) = addr;
+		Field(res, 2) = Val_int(masklen);
+	} else res = Val_int(0);
+	CAMLreturn(res);
+}
+
 /* read a routing message from the given file descriptor and return what it
  * said. */
 CAMLprim value read_routemsg(value fd) {
 	CAMLparam1(fd);
-	CAMLlocal1(res);
+	CAMLlocal2(res, addr);
 	char *p, *buffer;
+	int buflen, toread, numread;
 	struct rt_msghdr *rtm;
-	struct if_msghdr *ifm;
 	struct ifa_msghdr *ifa;
-	struct if_announcemsghdr *ifann;
 
-/* TODO: dubbelcheck of de manier van het hier maken van een waarde (res) van
- * het algebraische type routemsg goed is. ik *denk* dat het zo gaat:
- *   - voor constructors zonder argumenten (RTM_NOTHING) is het simpelweg
- *     Val_int(0-based offset in constructor lijst)
- *   - voor constructors met argumenten moet je een klein blok met als tag
- *     de 0-based offset in de constructor lijst maken en de velden er in
- *     volgorde in opslaan. zo'n blok maken gaat met alloc_small()
- */
+	buflen = toread = 1024;
+	buffer = p = malloc(buflen);
+	if (buffer == 0)
+	  failwith("malloc in read_routemsg");
+	while ((numread = read(Long_val(fd), p, toread)) == toread) {
+		numread += p - buffer;
+		buflen += 1024;
+		buffer = realloc(buffer, buflen);
+		p = buffer + numread;
+	}
 	
 	rtm = (struct rt_msghdr *)buffer;
+	ifa = (struct ifa_msghdr *)buffer;
 	switch (rtm->rtm_type) {
 		case RTM_NEWADDR:
-			ifa = (struct ifa_msghdr *)buffer;
-			p = (char *)(ifa + 1);
-			res = alloc_small(3, 1);
+			res = get_routemsg(ifa, 0);
 			break;
 		case RTM_DELADDR:
-			ifa = (struct ifa_msghdr *)buffer;
-			p = (char *)(ifa + 1);
-			res = alloc_small(3, 2);
+			res = get_routemsg(ifa, 1);
 			break;
-		case RTM_IFINFO:
-			ifm = (struct if_msghdr *)buffer;
-			res = alloc_small(2, 3);
-			Field(res, 0) = Val_bool(ifm->ifm_data.ifi_link_state == LINK_STATE_UP);
-			break;
-		case RTM_IFANNOUNCE:
-			ifann = (struct if_announcemsghdr *)buffer;
-			res = alloc_small(2, 4);
-			Field(res, 0) = copy_string(ifann->ifan_name);
-			Field(res, 1) = Val_bool(ifann->ifan_what == IFAN_ARRIVAL);
-			break;
-#if defined(__FreeBSD_version) && __FreeBSD_version >= 600006
-		case RTM_IEEE80211:
-			res = alloc_small(1, 5);
-			break;
-#endif
 		default:
 			res = Val_int(0);
 	}
+	free(buffer);
 	CAMLreturn(res);
 }
-#endif
 
 /* from wicontrol.c: */
 /*

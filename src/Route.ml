@@ -130,7 +130,8 @@ let diff oldroutes newroutes =
    TODO: move to LowLevel.ml. This is not trivial because of a then
    cyclic include, which would need to be broken. *)
 external lowlevel_commit:
-		 route list			(* deletes *)
+		 Unix.file_descr		(* sockfd *)
+	      -> route list			(* deletes *)
 	      -> route list			(* adds *)
 	      -> route list			(* changes *)
 	      -> ( (route * string) list	(* delete errors *)
@@ -151,8 +152,9 @@ let fetch () =
 (* Commit the given list of adds, deletes and changes to the kernel.
    Attempt a maximum of five extra iterations of checking whether or
    not every change was applied, and redoing those that weren't. *)
-let commit dels adds chgs = 
-	let res = lowlevel_commit (Set.elements dels)
+let commit fd dels adds chgs = 
+	let res = lowlevel_commit fd
+				  (Set.elements dels)
 				  (Set.elements adds)
 				  (Set.elements chgs) in
 	let a = ref adds in	(* Still to add *)
@@ -165,7 +167,8 @@ let commit dels adds chgs =
 		Log.lazylog Log.debug (fun _ -> ["Still to delete:"; showroutes !d]);
 		a := Set.diff !a rs;
 		Log.lazylog Log.debug (fun _ -> ["Still to add:"; showroutes !a]);
-		ignore(lowlevel_commit (Set.elements !d)
+		ignore(lowlevel_commit fd
+				       (Set.elements !d)
 				       (Set.elements !a) []);
 		Set.cardinal !d = 0 &&
 		Set.cardinal !a = 0) in
@@ -173,13 +176,13 @@ let commit dels adds chgs =
 	res
 
 (* Try to have the kernel get rid of all gateway routes *)
-let flush () =
+let flush fd =
 	Log.log Log.debug "flushing routes";
 	let logerr (r, s) = Log.log Log.debug (show r ^ ": " ^ s) in
 	Common.try_max_times Common.max_route_flush_tries (fun _ ->
 		let rs = fetch () in
 		Log.log Log.debug ("I have " ^ string_of_int (Set.cardinal rs)
 				 ^ " routes to delete");
-		let delerrs, _, _ = lowlevel_commit (Set.elements rs) [] [] in
+		let delerrs, _, _ = lowlevel_commit fd (Set.elements rs) [] [] in
 		List.iter logerr delerrs;
 		Set.cardinal rs = 0);
