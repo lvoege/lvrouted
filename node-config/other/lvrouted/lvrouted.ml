@@ -176,6 +176,11 @@ let read_config _ =
 
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
+let print_version _ =
+	print_string ("lvrouted v" ^ string_of_int Version.version);
+	print_newline ();
+	exit 1
+
 let argopts = [
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
 	"-p", Arg.Set_int Common.port, "UDP port to use";
@@ -185,6 +190,7 @@ let argopts = [
 	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
 	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
+	"-v", Arg.Unit print_version, "Print version information";
 ]
 
 let main =

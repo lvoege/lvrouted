@@ -8,7 +8,7 @@ OCAMLPROF = ocamlprof
 CFLAGS= -Wall -I`ocamlfind printconf stdlib` -g
 LIBS=-cclib -lbz2 -cclib -lcrypto
 
-SOURCES= LowLevel.ml Common.ml Log.ml MAC.ml Iface.ml Route.ml Tree.ml Neighbor.ml lvrouted.ml
+SOURCES= Version.ml LowLevel.ml Common.ml Log.ml MAC.ml Iface.ml Route.ml Tree.ml Neighbor.ml lvrouted.ml
 MLIS= $(SOURCES:.ml=.mli)
 BYTECODE= $(SOURCES:.ml=.cmo)
 OBJCODE= $(SOURCES:.ml=.cmx)
@@ -18,12 +18,12 @@ all: depend lvrouted lvrouted.opt
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
 clean:
-	rm -f lowlevel_c.o $(MLIS) $(BYTECODE) $(OBJCODE) $(SOURCES:.ml=.o) $(SOURCES:.ml=.cmi) *~ version.h
+	rm -f lowlevel_c.o $(MLIS) $(BYTECODE) $(OBJCODE) $(SOURCES:.ml=.o) $(SOURCES:.ml=.cmi) *~
 
-lvrouted.opt: $(OBJCODE) version.h lowlevel_c.o
+lvrouted.opt: $(OBJCODE) lowlevel_c.o
 	$(OCAMLOPT) -o $@ $(OBJCODE) lowlevel_c.o $(LIBS)
 
-lvrouted: $(MLIS) $(BYTECODE) version.h lowlevel_c.o
+lvrouted: $(MLIS) $(BYTECODE) lowlevel_c.o
 	$(OCAMLC) -o $@ -custom lowlevel_c.o $(BYTECODE) $(LIBS)
 
 .o: %.c
@@ -48,10 +48,10 @@ lvrouted: $(MLIS) $(BYTECODE) version.h lowlevel_c.o
 .ml.s:
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -S -c $<
 
-version.h:
-	echo Extracting svn version info
-	@echo /\* DO NOT EDIT BY HAND \*/ > version.h
-	@echo char *version=\"lvrouted v`svn info . | grep Revision | sed "s/.* //g"`\"\; >> version.h
+Version.ml:
+	@echo Extracting svn version info
+	@echo \(\* DO NOT EDIT BY HAND \*\) > Version.ml
+	@echo let version=`svn info . | grep Revision | sed "s/.* //g"` >> Version.ml
 
 depend:
 	$(OCAMLDEP) $(INCLUDES) *.mli *.ml > .depend
