@@ -8,7 +8,7 @@ type route = {
 
 (* Make a Set of routes. Consider two routes equal only when both their
    address and netmask are equal. The gateway can differ. This makes the
-   set operations later on more easy. The aggregator code does take
+   set operations later on easier. The aggregator code does take
    different gateways into account. *)
 module Set = Set.Make(struct
 	type t = route

@@ -220,15 +220,22 @@ let read_config _ =
 
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
-let print_version _ =
-	List.iter (fun s -> print_string s; print_newline ())
+let version_info =
 		["Version info: ";
 		 "svn rev: " ^ string_of_int Version.version;
 		 "compile host: " ^ Version.host;
 		 "compile date: " ^ Version.date;
 		 "compiled by: " ^ Version.who;
-		 "ocamlopt: " ^ Version.ocamlopt; ];
+		 "ocamlopt: " ^ Version.ocamlopt; ]
+
+let print_version _ =
+	List.iter (fun s -> print_string s; print_newline ()) version_info;
 	exit 1
+
+let dump_version _ =
+	let out = open_out "/tmp/lvrouted.version" in
+	List.iter (fun s -> output_string out (s ^ "\n")) version_info;
+	close_out out
 
 let argopts = [
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
@@ -262,6 +269,7 @@ let _ =
 	set_handler alarm_handler [Sys.sigalrm];
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
+	set_handler dump_version [Sys.sigusr1];
 	Log.log Log.info "Set signal handlers";
 
 	ignore(Unix.alarm 1);

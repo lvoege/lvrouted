@@ -72,11 +72,11 @@ let update iface =
 		iface.last_assoc_update <- now
 	end;
 	if iface.last_arp_update < (now -. Common.iface_arp_update) then begin
-		let arptable = MAC.arptable iface.name in
+		let arptable = MAC.get_arptable iface.name in
 		(* Fold the output of the lowlevel MAC.arptable into a set of
 		   mac addresses, which is all that's needed here. *)
-		let arpset = Hashtbl.fold (fun _ -> MAC.Set.add)
-					  arptable MAC.Set.empty in
+		let arpset = IPMap.fold (fun _ -> MAC.Set.add)
+					arptable MAC.Set.empty in
 		iface.arpentries <- Some arpset;
 		iface.last_arp_update <- now;
 		Log.lazylog Log.debug (fun _ -> [MAC.show_arptable arptable]);
