@@ -91,23 +91,19 @@ let alarm_handler _ =
 		let logroute r = Log.log Log.info (Route.show r) in
 
 		Log.log Log.info "Deletes:";
-		List.iter logroute deletes;
+		Route.Set.iter logroute deletes;
 		Log.log Log.info "Adds:";
-		List.iter logroute adds;
+		Route.Set.iter logroute adds;
 		Log.log Log.info "Changes:";
-		List.iter logroute changes;
+		Route.Set.iter logroute changes;
 
 		let logerr (r, s) = Log.log Log.info (Route.show r ^ " got " ^ s) in
 		try
-			let delerrs1, adderrs, changeerrs =
+			let delerrs, adderrs, changeerrs =
 				Route.commit deletes adds changes in
-			List.iter logerr delerrs1;
+			List.iter logerr delerrs;
 			List.iter logerr adderrs;
 			List.iter logerr changeerrs;
-			(* Wait a while and then re-do the deletes. This seems
-			   to be needed sometimes. *)
-			Unix.sleep 2;
-			ignore(Route.commit deletes [] [])
 		with Failure s ->
 			Log.log Log.errors ("Couldn't update routing table: " ^ s)
 		   | _ ->
@@ -137,7 +133,7 @@ let read_config _ =
 			LowLevel.inet_addr_in_range a &&
 			Common.is_some n) (LowLevel.getifaddrs ()) in
 	
-	(* Construct the direct and directnets sets. *)
+	(* Construct the direct and directnets lists. *)
 	let direct', directnets' =
 		List.fold_left
 			(fun (direct, nets) (_, _, a, n, _, _) ->
@@ -158,7 +154,7 @@ let read_config _ =
 		List.map (fun (iface, _, a, n, _, _) ->
 			let m = LowLevel.bits_in_inet_addr (Common.from_some n) in
 			let addrs = LowLevel.get_addrs_in_block a m in
-			let addrs' = List.filter (fun a' -> not (a' = a)) addrs in
+			let addrs' = List.filter (fun a' -> a' <> a) addrs in
 			List.map (fun a -> iface, a) addrs') interlinks) in
 
 	(* And finally construct the global ifaces map and neighbors set *)
@@ -168,8 +164,7 @@ let read_config _ =
 			Log.log Log.debug ("neighbor " ^ name ^ " on " ^ iface);
 			let i = Iface.make iface in
 			let n = Neighbor.make name iface a in
-			StringMap.add iface i ifacemap,
-			Neighbor.Set.add n neighbors)
+			StringMap.add iface i ifacemap, Neighbor.Set.add n neighbors)
 		(StringMap.empty, Neighbor.Set.empty) neighboraddrs in
 	ifaces := ifaces';
 	neighbors := neighbors';
@@ -229,10 +224,10 @@ let main =
 	while true do 
 		try
 			let len, sockaddr = Unix.recvfrom !sockfd s 0 (String.length s) [] in
-			Log.log Log.debug ("got data from " ^
-					Unix.string_of_inet_addr (
-					Common.get_addr_from_sockaddr
-					sockaddr));
+			Log.log Log.debug
+				("got data from " ^
+				 Unix.string_of_inet_addr
+				 	(Common.get_addr_from_sockaddr sockaddr));
 			Neighbor.handle_data !neighbors (String.sub s 0 len) sockaddr;
 			Log.log Log.debug ("data handled");
 		with _ -> ()

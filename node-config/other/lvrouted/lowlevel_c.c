@@ -70,7 +70,7 @@ static inline value prepend_listelement(value e, value l) {
 	CAMLreturn(cell);
 }
 
-static inline int bitcount(unsigned char i) {
+static inline int bitcount(unsigned int i) {
 	int c;
 	for (c = 0; i; i >>= 1)
 	  c += i & 1;
@@ -116,12 +116,8 @@ CAMLprim value caml_iface_is_associated(value iface) {
 }
 
 static inline in_addr_t get_addr(value addr) {
-	if (string_length(addr) != 4) {
-	  printf("ouch, length is %d!\n\n", (int)string_length(addr));
-	  printf("\t%s\n", inet_ntoa(*(struct in_addr *)addr));
-	  fflush(stdout);
-	}
-	assert(string_length(addr) == 4);
+	if (string_length(addr) != 4)
+	  failwith("I only support IPv4 for now");
 	return ntohl(((struct in_addr *)addr)->s_addr);
 }
 
@@ -246,7 +242,11 @@ static int routemsg_add(unsigned char *buffer, int type,
 	addr->sin_addr.s_addr = htonl(x);		\
 	addr++;
 
+#if 1
 	ADD(mask_addr_impl(get_addr(dest), Long_val(masklen)));
+#else
+	ADD(get_addr(dest));
+#endif
 	ADD(get_addr(gw));
 	ADD(bitmask(Long_val(masklen)));
 
@@ -257,7 +257,13 @@ static int routemsg_add(unsigned char *buffer, int type,
 		break;
 	  }
 
-	msghdr->rtm_msglen = (unsigned char *)addr + SA_SIZE(addr) - buffer;
+	msghdr->rtm_msglen = (unsigned char *)addr +
+#if __FreeBSD_version < 502000
+				ROUNDUP(addr->sin_len)
+#else
+				SA_SIZE(addr)
+#endif
+				- buffer;
 	
 	return msghdr->rtm_msglen;
 }
@@ -403,15 +409,9 @@ CAMLprim value caml_getifaddrs(value unit) {
 CAMLprim value bits_in_inet_addr(value addr) {
 	CAMLparam1(addr);
 	CAMLlocal1(result);
-	int c, len, i;
-	char *s;
 
-	len = string_length(addr);
-	s = String_val(addr);
-	for (i = c = 0; i < len; i++)
-	  c += bitcount(s[i]);
-	
-	result = Val_int(c);
+	result = Val_int(bitcount(get_addr(addr)));
+
 	CAMLreturn(result);
 }
 
@@ -624,10 +624,10 @@ CAMLprim value routes_fetch(value unit) {
 #ifndef __FreeBSD__
 	result = Val_int(0);
 #else
-	int sockfd;
+	int sockfd, count;
 	int mib[6] = { CTL_NET, PF_ROUTE, 0, 0, NET_RT_DUMP, 0 };
 	size_t needed;
-	unsigned char *buf, *p, *lim;
+	unsigned char *buf, *p, *lim, *p2, *lim2;
 	struct rt_msghdr *rtm;
 	struct sockaddr_in *sin;
 
@@ -654,7 +654,8 @@ CAMLprim value routes_fetch(value unit) {
 	result = Val_int(0);
 	for (p = buf; p < lim; p += rtm->rtm_msglen) {
 		rtm = (struct rt_msghdr *)p;
-		if ((rtm->rtm_flags & RTF_GATEWAY) == 0)
+		if ((rtm->rtm_flags & RTF_GATEWAY) == 0 ||
+		    (rtm->rtm_addrs & RTA_NETMASK) == 0)
 		  continue;
 		sin = (struct sockaddr_in *)(rtm + 1);
 		if (sin->sin_family != AF_INET)
@@ -670,12 +671,18 @@ CAMLprim value routes_fetch(value unit) {
 	
 		/* gateway */
 		addr = alloc_string(sizeof(in_addr_t));
-		*(in_addr_t *)(String_val(addr)) = ntohl(sin->sin_addr.s_addr);
+		*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
 		Store_field(tuple, 2, addr);
-
-		/* netmask */
-		Store_field(tuple, 1, Long_val(bitcount(sin->sin_addr.s_addr)));
 		sin++;
+
+		/* netmask. bwurk, why the fsck all this fudging with
+		   ->sin_len?! */
+		count = 0;
+		lim2 = (unsigned char *)sin + sin->sin_len;
+		p2 = (unsigned char *)&sin->sin_addr.s_addr;
+		for (; p2 < lim2; p2++)
+		  count += bitcount(*p2);
+		Store_field(tuple, 1, Val_long(count));
 
 		result = prepend_listelement(tuple, result);
 	}

@@ -35,6 +35,8 @@ let foreground = ref false
 let max_route_flush_tries = 10
 (* Log to syslog instead of /tmp/lvrouted.log *)
 let use_syslog = ref false
+(* What is the minimum (or widest) netmask Route.aggregate can produce? *)
+let min_mask = ref 0
 
 (* Types *)
 
@@ -111,3 +113,10 @@ let verify_string s =
 	     let s' = String.sub s 20 (String.length s - 20) in
 	     let sha' = LowLevel.sha_string (!secret ^ s') in
 	     sha' = sha, s'
+
+let try_max_times max f =
+	let rec t i =
+		if f i then true
+		else if i = max then false
+		else t (i + 1) in
+	t 0

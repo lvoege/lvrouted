@@ -8,8 +8,12 @@ type route = {
 (* Make a Set of routes *)
 module RouteType = struct
 	type t = route
-	(* compare first on the netmask, then on the address and finally on the gateway *)
-	let compare a b = compare a.addr b.addr
+	(* compare first on the address and then on the netmask *)
+	let compare a b = 
+		let r = compare a.addr b.addr in
+		if r = 0 then
+		  compare a.mask b.mask
+		else r
 end
 module Set = Set.Make(RouteType)
 module Map = Map.Make(struct
@@ -46,6 +50,9 @@ let show r =
 	Unix.string_of_inet_addr r.addr ^ "/" ^ string_of_int r.mask ^ " -> " ^
 	Unix.string_of_inet_addr r.gw
 
+(* given a list of routes, make a Set *)
+let make_set = List.fold_left (fun a r -> Set.add r a) Set.empty
+
 let showroutes rs = 
 	List.fold_left (fun a r -> a ^ "\t" ^ show r ^ "\n")
 		       "Route table:\n" (Set.elements rs)
@@ -67,20 +74,20 @@ let aggregate routes =
 		match todo with
 		  []		-> done_
 		| r :: rs	->
-			if r.mask = 0 then
+			if r.mask = !Common.min_mask then
 			  [ r ]
 			else if r.addr = r.gw && r.mask = 32 then
 			  aggregate' rs done_
 			else begin
 			  let r' = { r with mask = r.mask - 1 } in
-			  let f t = not (t.gw = r.gw) && includes r' t in
+			  let f t = t.gw <> r.gw && includes r' t in
 			    if List.exists f (rs@done_) then
 				  aggregate' rs (r::done_)
 			    else let rs' = List.filter (fun t ->
 						not (includes r' t)) rs in
 				  aggregate' (r'::rs') done_
 			end in
-	List.fold_left (fun a r -> Set.add r a) Set.empty (aggregate' (Set.elements routes) [])
+	make_set (aggregate' (Set.elements routes) [])
 
 (* Given a set of old routes and a set of new routes, produce a list
    of routes to delete, a list of routes to add and a list of routes
@@ -94,8 +101,8 @@ let aggregate routes =
    map. There's probably a better way.
    *)
 let diff oldroutes newroutes =
-	let dels = Set.elements (Set.diff oldroutes newroutes) in
-	let adds = Set.elements (Set.diff newroutes oldroutes) in
+	let dels = Set.diff oldroutes newroutes in
+	let adds = Set.diff newroutes oldroutes in
 
 	let oldmap = Set.fold (fun r -> Map.add r.addr r)
 		     oldroutes Map.empty in
@@ -105,22 +112,22 @@ let diff oldroutes newroutes =
 	let changes = Set.fold (fun r set ->
 			let old_r = Map.find r.addr oldmap in
 			let new_r = Map.find r.addr newmap in
-			if not (old_r.gw = new_r.gw) ||
-			   old_r.mask != new_r.mask then
+			if old_r.gw <> new_r.gw then
 			  Set.add new_r set
 			else
 			  set) isect Set.empty in
-	dels, adds, (Set.elements changes)
+	dels, adds, changes
 
 (* Commit the given list of adds, deletes and changes to the kernel.
 
    TODO: move to LowLevel.ml. This is not trivial because of a then
    cyclic include, which would need to be broken. *)
-external commit: route list			(* adds *)
-	      -> route list			(* deletes *)
+external lowlevel_commit:
+		 route list			(* deletes *)
+	      -> route list			(* adds *)
 	      -> route list			(* changes *)
-	      -> ( (route * string) list	(* add errors *)
-	      	 * (route * string) list	(* delete errors *)
+	      -> ( (route * string) list	(* delete errors *)
+	      	 * (route * string) list	(* add errors *)
 	      	 * (route * string) list)	(* change errors *)
   = "routes_commit"
 
@@ -128,14 +135,39 @@ external commit: route list			(* adds *)
 external fetch: unit -> route list
   = "routes_fetch"
 
+let commit dels adds chgs = 
+	let res = lowlevel_commit (Set.elements dels)
+				  (Set.elements adds)
+				  (Set.elements chgs) in
+	let a = ref (Set.fold (fun r ->
+			let r' = { r with addr = LowLevel.mask_addr r.addr r.mask } in
+			Set.add r') adds Set.empty) in
+	let d = ref dels in
+	let _ = Common.try_max_times 5 (fun i ->
+		Log.log Log.debug ("iteration " ^ string_of_int i);
+		Unix.sleep 1;
+		let rs = make_set (fetch ()) in
+		d := Set.inter !d rs;
+		Log.log Log.debug ("Still to delete:");
+		Log.log Log.debug (showroutes !d);
+		a := Set.diff !a rs;
+		Log.log Log.debug ("Still to add:");
+		Log.log Log.debug (showroutes !a);
+		ignore(lowlevel_commit (Set.elements !d)
+				       (Set.elements !a) []);
+		Set.cardinal !d = 0 &&
+		Set.cardinal !a = 0) in
+	Log.log Log.debug (showroutes (make_set (fetch ())));
+	res
+
 (* Try to have the kernel get rid of all gateway routes *)
 let flush () =
-	let i = ref 0 in
-	let rs = ref (fetch ()) in
-	while List.length !rs > 0 && !i < Common.max_route_flush_tries do
-		ignore(commit !rs [] []);
-		Unix.sleep 1;
-		rs := fetch ();
-		incr i;
-	done;
-	!i < Common.max_route_flush_tries
+	Log.log Log.debug "flushing routes";
+	let logerr (r, s) = Log.log Log.debug (show r ^ ": " ^ s) in
+	Common.try_max_times Common.max_route_flush_tries (fun _ ->
+		let rs = make_set (fetch ()) in
+		Log.log Log.debug ("I have " ^ string_of_int (Set.cardinal rs)
+				 ^ " routes to delete");
+		let delerrs, _, _ = lowlevel_commit (Set.elements rs) [] [] in
+		List.iter logerr delerrs;
+		Set.cardinal rs = 0);

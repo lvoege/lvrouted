@@ -64,7 +64,7 @@ let merge nodes directnets =
 	traverse (fun node parent gw ->
 			if IPMap.mem node.addr !routes then
 			  parent.nodes <- List.filter (fun n ->
-			  	not (n.addr = node.addr)) parent.nodes
+			  	n.addr <> node.addr) parent.nodes
 			else
 			  routes := IPMap.add node.addr gw !routes)
 		 (List.map (fun node -> node.addr, fake, node) nodes);
