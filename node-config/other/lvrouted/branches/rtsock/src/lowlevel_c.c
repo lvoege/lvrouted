@@ -838,7 +838,7 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 					}
 					break;
 			}
-			p += SA_SIZE(sin);
+			p += ROUNDUP(sin->sin_len);
 		}
 	}
 	if (okay_to_add) {
