@@ -73,7 +73,7 @@ let aggregate routes =
 			  aggregate' rs done_
 			else begin
 			  let r' = { r with mask = r.mask - 1 } in
-			  let f t = t.gw != r.gw && includes r' t in
+			  let f t = not (t.gw = r.gw) && includes r' t in
 			    if List.exists f (rs@done_) then
 				  aggregate' rs (r::done_)
 			    else let rs' = List.filter (fun t ->
@@ -97,15 +97,19 @@ let diff oldroutes newroutes =
 	let dels = Set.elements (Set.diff oldroutes newroutes) in
 	let adds = Set.elements (Set.diff newroutes oldroutes) in
 
-	let oldmap = Set.fold (fun r -> Map.add r.addr (r.mask, r.gw))
+	let oldmap = Set.fold (fun r -> Map.add r.addr r)
 		     oldroutes Map.empty in
-	let newmap = Set.fold (fun r -> Map.add r.addr (r.mask, r.gw))
+	let newmap = Set.fold (fun r -> Map.add r.addr r)
 		     newroutes Map.empty in
 	let isect = Set.inter oldroutes newroutes in
-	let changes = Set.filter (fun r ->
-			let new_mask, new_gw = Map.find r.addr newmap in
-			let old_mask, old_gw = Map.find r.addr oldmap in
-			new_gw != old_gw || new_mask != old_mask) isect in
+	let changes = Set.fold (fun r set ->
+			let old_r = Map.find r.addr oldmap in
+			let new_r = Map.find r.addr newmap in
+			if not (old_r.gw = new_r.gw) ||
+			   old_r.mask != new_r.mask then
+			  Set.add new_r set
+			else
+			  set) isect Set.empty in
 	dels, adds, (Set.elements changes)
 
 (* Commit the given list of adds, deletes and changes to the kernel.

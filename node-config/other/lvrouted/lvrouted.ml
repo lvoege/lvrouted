@@ -107,8 +107,7 @@ let alarm_handler _ =
 			(* Wait a while and then re-do the deletes. This seems
 			   to be needed sometimes. *)
 			Unix.sleep 2;
-			let delerrs2, _, _ = Route.commit deletes [] [] in
-			List.iter logerr delerrs2;
+			ignore(Route.commit deletes [] [])
 		with Failure s ->
 			Log.log Log.errors ("Couldn't update routing table: " ^ s)
 		   | _ ->
@@ -159,8 +158,7 @@ let read_config _ =
 		List.map (fun (iface, _, a, n, _, _) ->
 			let m = LowLevel.bits_in_inet_addr (Common.from_some n) in
 			let addrs = LowLevel.get_addrs_in_block a m in
-			let addrs' = List.filter (fun a' ->
-				compare a' a != 0) addrs in
+			let addrs' = List.filter (fun a' -> not (a' = a)) addrs in
 			List.map (fun a -> iface, a) addrs') interlinks) in
 
 	(* And finally construct the global ifaces map and neighbors set *)
