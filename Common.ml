@@ -46,7 +46,7 @@ let min_mask = ref 24
 let min_routable = Unix.inet_addr_of_string "172.16.0.0"
 let max_routable = Unix.inet_addr_of_string "172.31.255.0"
 (* Use Tree.(de)serialize instead of the Marshal module. *)
-let own_marshaller = false
+let own_marshaller = true
 (* Where to dump debug stuff and such *)
 let tmpdir = ref "/tmp/";
 
