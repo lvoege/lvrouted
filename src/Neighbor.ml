@@ -105,17 +105,23 @@ let nuke_old_trees ns numsecs =
 (* From the given set of direct IPs and list of neighbors, derive a list of
    (unaggregated) routes and a merged tree. *)
 let derive_routes_and_mytree directips ns = 
+	(* Fetch all valid trees from the neighbors *)
 	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
 			             (fun n -> Common.from_some n.tree) 
 				     (Set.elements ns) in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
 			   string_of_int (List.length nodes));
+	(* Merge the trees into a new tree and an IPMap.t *)
 	let nodes', routemap = Tree.merge nodes directips in
-	let routeset = Common.IPMap.fold (fun addr gw set ->
-				     Route.Set.add (Route.make addr 32 gw) set)
+	(* Fold the IPMap.t into a Route.Set.t *)
+	let routeset =
+		Common.IPMap.fold (fun addr gw ->
+				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
 	Route.aggregate routeset, nodes'
 
+(* Check if the given neighbor is reachable over the given Iface.t. If it
+   isn't, set the neighbor's tree to None. *)
 let check_reachable n iface = 
 	if Common.is_none n.macaddr then begin
 		let arptable = MAC.get_arptable n.iface in
