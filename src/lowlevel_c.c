@@ -54,6 +54,7 @@
 #include <caml/fail.h>
 #include <caml/memory.h>
 #include <caml/mlvalues.h>
+#include <caml/signals.h>
 
 //#define DUMP_ROUTEPACKET
 
@@ -87,18 +88,15 @@ static inline int bitcount(unsigned int i) {
 
 CAMLprim value set_limits(value data, value core) {
 	CAMLparam2(data, core);
-	int i;
 	struct rlimit rlimit;
-	i = getrlimit(RLIMIT_DATA, &rlimit);
-	if (i == -1)
+
+	if (getrlimit(RLIMIT_DATA, &rlimit) == -1)
 	  CAMLreturn(Val_bool(0));
 	rlimit.rlim_max = Long_val(data);
-	i = setrlimit(RLIMIT_DATA, &rlimit);
-	if (i == -1)
+	if (setrlimit(RLIMIT_DATA, &rlimit) == -1)
 	  CAMLreturn(Val_bool(0));
 
-	i = getrlimit(RLIMIT_CORE, &rlimit);
-	if (i == -1)
+	if (getrlimit(RLIMIT_CORE, &rlimit) == -1)
 	  CAMLreturn(Val_bool(0));
 	rlimit.rlim_max = Long_val(core);
 	CAMLreturn(Val_bool(setrlimit(RLIMIT_CORE, &rlimit) == 0));
@@ -303,7 +301,7 @@ CAMLprim value routes_commit(value rtsock,
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
 	CAMLlocal1(v);
 #ifdef HAVE_RTMSG
-	int sockfd, buflen, len;
+	int sockfd, buflen, len, i;
 	unsigned char *buffer;
 #ifdef DUMP_ROUTEPACKET
 	FILE *debug;
@@ -323,7 +321,10 @@ CAMLprim value routes_commit(value rtsock,
 		fwrite(buffer, 1, len, debug);
 		fclose(debug);
 #endif
-		if (write(sockfd, buffer, len) < 0) {
+		enter_blocking_section();
+		i = write(sockfd, buffer, len);
+		leave_blocking_section();
+		if (i < 0) {
 			tuple = alloc_tuple(2);
 			Store_field(tuple, 0, v);
 			Store_field(tuple, 1, copy_string(strerror(errno)));
@@ -334,7 +335,10 @@ CAMLprim value routes_commit(value rtsock,
 	for (delerrs = Val_int(0); deletes != Val_int(0); deletes = Field(deletes, 1)) {
 		v = Field(deletes, 0);
 		len = routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
-		if (write(sockfd, buffer, len) < 0) {
+		enter_blocking_section();
+		i = write(sockfd, buffer, len);
+		leave_blocking_section();
+		if (i < 0) {
 			tuple = alloc_tuple(2);
 			Store_field(tuple, 0, v);
 			Store_field(tuple, 1, copy_string(strerror(errno)));
@@ -345,7 +349,10 @@ CAMLprim value routes_commit(value rtsock,
 	for (cherrs = Val_int(0); changes != Val_int(0); changes = Field(changes, 1)) {
 		v = Field(changes, 0);
 		len = routemsg_add(buffer, RTM_CHANGE, Field(v, 0), Field(v, 1), Field(v, 2));
-		if (write(sockfd, buffer, len) < 0) {
+		enter_blocking_section();
+		i = write(sockfd, buffer, len);
+		leave_blocking_section();
+		if (i < 0) {
 			tuple = alloc_tuple(2);
 			Store_field(tuple, 0, v);
 			Store_field(tuple, 1, copy_string(strerror(errno)));
@@ -791,7 +798,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	CAMLlocal4(a, node, child, chain);
 	int i;
 
-	if (*pp >= limit)
+	if (*pp >= limit - sizeof(int))
 	  failwith("faulty packet");
 	i = ntohl(*(int *)(*pp));
 	*pp += sizeof(int);
@@ -808,6 +815,12 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	chain = node;
 	for (i >>= 20; i > 0; i--) {
 		child = alloc_small(2, 0);
+		/*
+		 * The rules say alloc_small()ed stuff needs to be initialized
+		 * before the next allocation or the GC may crash. Put a bogus
+		 * value in field 0 and modify() it below after the recursive
+		 * call comes back.
+		 */
 		Field(child, 0) = Val_unit;
 		Field(child, 1) = Val_int(0);
 		modify(&Field(child, 0), string_to_tree_rec(pp, limit));

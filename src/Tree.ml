@@ -79,7 +79,8 @@ let merge nodes directnets =
 				traverse (IPMap.add node.addr gw routes)
 					 (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
 			end in
-	let routes = traverse routes (List.map (fun node -> node, fake, node.addr) nodes) in
+	let todo = List.map (fun node -> node, fake, node.addr) nodes in
+	let routes = traverse routes todo in
 	(* step 4 *)
 	let routes = IPMap.fold (fun a gw map ->
 			if List.exists (fun (a', n) ->

@@ -106,7 +106,6 @@ let broadcast_run udpsockfd rtsockfd =
 		output_string out (Route.showroutes newroutes);
 		close_out out;
 	  end;
-	  Gc.minor ();
 	  Log.log Log.debug "finished broadcast run"
 
 (* This function is called periodically from the select() loop. It decides
@@ -310,8 +309,6 @@ let _ =
 	let readfds = [ udpsockfd; rtsockfd ] in
 	let last_periodic_check = ref 0.0 in
 	while true do try
-		(* Clean up from the last iteration *)
-		Gc.minor ();
 		(* Wait for interesting events *)
 		let fds, _, _ = Unix.select readfds [] []
 					!Common.alarm_timeout in
