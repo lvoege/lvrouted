@@ -71,7 +71,7 @@ TODO: 4 may be nothing more than cosmetics now that route addition
    packet from.
 *)
 let merge nodes directnets =
-	(* step 1*)
+	(* step 1 *)
 	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
 				    IPMap.empty directnets in
 	(* step 2 *)

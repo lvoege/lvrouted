@@ -299,6 +299,7 @@ let _ =
 	let readfds = [ udpsockfd; rtsockfd ] in
 	let last_periodic_check = ref 0.0 in
 	while true do try
+		Gc.minor ();
 		let fds, _, _ = Unix.select readfds [] []
 					!Common.alarm_timeout in
 		if List.mem udpsockfd fds then begin

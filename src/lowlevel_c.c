@@ -2,6 +2,8 @@
 
 /* There's plenty of code from FreeBSD's /usr/src here. For the BSD
  * license blurbs see the end of the file. */
+#include "config.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <stdio.h>
@@ -17,22 +19,24 @@
 #include <ifaddrs.h>
 #include <netinet/in.h>
 #include <net/if.h>
-#ifdef __FreeBSD__
+#if defined(HAVE_NET_IF_DL_H)
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
 #include <netinet/if_ether.h>
 #include <sys/param.h>
-#if __FreeBSD_version < 502000
+#if defined(HAVE_NET_IF_IEEE80211_H)
 #include <net/if_ieee80211.h>
 #include <dev/wi/wi_hostap.h>
-#else
+#elif defined(HAVE_NET80211_IEEE80211_H)
 #include <net80211/ieee80211.h>
 #include <net80211/ieee80211_ioctl.h>
 #endif
+#if defined(HAVE_DEV_WI_IF_WAVELAN_IEEE_H)
 #include <dev/wi/if_wavelan_ieee.h>
 #include <dev/wi/if_wireg.h>
-#elif defined(__linux__)
+#endif
+#elif defined(HAVE_NETINET_ETHER_H)
 #include <netinet/ether.h>
 #include <asm/types.h>
 #include <linux/rtnetlink.h>
@@ -86,7 +90,7 @@ CAMLprim value int_of_file_descr(value file_descr) {
 
 /* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
 static inline int iface_is_associated(const char *iface) {
-#ifndef __FreeBSD__
+#ifndef HAVE_DEV_WI_IF_WAVELAN_IEEE_H
 	return 1;
 #else
 	struct ifreq ifr;
@@ -220,7 +224,6 @@ CAMLprim value string_decompress(value s) {
 #endif
 }
 
-#ifdef __FreeBSD__
 static int routemsg_add(unsigned char *buffer, int type,
 			value dest, value masklen, value gw) {
 	struct rt_msghdr *msghdr;
@@ -271,16 +274,12 @@ static int routemsg_add(unsigned char *buffer, int type,
 	
 	CAMLreturn(msghdr->rtm_msglen);
 }
-#endif
 
 CAMLprim value routes_commit(value rtsock,
 			value deletes, value adds, value changes) {
 	CAMLparam4(rtsock, deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
 	CAMLlocal1(v);
-#ifndef __FreeBSD__
-	assert(0);
-#else
 	int sockfd, buflen, len;
 	unsigned char *buffer;
 #ifdef DUMP_ROUTEPACKET
@@ -336,7 +335,6 @@ CAMLprim value routes_commit(value rtsock,
 	Store_field(result, 0, delerrs);
 	Store_field(result, 1, adderrs);
 	Store_field(result, 2, cherrs);
-#endif
 	CAMLreturn(result);
 }
 
@@ -517,10 +515,13 @@ CAMLprim value get_arp_entries(value unit) {
 CAMLprim value get_associated_stations(value iface) {
 	CAMLparam1(iface);	
 	CAMLlocal2(result, mac);
-#ifdef __FreeBSD__
+#if defined(HAVE_NET80211_IEEE80211_H) || defined(HAVE_NET_IF_IEEE80211_H)
 	struct ifreq ifr;
 	int sockfd, i;
-#if __FreeBSD_version >= 502000
+#else
+	result = alloc_tuple(0);
+#endif
+#if defined(HAVE_NET80211_IEEE80211_H)
 	int n;
 	struct wi_req wir;
 	struct wi_apinfo *s;
@@ -551,7 +552,7 @@ CAMLprim value get_associated_stations(value iface) {
 		Store_field(result, i, mac);
 	}
 	close(sockfd);
-#else
+#elif defined(HAVE_NET_IF_IEEE80211_H)
 	struct hostap_getall    reqall;
 	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
 
@@ -580,9 +581,6 @@ CAMLprim value get_associated_stations(value iface) {
 	}
 	close(sockfd);
 #endif
-#else
-	result = alloc_tuple(0);
-#endif
 	CAMLreturn(result);
 }
 
@@ -592,7 +590,7 @@ CAMLprim value routes_fetch(value unit) {
 #ifdef __linux__
 	assert(0);
 	// parse /proc/net/route
-#elif defined(__FreeBSD__)
+#else
 	int sockfd, count;
 	int mib[6] = { CTL_NET, PF_ROUTE, 0, 0, NET_RT_DUMP, 0 };
 	size_t needed;
@@ -657,8 +655,6 @@ CAMLprim value routes_fetch(value unit) {
 	}
 	free(buf);
 	close(sockfd);
-#else
-	result = Val_int(0);
 #endif
 	CAMLreturn(result);
 }
@@ -812,7 +808,6 @@ CAMLprim value open_rtsock(value unit) {
 	CAMLreturn(Val_int(sockfd));
 }
 
-#ifdef __FreeBSD__ 
 static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	CAMLparam0();
 	CAMLlocal2(res, addr);
@@ -854,13 +849,11 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	} else res = Val_int(0);
 	CAMLreturn(res);
 }
-#endif
 
 /* read a routing message from the given file descriptor and return what it
  * said. */
 CAMLprim value read_routemsg(value fd) {
 	CAMLparam1(fd);
-#ifdef __FreeBSD__
 	CAMLlocal2(res, addr);
 	char *p, *buffer;
 	int buflen, toread, numread;
@@ -892,9 +885,6 @@ CAMLprim value read_routemsg(value fd) {
 	}
 	free(buffer);
 	CAMLreturn(res);
-#else
-	CAMLreturn(Val_int(0));
-#endif
 }
 
 /* from wicontrol.c: */
