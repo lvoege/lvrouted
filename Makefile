@@ -6,7 +6,7 @@ OCAMLDEP  = ocamldep
 OCAMLFIND = ocamlfind
 OCAMLPROF = ocamlprof
 CFLAGS= -Wall -I`ocamlfind printconf stdlib` -g
-LIBS=-cclib -lcrypto
+LIBS=-cclib -lbz2 -cclib -lcrypto
 
 SOURCES= Version.ml LowLevel.ml Common.ml Log.ml MAC.ml Iface.ml Route.ml Tree.ml Neighbor.ml lvrouted.ml
 MLIS= $(SOURCES:.ml=.mli)
@@ -59,10 +59,6 @@ Version.ml: .svn/entries
 	@echo let host=\"`uname -a`\" >> Version.ml
 	@echo let ocamlopt=\"`ocamlopt -v | head -1`\" >> Version.ml
 	@echo let who=\"`whoami`\" >> Version.ml
-
-tags:
-	otags $(SOURCES)
-	ctags -a -f TAGS lowlevel_c.c
 
 depend:
 	$(OCAMLDEP) $(INCLUDES) *.mli *.ml > .depend

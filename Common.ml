@@ -37,10 +37,6 @@ let max_route_flush_tries = 10
 let use_syslog = ref false
 (* What is the minimum (or widest) netmask Route.aggregate can produce? *)
 let min_mask = ref 24
-(* The IPv4 boundaries of the routable range. Min is inclusive, max is
-   exclusive. *)
-let min_routable = Unix.inet_addr_of_string "172.16.0.0"
-let max_routable = Unix.inet_addr_of_string "172.31.255.0"
 
 (* Types *)
 
@@ -124,5 +120,3 @@ let try_max_times max f =
 		else if i = max then false
 		else t (i + 1) in
 	t 0
-
-let addr_in_range a = a >= min_routable && a < max_routable

@@ -2,23 +2,23 @@ This is a very simple shortest-path routing daemon, featuring:
 
   - UDP based. no firmware-confusing multi- or broadcasts
   - no per-node configuration
-  - spanning tree, so no count-to-infinity
+  - no count-to-infinity
   - some specific wireless hacks, such as keeping an eye on the interface
     association status for clients and the list of associated stations for
     masters
-  - the ability to sign packets for some measure of security against malicious
-    packets
+  - the ability to sign packets for some measure of security
 
-No per node configuration: If your network has both a well-defined routable
+No per node configuration. If your network has both a well-defined routable
 range (for us, that's 172.16.0.0/12) and well-defined interlink netmasks
 (anything smaller than 28 for us), the daemon can do the right thing
-automatically. The first assumption is implemented in lowlevel_c.c,
-inet_addr_in_range(). The second assumption is set in Common.interlink_netmask
+automatically. Implement both assumptions in lowlevel_c.c.
 
 All addresses on all interfaces are examined to see if they fall
-within the routable range. For interlink subnets all possible addresses are
-treated as possible neighbors and the daemon will try to link up to daemons
-on those addresses.
+within some defined range. The subnets of all addresses are examined
+to see if they are narrow enough to be considered an interlink subnet.
+If so, all possible addresses on that subnet are designated as neighbor
+addresses and the daemon will try to link up to daemons on those
+addresses.
 
 The algorithm in this branch of the code is OSPF-like. Every node has a
 current spanning tree for the part of the network the node knows about. At
@@ -59,12 +59,10 @@ code and would need to be adapted for other surroundings:
 Common.ml also contains some other settings like the port to use and some
 timeouts. The most interesting flags are also commandline-settable.
 
-Packet signing: A secret key can be specified on the commandline with the "-s"
+Packet signing. A secret key can be specified on the commandline with the "-s"
 flag. If set and not empty, a SHA1 hash is sent prepended to the usual
 packet content. This hash is the hash of the concatenation of the secret key
-with the packet content. On receipt, the hash is checked with the rest of the
-packet before any interpretation of the packet contents, so attacks that try
-to subvert the ocaml marshal module or inject faulty data are averted.
+with the packet content.
 
 Lodewijk Voge
 lvoge@cs.vu.nl

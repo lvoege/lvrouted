@@ -70,7 +70,6 @@ static inline value prepend_listelement(value e, value l) {
 	CAMLreturn(cell);
 }
 
-/* how many bits set in int i? */
 static inline int bitcount(unsigned int i) {
 	int c;
 	for (c = 0; i; i >>= 1)
@@ -144,8 +143,7 @@ CAMLprim value mask_addr(value addr, value mask) {
 
 CAMLprim value caml_daemon(value nochdir, value noclose) {
 	CAMLparam2(nochdir, noclose);
-	if (daemon(Long_val(nochdir), Long_val(noclose)) < 0)
-	  failwith(strerror(errno));
+	daemon(Long_val(nochdir), Long_val(noclose));
 	CAMLreturn(Val_unit);
 }
 
@@ -156,13 +154,12 @@ CAMLprim value caml_valaddr(value addr) {
 }
 
 CAMLprim value string_compress(value s) {
-	assert(0); /* TESTME first */
-	return Val_unit;
-#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
 	char *buffer;
+
+	assert(0); /* TESTME first */
 
 	buffer = 0;
 	buflen = string_length(s);
@@ -187,18 +184,15 @@ CAMLprim value string_compress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_compress");
 	}
-#endif
 }
 
 CAMLprim value string_decompress(value s) {
-	assert(0); /* TESTME first */
-	return Val_unit;
-#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
 	char *buffer;
 
+	assert(0); /* TESTME first */
 	buffer = 0;
 	buflen = string_length(s) * 2;
 	do {
@@ -221,7 +215,6 @@ CAMLprim value string_decompress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_decompress");
 	}
-#endif
 }
 
 #ifdef __FreeBSD__
@@ -249,17 +242,14 @@ static int routemsg_add(unsigned char *buffer, int type,
 	addr->sin_addr.s_addr = htonl(x);		\
 	addr++;
 
+#if 1
 	ADD(mask_addr_impl(get_addr(dest), Long_val(masklen)));
+#else
+	ADD(get_addr(dest));
+#endif
 	ADD(get_addr(gw));
 	ADD(bitmask(Long_val(masklen)));
 
-	/*
-	 * for some reason, the sin_len for the netmask's sockaddr_in should
-	 * not be the length of the sockaddr_in at all, but the position of
-	 * the sockaddr_in's last non-zero byte. I don't know why. From
-	 * the last byte of the sockaddr_in, step backwards until there's a
-	 * non-zero byte under the cursor, then set the length.
-	 */
 	addr--;
 	for (p = (unsigned char *)(addr + 1) - 1; p > (unsigned char *)addr; p--)
 	  if (*p) {
@@ -436,6 +426,16 @@ CAMLprim value caml_strstr(value big, value little) {
 
 	p = strstr(String_val(big), String_val(little));
 	CAMLreturn(Val_int(p ? p - String_val(big) : -1));
+}
+
+CAMLprim value inet_addr_in_range(value addr) {
+	CAMLparam1(addr);
+	CAMLlocal1(result);
+	in_addr_t a;
+
+	a = get_addr(addr);
+	result = Val_bool(a >= 0xac100000 && a < 0xac1fff00);
+	CAMLreturn(result);
 }
 
 CAMLprim value get_addrs_in_block(value addr, value mask) {
@@ -733,62 +733,6 @@ CAMLprim value caml_syslog(value pri, value s) {
 	syslog(tmp[Long_val(pri)], String_val(s));
 	CAMLreturn(Val_unit);
 }
-
-#if 0
-/* read a routing message from the given file descriptor and return what it
- * said. */
-CAMLprim value read_routemsg(value fd) {
-	CAMLparam1(fd);
-	CAMLlocal1(res);
-	char *p, *buffer;
-	struct rt_msghdr *rtm;
-	struct if_msghdr *ifm;
-	struct ifa_msghdr *ifa;
-	struct if_announcemsghdr *ifann;
-
-/* TODO: dubbelcheck of de manier van het hier maken van een waarde (res) van
- * het algebraische type routemsg goed is. ik *denk* dat het zo gaat:
- *   - voor constructors zonder argumenten (RTM_NOTHING) is het simpelweg
- *     Val_int(0-based offset in constructor lijst)
- *   - voor constructors met argumenten moet je een klein blok met als tag
- *     de 0-based offset in de constructor lijst maken en de velden er in
- *     volgorde in opslaan. zo'n blok maken gaat met alloc_small()
- */
-	
-	rtm = (struct rt_msghdr *)buffer;
-	switch (rtm->rtm_type) {
-		case RTM_NEWADDR:
-			ifa = (struct ifa_msghdr *)buffer;
-			p = (char *)(ifa + 1);
-			res = alloc_small(3, 1);
-			break;
-		case RTM_DELADDR:
-			ifa = (struct ifa_msghdr *)buffer;
-			p = (char *)(ifa + 1);
-			res = alloc_small(3, 2);
-			break;
-		case RTM_IFINFO:
-			ifm = (struct if_msghdr *)buffer;
-			res = alloc_small(2, 3);
-			Store_field(res, 0, Val_bool(ifm->ifm_data.ifi_link_state == LINK_STATE_UP));
-			break;
-		case RTM_IFANNOUNCE:
-			ifann = (struct if_announcemsghdr *)buffer;
-			res = alloc_small(2, 4);
-			Store_field(res, 0, copy_string(ifann->ifan_name));
-			Store_field(res, 1, Val_bool(ifann->ifan_what == IFAN_ARRIVAL));
-			break;
-#if defined(__FreeBSD_version) && __FreeBSD_version >= 600006
-		case RTM_IEEE80211:
-			res = alloc_small(1, 5);
-			break;
-#endif
-		default:
-			res = Val_int(0);
-	}
-	CAMLreturn(res);
-}
-#endif
 
 /* from wicontrol.c: */
 /*
