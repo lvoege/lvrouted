@@ -7,7 +7,7 @@ type t = {
 
 	recvstamps: float Queue.t;
 	mutable last_seen: float;
-	mutable seqno: int;
+	mutable seqno: int;		(* last seen sequence number *)
 	mutable tree: Tree.node option; (* the tree last received *)
 }
 
@@ -29,7 +29,7 @@ let make iface addr =
 	  recvstamps = Queue.create ();
 	  last_seen = -1.0;
 	  macaddr = None;
-	  seqno = 0;
+	  seqno = min_int;
 	  tree = None }
 
 let iface n = n.iface
@@ -41,9 +41,9 @@ let bcast fd nodes ns =
 	let s = if Common.compress_data then LowLevel.string_compress s
 		else s in
 	Set.iter (fun n ->
-		let c = char_of_int (Queue.length n.recvstamps) in
+		let num = String.make 1 (char_of_int (Queue.length n.recvstamps)) in
 		let now = LowLevel.pack_int (int_of_float (Unix.time ())) in
-		let s' = Common.sign_string ((String.make 1 c ) ^ now ^ s) in
+		let s' = Common.sign_string (num ^ now ^ s) in
 		try
 			ignore(Unix.sendto fd s' 0 (String.length s') []
 				   (Unix.ADDR_INET (n.addr, !Common.port)))
@@ -69,24 +69,24 @@ let handle_data ns s sockaddr =
 
 	let n = Set.filter (fun n -> n.addr = addr) ns in
 	bailwhen (Set.is_empty n) "Cannot find neighbor with address";
-	let n = List.hd (Set.elements n) in
+	if Set.cardinal n > 1 then
+	  Log.log Log.errors ("Oops! more than one neighbor with address " ^ addr_s);
+	let n = Set.choose n in
 
 	let numreceived = int_of_char (String.get s 0) in
-	bailwhen (numreceived <
-		    Queue.length n.recvstamps - Common.max_lost_packets)
-		"Asymmetry detected, ignoring tree from";
-
+	bailwhen (numreceived < Queue.length n.recvstamps -
+				Common.max_lost_packets)
+	         "Ignored tree because of asymmetry to";
+	
 	let stamp = LowLevel.unpack_int (String.sub s 1 4) in
 	bailwhen (stamp <= n.seqno) "Received old sequence number from";
 
-	let s = String.sub s 5 (len - 5) in
+	let s = String.sub s 5 (len - 4) in
 	let s = if Common.compress_data then LowLevel.string_decompress s
 		else s in
-	let nodes = (Marshal.from_string s 0: (Tree.node list)) in
-	n.tree <- Some (Tree.make addr nodes);
+	n.tree <- Some (Tree.from_string s addr);
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();
-	Queue.push n.last_seen n.recvstamps;
 	Log.log Log.debug (name n ^ "'s tree has been set")
 
 (* Given a list of neighbors and interface i, invalidate the trees

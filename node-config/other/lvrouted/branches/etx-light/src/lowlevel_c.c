@@ -119,7 +119,7 @@ CAMLprim value caml_iface_is_associated(value iface) {
 static inline in_addr_t get_addr(value addr) {
 	if (string_length(addr) != 4)
 	  failwith("I only support IPv4 for now");
-	return ntohl(((struct in_addr *)addr)->s_addr);
+	return ntohl(((struct in_addr *)(String_val(addr)))->s_addr);
 }
 
 static inline unsigned int bitmask(int masklen) {
@@ -146,12 +146,6 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 	CAMLparam2(nochdir, noclose);
 	if (daemon(Long_val(nochdir), Long_val(noclose)) < 0)
 	  failwith(strerror(errno));
-	CAMLreturn(Val_unit);
-}
-
-CAMLprim value caml_valaddr(value addr) {
-	CAMLparam1(addr);
-	assert(string_length(addr) == 4);
 	CAMLreturn(Val_unit);
 }
 
@@ -462,6 +456,7 @@ CAMLprim value get_arp_entries(value unit) {
 	CAMLparam1(unit);
 	CAMLlocal4(result, tuple, ipaddr, macaddr);
 
+	result = Val_int(0);
 #ifdef __FreeBSD__
 	int mib[6], numentries;
 	size_t needed;
@@ -502,23 +497,6 @@ CAMLprim value get_arp_entries(value unit) {
 			  continue; /* huh? */
 			if (if_indextoname(sdl->sdl_index, ifname) == 0)
 			  continue; /* entry without interface? shouldn't happen */
-			numentries++;
-		}
-		result = alloc_tuple(numentries);
-		numentries = 0;
-		for (next = buf; next < lim; next += rtm->rtm_msglen) {
-			rtm = (struct rt_msghdr *)next;
-			sin2 = (struct sockaddr_inarp *)(rtm + 1);
-			sdl = (struct sockaddr_dl *)((char *)sin2 +
-				ROUNDUP(sin2->sin_len)
-			);
-			if (sdl->sdl_alen == 0)
-			  continue; /* incomplete entry */
-			if (sdl->sdl_type != IFT_ETHER ||
-			    sdl->sdl_alen != ETHER_ADDR_LEN)
-			  continue; /* huh? */
-			if (if_indextoname(sdl->sdl_index, ifname) == 0)
-			  continue; /* entry without interface? shouldn't happen */
 			macaddr = alloc_string(ETHER_ADDR_LEN);
 			memcpy(String_val(macaddr), ((struct ether_addr *)LLADDR(sdl))->octet, ETHER_ADDR_LEN);
 
@@ -530,13 +508,11 @@ CAMLprim value get_arp_entries(value unit) {
 			Store_field(tuple, 1, ipaddr);
 			Store_field(tuple, 2, macaddr);
 
-			Store_field(result, numentries, tuple);
-			numentries++;
+			result = prepend_listelement(tuple, result);
 		}
 		free(buf);
-	} else
+	}
 #endif
-		result = alloc_tuple(0);
 
 	CAMLreturn(result);
 }
@@ -733,11 +709,6 @@ CAMLprim value caml_syslog(value pri, value s) {
 	CAMLreturn(Val_unit);
 }
 
-CAMLprim value caml_sbrk(value unit) {
-	CAMLparam1(unit);
-	CAMLreturn(Val_int(sbrk(0)));
-}
-
 CAMLprim value caml_pack_int(value i) {
 	CAMLparam1(i);
 	CAMLlocal1(res);
@@ -750,6 +721,87 @@ CAMLprim value caml_pack_int(value i) {
 CAMLprim value caml_unpack_int(value s) {
 	CAMLparam1(s);
 	CAMLreturn(Val_int(*(int *)(String_val(s))));
+}
+
+/* Store a node into a buffer. It is enough to store the node contents
+ * (the address in this case) plus the number of children and recurse.
+ * Since the 172.16.0.0/12 range only uses 20 bits, the number of children
+ * can be packed into the 12 fixed bits.
+ * 
+ * It is conceivable for our nodes to have more than 16 addresses to
+ * propagate, so packing a node in 24 bits instead of 32 would probably
+ * be pushing our luck.
+ */
+static unsigned char *tree_to_string_rec(value node, unsigned char *buffer) {
+	CAMLparam1(node);
+	CAMLlocal1(t);
+	unsigned char *buffer_tmp;
+	int i;
+
+	buffer_tmp = buffer + sizeof(int);
+	i = 0;
+	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
+		buffer_tmp = tree_to_string_rec(Field(t, 0), buffer_tmp);
+		i++;
+	}
+	i <<= 20;
+	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
+	*(int *)buffer = htonl(i);
+	CAMLreturn(buffer_tmp);
+}
+
+CAMLprim value tree_to_string(value node) {
+	CAMLparam1(node);
+	CAMLlocal1(result);
+	unsigned char *buffer, *t;
+
+	buffer = malloc(65536);
+	t = tree_to_string_rec(node, buffer);
+	result = alloc_string(t - buffer);
+	memcpy(String_val(result), buffer, t - buffer);
+	free(buffer);
+	CAMLreturn(result);
+}
+
+static CAMLprim value string_to_tree_rec(unsigned char **pp,
+					 unsigned char *limit) {
+	CAMLparam0();
+	CAMLlocal4(a, node, child, chain);
+	int i;
+
+	if (*pp >= limit)
+	  failwith("faulty packet");
+	i = ntohl(*(int *)(*pp));
+	*pp += sizeof(int);
+	a = alloc_string(4);
+	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
+	node = alloc_small(2, 0);
+	Field(node, 0) = a;
+	Field(node, 1) = Val_int(0);
+
+	/* new children get hooked on the second field of chain. by luck,
+	 * the list itself is in the second field of node, so chain can be
+	 * assigned to node. if the node struct changes so the list of
+	 * children is no longer the second field, this must be changed */
+	chain = node;
+	for (i >>= 20; i > 0; i--) {
+		child = alloc_small(2, 0);
+		Field(child, 0) = Val_unit;
+		Field(child, 1) = Val_int(0);
+		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
+		modify(&Field(chain, 1), child);
+		chain = child;
+	}
+	CAMLreturn(node);
+}
+
+CAMLprim value string_to_tree(value s) {
+	CAMLparam1(s);
+	CAMLlocal2(res, a);
+	unsigned char *p;
+
+	p = String_val(s);
+	CAMLreturn(string_to_tree_rec(&p, p + string_length(s)));
 }
 
 #if 0
