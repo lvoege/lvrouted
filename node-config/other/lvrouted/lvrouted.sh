@@ -8,6 +8,7 @@ start)
 	if test "$pid" != ""; then
 		echo "Already running" >&2
 	else
+		/sbin/sysctl net.inet.ip.forwarding=1
 		/usr/local/sbin/lvrouted.opt -u
 	fi
 	;;

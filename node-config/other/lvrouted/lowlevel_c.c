@@ -48,10 +48,10 @@
 #include <caml/memory.h>
 #include <caml/mlvalues.h>
 
-#if __FreeBSD_version < 502000
+//#define DUMP_ROUTEPACKET
+
 #define ROUNDUP(a) \
 	((a) > 0 ? (1 + (((a) - 1) | (sizeof(long) - 1))) : sizeof(long))
-#endif
 
 /* stolen from ocaml-3.08.1/byterun/weak.c */
 #define None_val (Val_int(0))
@@ -251,18 +251,15 @@ static int routemsg_add(unsigned char *buffer, int type,
 	ADD(bitmask(Long_val(masklen)));
 
 	addr--;
-	for (p = (unsigned char *)(addr + 1); p > (unsigned char *)addr; p--)
+	for (p = (unsigned char *)(addr + 1) - 1; p > (unsigned char *)addr; p--)
 	  if (*p) {
 		addr->sin_len = p - (unsigned char *)addr + 1;
 		break;
 	  }
+	addr->sin_family = 0; /* just to be totally in sync with /usr/sbin/route */
 
 	msghdr->rtm_msglen = (unsigned char *)addr +
-#if __FreeBSD_version < 502000
 				ROUNDUP(addr->sin_len)
-#else
-				SA_SIZE(addr)
-#endif
 				- buffer;
 	
 	return msghdr->rtm_msglen;
@@ -277,6 +274,9 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 #else
 	int sockfd, buflen, len;
 	unsigned char *buffer;
+#ifdef DUMP_ROUTEPACKET
+	FILE *debug;
+#endif
 
 	sockfd = socket(PF_ROUTE, SOCK_RAW, 0);
 	if (sockfd == -1)
@@ -292,6 +292,11 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	for (adderrs = Val_int(0); adds != Val_int(0); adds = Field(adds, 1)) {
 		value v = Field(adds, 0);
 		len = routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
+#ifdef DUMP_ROUTEPACKET
+		debug = fopen("/tmp/packet.lvrouted", "w");
+		fwrite(buffer, 1, len, debug);
+		fclose(debug);
+#endif
 		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
 			Store_field(tuple, 0, v);
@@ -489,11 +494,7 @@ CAMLprim value get_arp_entries(value unit) {
 			rtm = (struct rt_msghdr *)next;
 			sin2 = (struct sockaddr_inarp *)(rtm + 1);
 			sdl = (struct sockaddr_dl *)((char *)sin2 +
-#if __FreeBSD_version < 502000
 				ROUNDUP(sin2->sin_len)
-#else
-				SA_SIZE(sin2)
-#endif
 			);
 			if (sdl->sdl_alen == 0)
 			  continue; /* incomplete entry */
@@ -510,11 +511,7 @@ CAMLprim value get_arp_entries(value unit) {
 			rtm = (struct rt_msghdr *)next;
 			sin2 = (struct sockaddr_inarp *)(rtm + 1);
 			sdl = (struct sockaddr_dl *)((char *)sin2 +
-#if __FreeBSD_version < 502000
 				ROUNDUP(sin2->sin_len)
-#else
-				SA_SIZE(sin2)
-#endif
 			);
 			if (sdl->sdl_alen == 0)
 			  continue; /* incomplete entry */
@@ -620,10 +617,10 @@ CAMLprim value get_associated_stations(value iface) {
 CAMLprim value routes_fetch(value unit) {
 	CAMLparam1(unit);
 	CAMLlocal3(result, tuple, addr);
-
-#ifndef __FreeBSD__
-	result = Val_int(0);
-#else
+#ifdef __linux__
+	assert(0);
+	// parse /proc/net/route
+#elif defined(__FreeBSD__)
 	int sockfd, count;
 	int mib[6] = { CTL_NET, PF_ROUTE, 0, 0, NET_RT_DUMP, 0 };
 	size_t needed;
@@ -688,6 +685,8 @@ CAMLprim value routes_fetch(value unit) {
 	}
 	free(buf);
 	close(sockfd);
+#else
+	result = Val_int(0);
 #endif
 	CAMLreturn(result);
 }

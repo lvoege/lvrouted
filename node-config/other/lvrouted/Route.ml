@@ -65,19 +65,18 @@ let showroutes rs =
 
    Take the first route on the todo list:
 
-     If the netmask is 0, return the route as the only route. It'll be the
-     default route.
+     If the netmask is the minimum netmask, move the route to the done list
+     and recurse.
     
      Else expand the netmask by one bit. Check if it gobbles up any routes
      to different gateways.
-       If so, move the unexpanded route to the done list and recurse
+       If so, move the unexpanded route to the done list and recurse.
        If not, remove all routes now covered by the newly expanded route from
          the todo list and recurse.
 
-   The route table could be condensed even more by relying on the fact that
-   if two routes match, the one with the wider netmask wins. TODO, if you care
-   about that. At least this way you get a list of nicely disjoint subnets,
-   which is much easier to verify by looking at it. *)
+   Finally, take the now aggregated list of routes and create a set of routes,
+   with the addresses of the routes masked according to their netmask.
+*)
 let aggregate routes =
 	let rec aggregate' todo done_ =
 		match todo with

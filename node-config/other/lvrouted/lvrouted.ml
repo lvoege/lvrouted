@@ -177,8 +177,13 @@ let read_config _ =
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
 let print_version _ =
-	print_string ("lvrouted v" ^ string_of_int Version.version);
-	print_newline ();
+	List.iter (fun s -> print_string s; print_newline ())
+		["Version info: ";
+		 "svn rev: " ^ string_of_int Version.version;
+		 "compile host: " ^ Version.host;
+		 "compile date: " ^ Version.date;
+		 "compiled by: " ^ Version.who;
+		 "ocamlopt: " ^ Version.ocamlopt; ];
 	exit 1
 
 let argopts = [
