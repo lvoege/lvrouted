@@ -82,7 +82,7 @@ let alarm_handler _ =
 	  Log.log Log.debug "finished broadcast run";
 	end
 
-let abort_handler _ = ()
+let abort_handler _ = exit 0
 
 let read_config _ =
 	(* Block the alarm signal while we're meddling with globals. *)
