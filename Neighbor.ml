@@ -28,7 +28,7 @@ let make iface addr =
 	  addr = addr;
 	  last_seen = -1.0;
 	  macaddr = None;
-	  seqno = 0;
+	  seqno = min_int;
 	  tree = None }
 
 let iface n = n.iface
