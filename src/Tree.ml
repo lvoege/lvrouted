@@ -11,8 +11,10 @@ type node = {
 (* Constructor *)
 let make a nodes = { addr = a; nodes = nodes }
 
+(* Deep-copy the given tree *)
 let rec copy t = { t with nodes = List.map copy t.nodes }
 
+(* Accessors *)
 let addr n = n.addr
 let nodes n = n.nodes
 
@@ -59,9 +61,8 @@ TODO: 4 may be nothing more than cosmetics now that route addition
 *)
 let merge nodes directnets =
 	(* step 1*)
-	let routes = List.fold_left
-				(fun map (a, _) -> IPMap.add a a map)
-				IPMap.empty directnets in
+	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
+				    IPMap.empty directnets in
 	(* step 2 *)
 	let fake = make Unix.inet_addr_any [] in
 	(* step 3 *)
@@ -69,8 +70,9 @@ let merge nodes directnets =
 		  []			-> routes
 		| (node,parent,gw)::xs	-> 
 			if IPMap.mem node.addr routes then
-			  traverse routes xs
+			  traverse routes xs (* ignore this node *)
 			else begin
+				(* copy this node and hook it into the new tree *)
 				let newnode = make node.addr [] in
 				parent.nodes <- newnode::parent.nodes;
 				traverse (IPMap.add node.addr gw routes)
