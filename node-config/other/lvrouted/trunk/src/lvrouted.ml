@@ -1,10 +1,9 @@
-(* Main module. A receive loop plus an alarm handler that'll do the
-   sending to neighbors and the updating of the route table. *)
+(* Main module. Start reading at the last function *)
 open Common
 open Log
 open Neighbor
 
-(* First some globals. these are global because the signal handlers need to be
+(* First some globals. These are global because the signal handlers need to be
    able to set them when re-reading the node's configuration. *)
 
 (* A set of all neighbors *)
@@ -26,8 +25,6 @@ let directnets : (Unix.inet_addr * int) list ref = ref []
 let last_time = ref 0.0
 (* An entry means that neighbor was unreachable last iteration *)
 let unreachable = ref Neighbor.Set.empty
-(* *)
-let configfile = ref "/usr/local/etc/lvrouted.conf"
 (* Resume from saved state on startup instead of a new, clean state *)
 let resume = ref false
 
@@ -139,9 +136,9 @@ let broadcast_run udpsockfd rtsockfd =
 	  end;
 	  Log.log Log.debug "finished broadcast run"
 
-(* This function is called periodically. It decides whether or not to start
-   a broadcast_run by checking for changes in reachability, expired trees
-   or if it's just time to do so. *)
+(* This function is called periodically from the select() loop. It decides
+   whether or not to start a broadcast_run by checking for changes in
+   reachability, expired trees or if it's just time to do so. *)
 let periodic_check udpsockfd rtsockfd =
 	Log.log Log.debug "in alarm_handler";
 
@@ -300,6 +297,7 @@ let argopts = [
 	"-v", Arg.Unit print_version, "Print version information";
 ]
 
+(* This is the main function *)
 let _ =
 	Log.log Log.info "Starting up";
 
