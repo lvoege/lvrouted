@@ -75,8 +75,7 @@ let handle_data ns s sockaddr =
 	let s = String.sub s 4 (len - 4) in
 	let s = if Common.compress_data then LowLevel.string_decompress s
 		else s in
-	let nodes = (Marshal.from_string s 0: (Tree.node list)) in
-	n.tree <- Some (Tree.make addr nodes);
+	n.tree <- Some (Tree.from_string s addr);
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();
 	Log.log Log.debug (name n ^ "'s tree has been set")
