@@ -1,8 +1,22 @@
-This repository has the following directories:
+This is a Subversion repository and has a number of directories. You're most
+likely looking for trunk/, which you would need to check out with a Subversion
+client (http://subversion.tigris.org/) to make use of. The directories are:
 
 trunk/ 			the regular shortest path version in use right now
 branches/etx-light	an ETX-like trick to try and cope with asymmetrically
-			lossy links. doesn't work yet.
-branches/etx		the full ETX version. doesn't work yet either.
+			lossy links.
+branches/etx		the full ETX version.
+branches/ipv6		version that can propagate IPv6 addresses.
+branches/select		version that uses a select()-based model instead of
+			a loop with a blocking read plus an alarm.
+branches/rtsock		spinoff of the select branch that listens to messages
+			that come over the routing socket.
 tags/			this keeps a symbolic record of important versions,
 			such as actually deployed versions.
+
+All of the branches are works-in-various-degrees-of-progress. None of the
+branches both work and are well tested (because branches that do work and are
+well tested get folded back into the trunk).
+
+Lodewijk V\"oge
+lodewijk@wirelessleiden.nl / lvoge@cs.vu.nl
