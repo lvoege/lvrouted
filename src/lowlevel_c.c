@@ -760,10 +760,9 @@ CAMLprim value tree_to_string(value node) {
 	CAMLreturn(result);
 }
 
-static CAMLprim value string_to_tree_rec(unsigned char **pp,
-					 unsigned char *limit) {
-	CAMLparam0();
-	CAMLlocal4(a, node, child, chain);
+static value string_to_tree_rec(unsigned char **pp,
+				 unsigned char *limit) {
+	value a, node, child, chain;
 	int i;
 
 	if (*pp >= limit)
@@ -789,7 +788,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 		modify(&Field(chain, 1), child);
 		chain = child;
 	}
-	CAMLreturn(node);
+	return node;
 }
 
 CAMLprim value string_to_tree(value s) {
