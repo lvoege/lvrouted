@@ -6,7 +6,7 @@ open Common
    of length ETHER_ADDR_LEN (== 6) and is binary data. *)
 type t = string
 
-type arptable = (Unix.inet_addr, string) Hashtbl.t
+type arptable = (Unix.inet_addr, t) Hashtbl.t
 
 module Set = Set.Make(String)
 
