@@ -33,24 +33,7 @@ let unreachable = ref Neighbor.Set.empty
 (* *)
 let configfile = ref "/usr/local/etc/lvrouted.conf"
 
-(* This function is the main work horse. It:
-
-     - polls for interesting events
-     - merges received spanning trees into a new spanning tree.
-     - derives a new routing table from the merged spanning tree
-     - applies the changes between the old and the new routing table to
-       the kernel (if configured to do so)
-     - sends the new spanning tree to the neighbors
- *)
-let alarm_handler _ =
-	Log.log Log.debug "in alarm_handler";
-
-	(* re-trigger the alarm *)
-	ignore(Unix.alarm !Common.alarm_timeout);
-
-	let block_signals = [ Sys.sigalrm ] in
-	ignore(Unix.sigprocmask Unix.SIG_BLOCK block_signals);
-
+let check_reachable _ =
 	(* See what neighbors are unreachable. Per neighbor, fetch the
 	   corresponding Iface.t and see if it's reachable. *)
 	let new_unreachable = Neighbor.Set.filter (fun n ->
@@ -72,6 +55,19 @@ let alarm_handler _ =
 	end;
 	(* And update the global *)
 	unreachable := new_unreachable;
+	reachable_changed
+
+(* This function is the main work horse. It:
+
+     - polls for interesting events
+     - merges received spanning trees into a new spanning tree.
+     - derives a new routing table from the merged spanning tree
+     - applies the changes between the old and the new routing table to
+       the kernel (if configured to do so)
+     - sends the new spanning tree to the neighbors
+ *)
+let periodic_check _ =
+	Log.log Log.debug "in alarm_handler";
 
 	let expired = Neighbor.nuke_old_trees !neighbors Common.timeout in
 
@@ -80,7 +76,7 @@ let alarm_handler _ =
 
 	(* If there's enough reason, derive a new routing table and a new
 	   tree and send it around. *)
-	if reachable_changed || expired || its_time then begin try
+	if check_reachable () || expired || its_time then begin try
 	  Log.log Log.debug "starting broadcast run";
 	  last_time := now;
 
@@ -155,9 +151,7 @@ let alarm_handler _ =
 	  Log.log Log.debug "finished broadcast run";
 	with _ ->
 		Log.log Log.errors ("Uncaught exception in alarm handler!");
-	end;
-
-	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
+	end
 
 let abort_handler _ =
 	Log.log Log.warnings "Exiting. Sending neighbors empty trees...";
@@ -283,7 +277,7 @@ let read_state s =
 	MAC.arptables := arptables'
 
 let argopts = [
-	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
+	"-a", Arg.Set_float Common.alarm_timeout, "Interval between checking for interesting things";
 	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
 	"-c", Arg.Set_string configfile, "Config file";
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
@@ -311,7 +305,6 @@ let _ =
 	Log.log Log.info "Read config";
 
 	let set_handler f = List.iter (fun i -> Sys.set_signal i (Sys.Signal_handle f)) in
-	set_handler alarm_handler [Sys.sigalrm];
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 	set_handler dump_version [Sys.sigusr1];
@@ -323,9 +316,6 @@ let _ =
 	Unix.bind !sockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
 	Log.log Log.info "Opened and bound socket";
 
-	ignore(Unix.alarm 1);
-	Log.log Log.info "Triggered the alarm";
-
 	let logfrom s = Log.log Log.debug
 			("got data from " ^
 			 Unix.string_of_inet_addr
@@ -333,9 +323,15 @@ let _ =
 	let s = String.create 65536 in
 	while true do 
 		try
-			let len, sockaddr = Unix.recvfrom !sockfd s 0 (String.length s) [] in
-			logfrom sockaddr;
-			Neighbor.handle_data !neighbors (String.sub s 0 len) sockaddr;
-			Log.log Log.debug ("data handled");
+			let fds, _, _ = Unix.select [!sockfd] [] [] !Common.alarm_timeout in
+			if fds = [] then periodic_check ()
+			else begin
+				let len, sockaddr = Unix.recvfrom !sockfd s 0
+							(String.length s) [] in
+				logfrom sockaddr;
+				Neighbor.handle_data !neighbors
+						     (String.sub s 0 len) sockaddr;
+				Log.log Log.debug ("data handled");
+			end
 		with _ -> ()
 	done
