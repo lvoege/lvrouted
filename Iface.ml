@@ -2,10 +2,9 @@
 open Common
 
 type ifacetype =
-	| WIRED		(* no notion of association *)
-	| WIFI_CLIENT	(* client of a master, can check for association *)
-	| WIFI_MASTER	(* master of several clients, can check the list of
-			   associated stations for a specific client *)
+	| WIRED
+	| WIFI_CLIENT
+	| WIFI_MASTER
 
 type t = {
 	name: string;
@@ -25,9 +24,6 @@ type t = {
 (* Constructor *)
 let make n =
 	let iface_type name = 
-		(* This is pretty lame, but this is executed only once per
-		   interface at startup anyway, and it'd be a huge gob of
-		   code in lowlevel_c.c, so I'll leave it like this *)
 		let c = Unix.open_process_in ("/sbin/ifconfig " ^ name) in
 		let re = Str.regexp "^.*media: \\(.*\\)" in
 		let l = Common.snarf_channel_for_re c re 2 in
@@ -47,8 +43,6 @@ let make n =
 	  associated = None;
 	  is_associated = None }
 
-let itype i = i.itype
-
 (* Return a MAC.Set of addresses that are associated with the given interface *)
 let associated ifname =
 	Array.fold_left (fun a e -> MAC.Set.add e a)
@@ -61,36 +55,35 @@ let update iface =
 	let now = Unix.gettimeofday () in
 	if (iface.itype = WIFI_MASTER && (Common.is_none iface.associated)) ||
 	   (iface.last_assoc_update < (now -. Common.iface_assoc_update)) then begin
-		if iface.itype = WIFI_MASTER then begin
-			let a = associated iface.name in
-			iface.associated <- Some a;
-			Log.lazylog Log.debug (fun _ -> 
-				["Associated stations:"]@
-				List.map MAC.ether_ntoa (MAC.Set.elements a));
-		end else if iface.itype = WIFI_CLIENT then
+		if iface.itype = WIFI_MASTER then
+		  iface.associated <- Some (associated iface.name)
+		else if iface.itype = WIFI_CLIENT then
 		  iface.is_associated <- Some (LowLevel.iface_is_associated iface.name);
 		iface.last_assoc_update <- now
 	end;
 	if iface.last_arp_update < (now -. Common.iface_arp_update) then begin
-		let arptable = MAC.arptable iface.name in
-		(* Fold the output of the lowlevel MAC.arptable into a set of
-		   mac addresses, which is all that's needed here. *)
-		let arpset = Hashtbl.fold (fun _ -> MAC.Set.add)
-					  arptable MAC.Set.empty in
-		iface.arpentries <- Some arpset;
-		iface.last_arp_update <- now;
-		Log.lazylog Log.debug (fun _ -> [MAC.show_arptable arptable]);
+		iface.arpentries <- Some
+			(Hashtbl.fold (fun a m s -> MAC.Set.add m s)
+				      (MAC.arptable iface.name) MAC.Set.empty);
+		iface.last_arp_update <- now
 	end
 
 (* Is the given MAC address in the given interface's arp table? *)
 let in_arptable iface mac =
-	update iface;
+	(* If the interface's table isn't there (hasn't been read, or expired)
+	   try and read it. This shouldn't happen, but check just in case
+	   we get called from another module that doesn't call update prior to
+	   this *)
+	if Common.is_none iface.arpentries then
+	  iface.arpentries <- Some
+	  	(Hashtbl.fold (fun a m s -> MAC.Set.add m s)
+			      (MAC.arptable iface.name) MAC.Set.empty);
 	MAC.Set.mem mac (Common.from_some iface.arpentries)
 
 (* Is the given mac address reachable over the given interface? *)
 let is_reachable iface mac =
 	update iface;
-	in_arptable iface mac && match iface.itype with
-	    WIRED -> true
-	  | WIFI_MASTER -> MAC.Set.mem mac (Common.from_some iface.associated)
-	  | WIFI_CLIENT -> Common.from_some iface.is_associated
+	(in_arptable iface mac) &&
+	  (iface.itype = WIRED ||
+	   (iface.itype = WIFI_MASTER && (MAC.Set.mem mac (Common.from_some iface.associated))) ||
+	   (iface.itype = WIFI_CLIENT && (Common.from_some iface.is_associated)))
