@@ -32,13 +32,14 @@ let make n =
 		let re = Str.regexp "^.*media: \\(.*\\)" in
 		let l = Common.snarf_channel_for_re c re 2 in
 		ignore(Unix.close_process_in c);
-		let media = (List.hd l).(1) in
-		if LowLevel.strstr media "hostap" <> -1 then
-		  WIFI_MASTER
-		else if LowLevel.strstr media "Wireless" <> -1 then
-		  WIFI_CLIENT
-		else
-		  WIRED in
+		if l = [] then WIRED else
+			let media = (List.hd l).(1) in
+			if LowLevel.strstr media "hostap" <> -1 then
+			  WIFI_MASTER
+			else if LowLevel.strstr media "Wireless" <> -1 then
+			  WIFI_CLIENT
+			else
+			  WIRED in
 	{ name = n;
 	  itype = iface_type n;
 	  last_assoc_update = -1.0;
