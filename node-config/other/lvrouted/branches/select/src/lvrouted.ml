@@ -110,12 +110,12 @@ let periodic_check sockfd =
 	  	let nodes' = Tree.promote_children !neighbors_wireless_ip nodes in
 	  	Neighbor.bcast sockfd nodes' !neighbors_wired;
 
-		Tree.dump_tree "lvrouted.mytree-wired" nodes;
+		Tree.dump_tree "lvrouted.mytree-wired" nodes';
 
 		let nodes' = Tree.promote_children !neighbors_wired_ip nodes in
 	  	Neighbor.bcast sockfd nodes' !neighbors_wireless;
 
-		Tree.dump_tree "lvrouted.mytree-wireless" nodes;
+		Tree.dump_tree "lvrouted.mytree-wireless" nodes';
 	  end;
 
 	  if !Common.real_route_updates then begin
@@ -278,7 +278,7 @@ let argopts = [
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
 	"-p", Arg.Set_int Common.port, "UDP port to use";
-	"-r", Arg.Set resume, "Resume from saved state";
+	(*"-r", Arg.Set resume, "Resume from saved state"; *)
 	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
 	"-t", Arg.Set_string Common.tmpdir, "Temporary directory";
 	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";

@@ -444,15 +444,7 @@
       start with a RSS of about 5MB, but will have grown to 10MB in a week.
     </para>
     <para>
-      While this is being tracked down, a workaround has been added in the
-      form of a simple checkpoint facility. The daemon's state can be dumped
-      to /tmp/lvrouted.state by sending it a SIGUSR2. Then, with the
-      <quote>-r</quote> option, the daemon can read this state and resume
-      where it left off.
-    </para>
-    <para>
-      This has been scripted into <filename>tools/lvrouted.sh</filename>,
-      which can be called from a crontab.
+      The interim workaround is simply to restart the daemon once a week.
     </para>
   </section>
 </article>
