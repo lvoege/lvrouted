@@ -462,6 +462,7 @@ CAMLprim value get_arp_entries(value unit) {
 	CAMLparam1(unit);
 	CAMLlocal4(result, tuple, ipaddr, macaddr);
 
+	result = Val_int(0);
 #ifdef __FreeBSD__
 	int mib[6], numentries;
 	size_t needed;
@@ -502,23 +503,6 @@ CAMLprim value get_arp_entries(value unit) {
 			  continue; /* huh? */
 			if (if_indextoname(sdl->sdl_index, ifname) == 0)
 			  continue; /* entry without interface? shouldn't happen */
-			numentries++;
-		}
-		result = alloc_tuple(numentries);
-		numentries = 0;
-		for (next = buf; next < lim; next += rtm->rtm_msglen) {
-			rtm = (struct rt_msghdr *)next;
-			sin2 = (struct sockaddr_inarp *)(rtm + 1);
-			sdl = (struct sockaddr_dl *)((char *)sin2 +
-				ROUNDUP(sin2->sin_len)
-			);
-			if (sdl->sdl_alen == 0)
-			  continue; /* incomplete entry */
-			if (sdl->sdl_type != IFT_ETHER ||
-			    sdl->sdl_alen != ETHER_ADDR_LEN)
-			  continue; /* huh? */
-			if (if_indextoname(sdl->sdl_index, ifname) == 0)
-			  continue; /* entry without interface? shouldn't happen */
 			macaddr = alloc_string(ETHER_ADDR_LEN);
 			memcpy(String_val(macaddr), ((struct ether_addr *)LLADDR(sdl))->octet, ETHER_ADDR_LEN);
 
@@ -530,13 +514,11 @@ CAMLprim value get_arp_entries(value unit) {
 			Store_field(tuple, 1, ipaddr);
 			Store_field(tuple, 2, macaddr);
 
-			Store_field(result, numentries, tuple);
-			numentries++;
+			result = prepend_listelement(tuple, result);
 		}
 		free(buf);
-	} else
+	}
 #endif
-		result = alloc_tuple(0);
 
 	CAMLreturn(result);
 }
