@@ -7,7 +7,7 @@ type t = {
 
 	mutable last_seen: float;	(* -1.0 if never seen, else unix
 					   timestamp of last received packet *)
-	mutable seqno: int;		(* last seen sequence number *)
+	mutable seqno: int;
 	mutable tree: Tree.node option; (* the tree last received *)
 }
 
