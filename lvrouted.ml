@@ -81,9 +81,9 @@ let alarm_handler _ =
 	  (* DEBUG: Dump the incoming trees to the filesystem *)
 	  Neighbor.Set.iter (fun n ->
 	  	let nname = Neighbor.name n in
-	  	let fname = "/tmp/lvrouted.tree-" ^ nname in
+	  	let fname = !Common.tmpdir ^ "lvrouted.tree-" ^ nname in
 	  	if Common.is_some n.tree then begin
-			let out = open_out ("/tmp/lvrouted.tree-" ^ nname) in
+			let out = open_out (!Common.tmpdir ^ "lvrouted.tree-" ^ nname) in
 			output_string out (Tree.show [Common.from_some n.tree]);
 			close_out out
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
@@ -94,7 +94,7 @@ let alarm_handler _ =
 	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
-	  let out = open_out ("/tmp/lvrouted.mytree") in
+	  let out = open_out (!Common.tmpdir ^ "lvrouted.mytree") in
 	  output_string out (Tree.show nodes);
 	  close_out out;
 
@@ -134,7 +134,7 @@ let alarm_handler _ =
 		   | _ ->
 			Log.log Log.errors ("Unknown exception updating routing table")
 	  end else begin
-		let out = open_out "/tmp/lvrouted.routes" in
+		let out = open_out (!Common.tmpdir ^ "lvrouted.routes") in
 		output_string out (Route.showroutes newroutes);
 		close_out out;
 	  end;
@@ -233,19 +233,20 @@ let print_version _ =
 	exit 1
 
 let dump_version _ =
-	let out = open_out "/tmp/lvrouted.version" in
+	let out = open_out (!Common.tmpdir ^ "lvrouted.version") in
 	List.iter (fun s -> output_string out (s ^ "\n")) version_info;
 	close_out out
 
 let argopts = [
-	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
-	"-p", Arg.Set_int Common.port, "UDP port to use";
-	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
 	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
+	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
+	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
-	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
-	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
+	"-p", Arg.Set_int Common.port, "UDP port to use";
+	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
+	"-t", Arg.Set_string Common.tmpdir, "Temporary directory";
+	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
 	"-v", Arg.Unit print_version, "Print version information";
 ]
 

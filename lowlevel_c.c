@@ -734,6 +734,15 @@ CAMLprim value caml_unpack_int(value s) {
 	CAMLreturn(Val_int(*(int *)(String_val(s))));
 }
 
+/* Store a node into a buffer. It is enough to store the node contents
+ * (the address in this case) plus the number of children and recurse.
+ * Since the 172.16.0.0/12 range only uses 20 bits, the number of children
+ * can be packed into the 12 fixed bits.
+ * 
+ * It is conceivable for our nodes to have more than 16 addresses to
+ * propagate, so packing a node in 24 bits instead of 32 would probably
+ * be pushing our luck.
+ */
 static unsigned char *tree_to_string_rec(value node, unsigned char *buffer) {
 	CAMLparam1(node);
 	CAMLlocal1(t);
