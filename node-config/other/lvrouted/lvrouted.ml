@@ -10,8 +10,8 @@ open Log
 let neighbors : Neighbor.t list ref = ref []
 (* A list of strings with interface names. 'ep0', 'sis1' etc *)
 let ifaces = ref StringMap.empty
-(* An array of HopInfo.t's for every one of 'our' addresses. *)
-let direct = ref HopInfo.Set.empty
+(* A list of Tree.nodes's for every one of 'our' addresses. *)
+let direct : Tree.node list ref = ref []
 (* A hashtable to be able to quickly see if an address is one of 'our's.
    The keys are Unix.inet_addr's and the values are 1. *)
 let directips = ref IPSet.empty
@@ -61,12 +61,12 @@ let alarm_handler _ =
 	  Log.log Log.debug "starting broadcast run";
 	  last_time := now;
 
-	  let newroutes, hoptable =
-		Neighbor.derive_routes_and_hoptable !direct
-						    !directips
+	  let newroutes, nodes =
+		Neighbor.derive_routes_and_hoptable !directips
 						    !neighbors in
+	  let nodes' = List.append nodes !direct in 
 
-	  List.iter (Neighbor.send (!sockfd) newroutes hoptable) (!neighbors);
+	  List.iter (Neighbor.send (!sockfd) newroutes nodes') (!neighbors);
 
 	  if Common.real_route_updates then begin
 		let deletes, adds = Route.diff !routes newroutes in
@@ -95,9 +95,9 @@ let read_config _ =
 			Common.is_some n) (Array.to_list (LowLevel.getifaddrs())) in
 	
 	(* Construct the direct and directips sets. *)
-	let direct', directips' = List.fold_left (fun (hopset, ipset) (_, _, a, _, _, _) ->
-				HopInfo.Set.add (HopInfo.make a) hopset,
-				IPSet.add a ipset) (HopInfo.Set.empty, IPSet.empty) routableaddrs in
+	let direct', directips' = List.fold_left (fun (direct, ipset) (_, _, a, _, _, _) ->
+				(Tree.make a)::direct,
+				IPSet.add a ipset) ([], IPSet.empty) routableaddrs in
 	direct := direct';
 	directips := directips';
 
@@ -139,10 +139,9 @@ let main =
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 
-	Log.log Log.debug "Handlers installed";
-
+(*
 	LowLevel.daemon false false;
-	Log.log Log.debug "daemonized";
+	Log.log Log.debug "daemonized"; *)
 
 	ignore(Unix.alarm 1);
 

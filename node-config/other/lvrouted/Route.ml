@@ -6,7 +6,7 @@ type route = {
 }
 
 (* Make a Set of routes *)
-module Set = Set.Make(struct
+module RouteType = struct
 	type t = route
 	(* compare first on the netmask, then on the address and finally on the gateway *)
 	let compare a b =
@@ -19,6 +19,11 @@ module Set = Set.Make(struct
 		    res'
 		else
 		  res
+end
+module Set = Set.Make(RouteType)
+module Map = Map.Make(struct
+	type t = Unix.inet_addr
+	let compare = compare
 end)
 
 (* Constructor *)

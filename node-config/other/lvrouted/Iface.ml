@@ -13,7 +13,10 @@ type t = {
 	(* when was the last arpentries and associated update? *)
 	mutable last_update: float;
 	mutable arpentries: MAC.Set.t option;
+	(* is type is master, this is the set of associated macaddrs*)
 	mutable associated: MAC.Set.t option;
+	(* is type is client, whether or not this iface is associated
+	   with a master *)
 	mutable is_associated: bool option;
 }
 

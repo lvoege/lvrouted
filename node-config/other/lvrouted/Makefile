@@ -1,12 +1,13 @@
 REQUIRES  = unix str
-OCAMLC    = ocamlfind ocamlc -w p -g -linkpkg -package "$(REQUIRES)"
+OCAMLC    = ocamlfind ocamlcp -p a -w p -g -linkpkg -package "$(REQUIRES)"
 OCAMLC_I  = ocamlc -i
-OCAMLOPT  = ocamlfind ocamlopt -w p -linkpkg -package "$(REQUIRES)"
+OCAMLOPT  = ocamlfind ocamlopt -p -w p -linkpkg -package "$(REQUIRES)"
 OCAMLDEP  = ocamldep
 OCAMLFIND = ocamlfind
+OCAMLPROF = ocamlprof
 CFLAGS= -Wall -I`ocamlfind printconf stdlib` -g
 
-SOURCES= Common.ml Log.ml LowLevel.ml MAC.ml Iface.ml Route.ml HopInfo.ml Neighbor.ml lvrouted.ml
+SOURCES= Common.ml Log.ml LowLevel.ml MAC.ml Iface.ml Route.ml Tree.ml Neighbor.ml lvrouted.ml
 MLIS= $(SOURCES:.ml=.mli)
 BYTECODE= $(SOURCES:.ml=.cmo)
 OBJCODE= $(SOURCES:.ml=.cmx)
@@ -15,8 +16,11 @@ all: depend lvrouted
 
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
+clean:
+	rm -f *.cm[oix] *.mli *~
+
 lvrouted.opt: $(OBJCODE) lowlevel_c.o
-	$(OCAMLOPT) -o $@ $(OBJCODE) lowlevel_c.o /usr/lib/libbz2.a
+	$(OCAMLOPT) -o $@ $(OBJCODE) -p lowlevel_c.o /usr/lib/libbz2.a
 
 lvrouted: $(MLIS) $(BYTECODE) lowlevel_c.o
 	$(OCAMLC) -o $@ -custom lowlevel_c.o $(BYTECODE) /usr/lib/libbz2.a
@@ -27,6 +31,12 @@ lvrouted: $(MLIS) $(BYTECODE) lowlevel_c.o
 .ml.mli:
 	$(OCAMLC_I) $(OCAMLFLAGS) -c $< > $@
 	$(OCAMLC) $(OCAMLFLAGS) -c $@
+
+.mli.cmi:
+	$(OCAMLC) $(OCAMLFLAGS) -c $<
+
+.ml.prof:
+	$(OCAMLPROF) $< > $@
 
 .ml.cmo:
 	$(OCAMLC) $(OCAMLFLAGS) -c $<

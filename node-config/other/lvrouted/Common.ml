@@ -20,10 +20,12 @@ let interlink_netmask = 28
 (* Types *)
 
 module StringMap = Map.Make(String)
-module IPSet = Set.Make(struct
+module IPStruct = struct
 	type t = Unix.inet_addr
 	let compare a b = compare a b
-end)
+end
+module IPSet = Set.Make(IPStruct)
+module IPMap = Map.Make(IPStruct)
 
 (* Convenience functions *)
 
