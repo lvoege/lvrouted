@@ -36,8 +36,10 @@ let iface n = n.iface
 
 (* send the given tree to the given neighbor *)
 let send fd (nodes: Tree.node list) n =
-	try Tree.send nodes fd n.addr;
-	with _ -> ()
+	try Tree.send nodes fd n.addr
+	with _ ->
+		Log.log Log.info ("Nuking " ^ n.name ^ "'s tree after exception while sending");
+		n.tree <- None
 
 (* Given a list of neighbors, data in a string and the sockaddr it came from,
    handle it. Find the neighbor associated with the address, parse the

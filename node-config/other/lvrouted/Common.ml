@@ -33,6 +33,8 @@ let secret = ref ""
 let foreground = ref false
 (* Maximum number of route flush attempts *)
 let max_route_flush_tries = 10
+(* Log to syslog instead of /tmp/lvrouted.log *)
+let use_syslog = ref false
 
 (* Types *)
 

@@ -87,23 +87,27 @@ let alarm_handler _ =
 	  Neighbor.Set.iter (Neighbor.send !sockfd nodes') !neighbors;
 
 	  if !Common.real_route_updates then begin
-		let deletes, adds = Route.diff !routes newroutes in
+		let deletes, adds, changes = Route.diff !routes newroutes in
 		let logroute r = Log.log Log.info (Route.show r) in
 
 		Log.log Log.info "Deletes:";
 		List.iter logroute deletes;
 		Log.log Log.info "Adds:";
 		List.iter logroute adds;
+		Log.log Log.info "Changes:";
+		List.iter logroute changes;
 
 		let logerr (r, s) = Log.log Log.info (Route.show r ^ " got " ^ s) in
 		try
-			let delerrs1, adderrs = Route.commit deletes adds in
+			let delerrs1, adderrs, changeerrs =
+				Route.commit deletes adds changes in
 			List.iter logerr delerrs1;
 			List.iter logerr adderrs;
+			List.iter logerr changeerrs;
 			(* Wait a while and then re-do the deletes. This seems
 			   to be needed sometimes. *)
 			Unix.sleep 2;
-			let delerrs2, _ = Route.commit deletes [] in
+			let delerrs2, _, _ = Route.commit deletes [] [] in
 			List.iter logerr delerrs2;
 		with Failure s ->
 			Log.log Log.errors ("Couldn't update routing table: " ^ s)
@@ -182,6 +186,7 @@ let argopts = [
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
 	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
 	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
+	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
 ]
 
 let main =

@@ -2,11 +2,3 @@
 - test for robustness. see what happens when bogus data does get through.
 - something to counter marginal links that flip between being associated
   and not being associated relatively quickly.
-- there appears to be the possibility that a route delete command can be
-  ignored by the kernel. the fact that a good purge of all routes requires
-  multiple "route flush"'s shows it as well. figure something out for this.
-  perhaps simply wait a second after the initial Route.commit, and then commit
-  the deletes again.
-- changes to routes' netmask can be done with a single change-netmask
-  message. a lot of delete-then-add's are simply widening or narrowing the
-  netmask, so perhaps it is a good idea to indeed use those messages.

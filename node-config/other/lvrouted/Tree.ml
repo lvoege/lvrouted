@@ -80,9 +80,8 @@ let send (ts: node list) fd addr =
 	let s' = if Common.compress_data then LowLevel.string_compress s
 		 else s in
 	let s'' = Common.sign_string s' in
-	try ignore(Unix.sendto fd s'' 0 (String.length s'') []
-			(Unix.ADDR_INET (addr, !Common.port)))
-	with _ -> ()
+	ignore(Unix.sendto fd s'' 0 (String.length s'') []
+			   (Unix.ADDR_INET (addr, !Common.port)))
 
 (* Read a list of nodes from the given string and return a new node. Node as
    in tree node, not wireless network node. *)

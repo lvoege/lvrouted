@@ -1,4 +1,5 @@
 /* implementation of the definitions in LowLevel.ml */
+
 /* There's plenty of code from FreeBSD's /usr/src here. For the BSD
  * license blurbs see the end of the file. */
 #include <assert.h>
@@ -6,6 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -56,7 +59,7 @@
 
 /* prepend element e before list l and return the new list. the empty
    list is to be passed as Val_int(0) */
-static value prepend_listelement(value e, value l) {
+static inline value prepend_listelement(value e, value l) {
 	CAMLparam2(e, l);
 	CAMLlocal1(cell);
 
@@ -160,6 +163,8 @@ CAMLprim value string_compress(value s) {
 	int code, buflen;
 	char *buffer;
 
+	assert(0); /* TESTME first */
+
 	buffer = 0;
 	buflen = string_length(s);
 	do {
@@ -191,6 +196,7 @@ CAMLprim value string_decompress(value s) {
 	int code, buflen;
 	char *buffer;
 
+	assert(0); /* TESTME first */
 	buffer = 0;
 	buflen = string_length(s) * 2;
 	do {
@@ -257,9 +263,9 @@ static int routemsg_add(unsigned char *buffer, int type,
 }
 #endif
 
-CAMLprim value routes_commit(value deletes, value adds) {
+CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	CAMLparam2(deletes, adds);
-	CAMLlocal4(result, adderrs, delerrs, tuple);
+	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
 #ifndef __FreeBSD__
 	assert(0);
 #else
@@ -298,11 +304,24 @@ CAMLprim value routes_commit(value deletes, value adds) {
 			delerrs = prepend_listelement(tuple, delerrs);
 		}
 	}
+
+	for (cherrs = Val_int(0); changes != Val_int(0); changes = Field(changes, 1)) {
+		value v = Field(changes, 0);
+		len = routemsg_add(buffer, RTM_CHANGE, Field(v, 0), Field(v, 1), Field(v, 2));
+		if (write(sockfd, buffer, len) < 0) {
+			tuple = alloc_tuple(2);
+			Store_field(tuple, 0, v);
+			Store_field(tuple, 1, copy_string(strerror(errno)));
+			cherrs = prepend_listelement(tuple, cherrs);
+		}
+	}
+
 	free(buffer);
 	close(sockfd);
-	result = alloc_tuple(2);
+	result = alloc_tuple(3);
 	Store_field(result, 0, delerrs);
 	Store_field(result, 1, adderrs);
+	Store_field(result, 2, cherrs);
 #endif
 	CAMLreturn(result);
 }
@@ -349,7 +368,7 @@ CAMLprim value caml_getifaddrs(value unit) {
 	result = Val_int(0);
 	for (ifp = ifap; ifp; ifp = ifp->ifa_next) {
 		if (ifp->ifa_addr->sa_family != AF_INET)
-		  continue;
+		  continue;	/* not interested */
 
 		tuple = alloc_tuple(6);
 		Store_field(tuple, 0, copy_string(ifp->ifa_name));
@@ -692,6 +711,21 @@ CAMLprim value hexdump_string(value s) {
 		sp++;
 	}
 	CAMLreturn(result);
+}
+
+CAMLprim value caml_syslog(value pri, value s) {
+	CAMLparam2(pri, s);
+	int tmp[5] = {
+		LOG_CRIT,
+		LOG_ERR,
+		LOG_WARNING,
+		LOG_INFO,
+		LOG_DEBUG
+	};
+	if (Long_val(pri) >= 5)
+	  failwith("Invalid priority for syslog()");
+	syslog(tmp[Long_val(pri)], String_val(s));
+	CAMLreturn(Val_unit);
 }
 
 /* from wicontrol.c: */
