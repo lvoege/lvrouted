@@ -54,28 +54,9 @@ let check_reachable _ =
 	unreachable := new_unreachable;
 	reachable_changed
 
-(* This function is the main work horse. It:
-
-     - polls for interesting events
-     - merges received spanning trees into a new spanning tree.
-     - derives a new routing table from the merged spanning tree
-     - applies the changes between the old and the new routing table to
-       the kernel (if configured to do so)
-     - sends the new spanning tree to the neighbors
- *)
-let periodic_check sockfd =
-	Log.log Log.debug "in alarm_handler";
-
-	let expired = Neighbor.nuke_old_trees !neighbors Common.timeout in
-
-	let now = Unix.gettimeofday () in
-	let its_time = (now -. !last_time) > !bcast_interval in
-
-	(* If there's enough reason, derive a new routing table and a new
-	   tree and send it around. *)
-	if check_reachable () || expired || its_time then begin try
+let broadcast_run udpsockfd rtsockfd =
 	  Log.log Log.debug "starting broadcast run";
-	  last_time := now;
+	  last_time := Unix.gettimeofday ();
 
 	  (* DEBUG: Dump the incoming trees to the filesystem *)
 	  Neighbor.Set.iter (fun n ->
@@ -105,15 +86,15 @@ let periodic_check sockfd =
 	     to the wireless neighbors. *)
 	  if not (Common.wired_links_are_zero_cost) ||
 	     IPSet.is_empty !neighbors_wired_ip then
-	    Neighbor.bcast sockfd nodes !neighbors
+	    Neighbor.bcast udpsockfd nodes !neighbors
 	  else begin
 	  	let nodes' = Tree.promote_children !neighbors_wireless_ip nodes in
-	  	Neighbor.bcast sockfd nodes' !neighbors_wired;
+	  	Neighbor.bcast udpsockfd nodes' !neighbors_wired;
 
 		Tree.dump_tree "lvrouted.mytree-wired" nodes';
 
 		let nodes' = Tree.promote_children !neighbors_wired_ip nodes in
-	  	Neighbor.bcast sockfd nodes' !neighbors_wireless;
+	  	Neighbor.bcast udpsockfd nodes' !neighbors_wireless;
 
 		Tree.dump_tree "lvrouted.mytree-wireless" nodes';
 	  end;
@@ -134,7 +115,7 @@ let periodic_check sockfd =
 		(* commit the updates to the kernel *)
 		try
 			let delerrs, adderrs, changeerrs =
-				Route.commit deletes adds changes in
+				Route.commit rtsockfd deletes adds changes in
 			
 			Log.lazylog Log.info (fun _ ->
 				List.map (fun (r, s) -> Route.show r ^ " got error " ^ s)
@@ -148,10 +129,56 @@ let periodic_check sockfd =
 		output_string out (Route.showroutes newroutes);
 		close_out out;
 	  end;
-	  Log.log Log.debug "finished broadcast run";
-	with _ ->
-		Log.log Log.errors ("Uncaught exception in alarm handler!");
-	end
+	  Log.log Log.debug "finished broadcast run"
+
+(* This function is the main work horse. It:
+
+     - polls for interesting events
+     - merges received spanning trees into a new spanning tree.
+     - derives a new routing table from the merged spanning tree
+     - applies the changes between the old and the new routing table to
+       the kernel (if configured to do so)
+     - sends the new spanning tree to the neighbors
+ *)
+let periodic_check udpsockfd rtsockfd =
+	Log.log Log.debug "in alarm_handler";
+
+	let expired = Neighbor.nuke_old_trees !neighbors Common.timeout in
+
+	let now = Unix.gettimeofday () in
+	let its_time = (now -. !last_time) > !bcast_interval in
+
+	(* If there's enough reason, derive a new routing table and a new
+	   tree and send it around. *)
+	if check_reachable () || expired || its_time then
+	  broadcast_run udpsockfd rtsockfd
+
+let handle_routemsg udpsockfd rtsockfd = function
+	  LowLevel.RTM_NEWADDR (iface, addr, mask) ->
+	  	direct := (Tree.make addr [])::!direct;
+		directnets := (addr, mask)::!directnets;
+		broadcast_run udpsockfd rtsockfd
+	| LowLevel.RTM_DELADDR (iface, addr, mask) ->
+		direct := List.filter (fun n -> Tree.addr n != addr) !direct;
+		directnets := List.filter (fun (a, m) -> a != addr && m != mask)
+					  !directnets;
+		broadcast_run udpsockfd rtsockfd
+	| LowLevel.RTM_IFINFO (iface, false) ->
+		Neighbor.nuke_trees_for_iface !neighbors iface;
+		broadcast_run udpsockfd rtsockfd
+	| LowLevel.RTM_IFANNOUNCE (iface, false) ->
+		Neighbor.nuke_trees_for_iface !neighbors iface;
+		broadcast_run udpsockfd rtsockfd
+	| LowLevel.RTM_IFANNOUNCE (iface, true) ->
+		let i = Iface.make iface in
+		ifaces := StringMap.add iface i !ifaces;
+		broadcast_run udpsockfd rtsockfd
+	| LowLevel.RTM_IEEE80211_ASSOC ->  ()
+	| LowLevel.RTM_IEEE80211_REASSOC ->  ()
+	| LowLevel.RTM_IEEE80211_DISASSOC ->  ()
+	| LowLevel.RTM_IEEE80211_JOIN ->  ()
+	| LowLevel.RTM_IEEE80211_LEAVE ->  ()
+	| _ -> ()
 
 let abort_handler _ =
 	Log.log Log.info "Exiting.";
@@ -311,9 +338,10 @@ let _ =
 	set_handler dump_state [Sys.sigusr2];
 	Log.log Log.info "Set signal handlers";
 
-	let sockfd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
-	Unix.setsockopt sockfd Unix.SO_REUSEADDR true;
-	Unix.bind sockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
+	let udpsockfd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
+	Unix.setsockopt udpsockfd Unix.SO_REUSEADDR true;
+	Unix.bind udpsockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
+	let rtsockfd = LowLevel.open_rtsock () in
 	Log.log Log.info "Opened and bound socket";
 
 	let logfrom s = Log.log Log.debug
@@ -321,17 +349,20 @@ let _ =
 			 Unix.string_of_inet_addr
 				(Common.get_addr_from_sockaddr s)) in
 	let s = String.create 65536 in
+	let readfds = [ udpsockfd; rtsockfd ] in
 	while true do try
-		let fds, _, _ = Unix.select [sockfd] [] []
+		let fds, _, _ = Unix.select readfds [] []
 					!Common.alarm_timeout in
-		if fds = [] then periodic_check sockfd
-		else begin
-			let len, sockaddr = Unix.recvfrom sockfd s 0
+		if fds = [] then periodic_check udpsockfd rtsockfd
+		else if List.mem udpsockfd fds then begin
+			let len, sockaddr = Unix.recvfrom udpsockfd s 0
 						(String.length s) [] in
 			logfrom sockaddr;
 			Neighbor.handle_data !neighbors
 					     (String.sub s 0 len) sockaddr;
 			Log.log Log.debug ("data handled");
-		end
+		end else if List.mem rtsockfd fds then
+		  handle_routemsg udpsockfd rtsockfd
+		  		  (LowLevel.read_routemsg rtsockfd);
 	with _ -> ()
 	done

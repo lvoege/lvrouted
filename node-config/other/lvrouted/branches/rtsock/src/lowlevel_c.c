@@ -271,8 +271,9 @@ static int routemsg_add(unsigned char *buffer, int type,
 }
 #endif
 
-CAMLprim value routes_commit(value deletes, value adds, value changes) {
-	CAMLparam3(deletes, adds, changes);
+CAMLprim value routes_commit(value rtsock,
+			value deletes, value adds, value changes) {
+	CAMLparam4(rtsock, deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
 	CAMLlocal1(v);
 #ifndef __FreeBSD__
@@ -284,16 +285,11 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	FILE *debug;
 #endif
 
-	sockfd = socket(PF_ROUTE, SOCK_RAW, 0);
-	if (sockfd == -1)
-	  failwith("routing socket");
-	shutdown(sockfd, SHUT_RD); 
+	sockfd = Long_val(rtsock);
 	buflen = sizeof(struct rt_msghdr) + 3 * sizeof(struct sockaddr_in);
 	buffer = malloc(buflen);
-	if (buffer == 0) {
-		close(sockfd);
-		failwith("malloc");
-	}
+	if (buffer == 0)
+	  failwith("malloc");
 
 	for (adderrs = Val_int(0); adds != Val_int(0); adds = Field(adds, 1)) {
 		v = Field(adds, 0);
@@ -334,7 +330,6 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	free(buffer);
-	close(sockfd);
 	result = alloc_tuple(3);
 	Store_field(result, 0, delerrs);
 	Store_field(result, 1, adderrs);
@@ -804,7 +799,15 @@ CAMLprim value string_to_tree(value s) {
 	CAMLreturn(string_to_tree_rec(&p, p + string_length(s)));
 }
 
-#if 0
+CAMLprim value open_rtsock(value unit) {
+	CAMLparam1(unit);
+	int sockfd;
+	sockfd = socket(PF_ROUTE, SOCK_RAW, 0);
+	if (sockfd == -1)
+	  failwith("Routing socket");
+	CAMLreturn(Val_int(sockfd));
+}
+
 /* read a routing message from the given file descriptor and return what it
  * said. */
 CAMLprim value read_routemsg(value fd) {
@@ -858,7 +861,6 @@ CAMLprim value read_routemsg(value fd) {
 	}
 	CAMLreturn(res);
 }
-#endif
 
 /* from wicontrol.c: */
 /*

@@ -89,9 +89,8 @@ external pack_int: int -> string
 external unpack_int: string -> int
   = "caml_unpack_int"
 
-(* THIS IS FOR WHEN FREEBSD'S ROUTING SOCKET STARTS DELIVERING 802.11 EVENTS.
-   Stubs for this have begun to appear in /usr/src/sys/net/rtsock.c but aren't
-   used yet.
+external open_rtsock: unit -> Unix.file_descr
+  = "open_rtsock"
 
 type routemsg =
 	  RTM_NOTHING
@@ -99,7 +98,14 @@ type routemsg =
 	| RTM_DELADDR	of string * Unix.inet_addr * int
 	| RTM_IFINFO	of string * bool
 	| RTM_IFANNOUNCE of string * bool
-	| RTM_IEEE80211 of string
+	| RTM_IEEE80211_ASSOC		(* station associate (bss mode) *)
+	| RTM_IEEE80211_REASSOC		(* station re-associate (bss mode *)
+	| RTM_IEEE80211_DISASSOC	(* station disassociate (bss mode *)
+	| RTM_IEEE80211_JOIN		(* station join (ap mode) *)
+	| RTM_IEEE80211_LEAVE		(* station leave (ap mode) *)
+	| RTM_IEEE80211_SCAN		(* scan complete, results available *)
+	| RTM_IEEE80211_REPLAY		(* sequence counter replay detected *)
+	| RTM_IEEE80211_MICHAEL		(* Michael MIC failure detected *)
 
 (* RTM_NOTHING: nothing interesting
    RTM_NEWADDR: the interface with the given name got a new address and netmask
@@ -109,4 +115,4 @@ type routemsg =
    RTM_IEEE80211: a wireless event *)
 
 external read_routemsg: Unix.file_descr -> routemsg
-  = "read_routemsg" *)
+  = "read_routemsg"
