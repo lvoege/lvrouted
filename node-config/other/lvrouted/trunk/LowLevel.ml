@@ -82,6 +82,9 @@ external hexdump_string: string -> string
 external syslog: int -> string -> unit
   = "caml_syslog"
 
+external sbrk: unit -> int
+  = "caml_sbrk"
+
 (* THIS IS FOR WHEN FREEBSD'S ROUTING SOCKET STARTS DELIVERING 802.11 EVENTS.
    Stubs for this have begun to appear in /usr/src/sys/net/rtsock.c but aren't
    used yet.
@@ -103,4 +106,3 @@ type routemsg =
 
 external read_routemsg: Unix.file_descr -> routemsg
   = "read_routemsg" *)
-
