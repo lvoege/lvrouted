@@ -42,18 +42,17 @@ let show l =
       add a route and create a new node and prepend it to the parent's
       list of children.
    4. Filter out routes that are included in a route from the
-      list of directly attached routes.
+      list of directly attached routes. This may not be necessary anymore, but
+      it was when route addition didn't work correctly.
 
-   The traversal routine applies a callback function to a list of
-   (node, parent, gateway address) tuples. If the callback produces a
-   new node, it is hooked under the parent's list of children and the
-   original node's children are appended to the list of tuples to
-   traverse.
-
-TODO: 4 may be nothing more than cosmetics now that route addition
-      finally works right. 4 was added because some of the evidence
-      while debugging pointed to such routes acting up. check if it
-      is just cosmetic now and note it.
+   The traversal routine takes a routing table and a list of tuples to
+   process. Those tuples are of the form (node, parent, gateway address).
+   If the node isn't already in the routing table:
+     - a new node is produced and hooked under the parent
+     - the new node is inserted into the routing table
+     - the original node's children are appended to the list of tuples to
+       process, with the new node as the parent entry. the gateway argument
+       stays the same.
 
    Note that the resulting spanning tree is returned as the list of
    first-level nodes, because the top node is relevant only to the
