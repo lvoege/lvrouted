@@ -109,7 +109,8 @@ let alarm_handler _ =
 	     tree first, then create a new tree with the wired neighbors'
 	     children promoted to peers and send that to the wireless
 	     neighbors. *)
-	  if IPSet.is_empty !neighbors_wired_ip then
+	  if not (Common.wired_links_are_zero_cost) ||
+	     IPSet.is_empty !neighbors_wired_ip then
 	    Neighbor.bcast !sockfd nodes !neighbors
 	  else begin
 	  	let nodes' = Tree.promote_children !neighbors_wireless_ip nodes in

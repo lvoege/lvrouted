@@ -110,10 +110,11 @@ let from_string s from_addr : node =
    then gets advertised and hides them from other neighbors, making the wired
    nodes essentially act as one. *)
 let promote_children set nodes =
+	let nodes' = List.map copy nodes in
 	let l' = List.map (fun n ->
 				if IPSet.mem n.addr set then
 					let children = n.nodes in
 					n.nodes <- [];
 					n::children
-				else [n]) nodes in
+				else [n]) nodes' in
 	List.concat l'
