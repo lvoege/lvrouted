@@ -60,7 +60,7 @@ external get_addrs_in_block: Unix.inet_addr -> int -> Unix.inet_addr list
 external get_arp_entries: unit -> ( string		(* iface name *)
 				  * Unix.inet_addr	(* IPv4 addr *)
 				  * string)		(* MAC.t *)
-				  array
+				  list
   = "get_arp_entries"
 
 (* Get all the MAC.t's that are associated with the interface with the given 
@@ -76,7 +76,8 @@ external hexdump_string: string -> string
   = "hexdump_string"
 
 (* Send the given string with the given priority to the syslog. These
-   priorities are those as defined in Log.ml *)
+   priorities are those as defined in Log.ml, /not/ the standard values
+   from <syslog.h> ! *)
 external syslog: int -> string -> unit
   = "caml_syslog"
 
