@@ -194,12 +194,12 @@ let main =
 	let s = String.create 10240 in
 	while true do 
 		try
-			let _, sockaddr = Unix.recvfrom !sockfd s 0 (String.length s) [] in
+			let len, sockaddr = Unix.recvfrom !sockfd s 0 (String.length s) [] in
 			Log.log Log.debug ("got data from " ^
 					Unix.string_of_inet_addr (
 					Common.get_addr_from_sockaddr
 					sockaddr));
-			Neighbor.handle_data !neighbors s sockaddr;
+			Neighbor.handle_data !neighbors (String.sub s 0 len) sockaddr;
 			Log.log Log.debug ("data handled");
 		with _ -> ()
 	done

@@ -6,9 +6,9 @@ OCAMLDEP  = ocamldep
 OCAMLFIND = ocamlfind
 OCAMLPROF = ocamlprof
 CFLAGS= -Wall -I`ocamlfind printconf stdlib` -g
-LIBS=-cclib -lbz2 -cclib -lmd
+LIBS=-cclib -lbz2 -cclib -lcrypto
 
-SOURCES= Common.ml Log.ml LowLevel.ml MAC.ml Iface.ml Route.ml Tree.ml Neighbor.ml lvrouted.ml
+SOURCES= LowLevel.ml Log.ml Common.ml MAC.ml Iface.ml Route.ml Tree.ml Neighbor.ml lvrouted.ml
 MLIS= $(SOURCES:.ml=.mli)
 BYTECODE= $(SOURCES:.ml=.cmo)
 OBJCODE= $(SOURCES:.ml=.cmx)

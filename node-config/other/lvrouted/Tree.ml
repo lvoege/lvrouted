@@ -5,8 +5,11 @@ type node = {
 	mutable nodes: node list;
 }
 
+(* Tree.from_string will verify the signature of a packet and will throw this
+   exception if that turns out bad *)
 exception InvalidSignature
 
+(* Constructor *)
 let make a = { addr = a; nodes = [] }
 
 (* Traverse a list of nodes breadth-first, calling a function for every node. The
@@ -69,8 +72,7 @@ let send (ts: node list) fd addr =
 	let s = Marshal.to_string ts [] in
 	let s' = if Common.compress_data then LowLevel.string_compress s
 		 else s in
-	let s'' = if !Common.secret = "" then s'
-		  else (LowLevel.sha_string (!Common.secret ^ s')) ^ s' in
+	let s'' = Common.sign_string s' in
 	try ignore(Unix.sendto fd s'' 0 (String.length s'') []
 			(Unix.ADDR_INET (addr, !Common.port)))
 	with _ -> ()
@@ -78,12 +80,9 @@ let send (ts: node list) fd addr =
 (* Read a list of nodes from the given string and return a new node. Node as
    in tree node, not wireless network node. *)
 let from_string s from_addr : node =
-	let s' = if !Common.secret = "" then s
-		 else let sha = String.sub s 0 20 in
-		      let t = String.sub s 20 (String.length s - 20) in
-		      if LowLevel.sha_string (!Common.secret ^ t) != sha then
-		        raise InvalidSignature;
-		      t in
+	let goodsig, s' = Common.verify_string s in
+	if not goodsig then
+	  raise InvalidSignature;
 	let s'' = if Common.compress_data then LowLevel.string_decompress s'
 		  else s' in
 	(* This is the most dangerous bit in all of the code: *)

@@ -96,3 +96,14 @@ let snarf_channel_for_re c re numgroups =
 		end
 	) lines;
 	List.rev (!res)
+
+let sign_string s = 
+	if !secret = "" then s
+	else (LowLevel.sha_string (!secret ^ s)) ^ s
+
+let verify_string s =
+	if !secret = "" then true, s
+	else let sha = String.sub s 0 20 in
+	     let s' = String.sub s 20 (String.length s - 20) in
+	     let sha' = LowLevel.sha_string (!secret ^ s') in
+	     sha' = sha, s'

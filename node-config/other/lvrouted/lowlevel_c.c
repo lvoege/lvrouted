@@ -35,7 +35,8 @@
 #include <net/ethernet.h>
 #include <arpa/inet.h>   
 #include <net/route.h>
-#include <sha.h>
+
+#include <openssl/sha.h>
 
 #include <bzlib.h>
 
@@ -635,11 +636,28 @@ CAMLprim value routes_fetch(value unit) {
 CAMLprim value sha_string(value string) {
 	CAMLparam1(string);
 	CAMLlocal1(result);
-	char *p;
 
-	p = SHA1_Data(String_val(string), string_length(string), 0);
-	result = copy_string(p);
-	free(p);
+	result = alloc_string(SHA_DIGEST_LENGTH);
+	SHA1(String_val(string), string_length(string), String_val(result));
+	CAMLreturn(result);
+}
+
+CAMLprim value hexdump_string(value s) {
+	CAMLparam1(s);
+	CAMLlocal1(result);
+	int i, len;
+	unsigned char *sp, *rp;
+
+	len = string_length(s);
+	result = alloc_string(2 * len);
+	sp = String_val(s);
+	rp = String_val(result);
+	for (i = 0; i < len; i++) {
+#define DIGIT(x) ((x) + ((x) < 10 ? '0' : 'a' - 10))
+		*rp++ = DIGIT(*sp >> 4);
+		*rp++ = DIGIT(*sp & 15);
+		sp++;
+	}
 	CAMLreturn(result);
 }
 

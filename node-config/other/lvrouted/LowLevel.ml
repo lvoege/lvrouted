@@ -65,3 +65,6 @@ external get_associated_stations: string -> string array
 
 external sha_string: string -> string
   = "sha_string"
+
+external hexdump_string: string -> string
+  = "hexdump_string"
