@@ -808,19 +808,57 @@ CAMLprim value open_rtsock(value unit) {
 	CAMLreturn(Val_int(sockfd));
 }
 
+static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
+	CAMLparam0();
+	CAMLlocal2(res, addr);
+	char *p, ifnam[IFNAMSIZ];
+	int i, masklen, okay_to_add;
+	struct sockaddr_in *sin;
+
+	if (if_indextoname(ifa->ifam_index, ifnam) == 0)
+	  failwith("Unknown interface in read_routemsg");
+	p = (char *)(ifa + 1);
+	okay_to_add = 1;
+	for (i = 1; i && okay_to_add; i <<= 1) {
+		if (ifa->ifam_addrs & i) {
+			sin = (struct sockaddr_in *)p;
+			switch (i) {
+				case RTA_NETMASK:
+					if (sin->sin_family != AF_INET)
+					  okay_to_add = 0;
+					else
+					  masklen = bitcount(sin->sin_addr.s_addr);
+					break;
+				case RTA_IFA:
+					if (sin->sin_family != AF_INET)
+					  okay_to_add = 0;
+					else {
+						addr = alloc_string(4);
+						memcpy(String_val(addr), &sin->sin_addr.s_addr, sizeof(in_addr_t));
+					}
+					break;
+			}
+			p += SA_SIZE(sin);
+		}
+	}
+	if (okay_to_add) {
+		res = alloc_small(3, tag);
+		Field(res, 0) = copy_string(ifnam);
+		Field(res, 1) = addr;
+		Field(res, 2) = Val_int(masklen);
+	} else res = Val_int(0);
+	CAMLreturn(res);
+}
+
 /* read a routing message from the given file descriptor and return what it
  * said. */
 CAMLprim value read_routemsg(value fd) {
 	CAMLparam1(fd);
 	CAMLlocal2(res, addr);
 	char *p, *buffer;
-	char ifnam[IFNAMSIZ];
-	int i, buflen, toread, numread, masklen;
+	int buflen, toread, numread;
 	struct rt_msghdr *rtm;
-	struct if_msghdr *ifm;
 	struct ifa_msghdr *ifa;
-	struct if_announcemsghdr *ifann;
-	struct sockaddr_in *sin;
 
 	buflen = toread = 1024;
 	buffer = p = malloc(buflen);
@@ -834,76 +872,14 @@ CAMLprim value read_routemsg(value fd) {
 	}
 	
 	rtm = (struct rt_msghdr *)buffer;
+	ifa = (struct ifa_msghdr *)buffer;
 	switch (rtm->rtm_type) {
 		case RTM_NEWADDR:
-			ifa = (struct ifa_msghdr *)buffer;
-			if (if_indextoname(ifa->ifam_index, ifnam) == 0)
-			  failwith("Unknown interface in read_routemsg");
-			p = (char *)(ifa + 1);
-			for (i = 1; i; i <<= 1) {
-				if (ifa->ifam_addrs & i) {
-					sin = (struct sockaddr_in *)p;
-					switch (i) {
-						case RTA_NETMASK:
-							masklen = bitcount(sin->sin_addr.s_addr);
-							break;
-						case RTA_IFA:
-							addr = alloc_string(4);
-							memcpy(String_val(addr), &sin->sin_addr.s_addr, sizeof(in_addr_t));
-							break;
-					}
-					p += SA_SIZE(sin);
-				}
-			}
-			res = alloc_small(3, 0);
-			Field(res, 0) = copy_string(ifnam);
-			Field(res, 1) = addr;
-			Field(res, 2) = Val_int(masklen);
+			res = get_routemsg(ifa, 0);
 			break;
 		case RTM_DELADDR:
-			ifa = (struct ifa_msghdr *)buffer;
-			if (if_indextoname(ifa->ifam_index, ifnam) == 0)
-			  failwith("Unknown interface in read_routemsg");
-			p = (char *)(ifa + 1);
-			for (i = 1; i; i <<= 1) {
-				if (ifa->ifam_addrs & i) {
-					sin = (struct sockaddr_in *)p;
-					switch (i) {
-						case RTA_NETMASK:
-							masklen = bitcount(sin->sin_addr.s_addr);
-							break;
-						case RTA_IFA:
-							addr = alloc_string(4);
-							memcpy(String_val(addr), &sin->sin_addr.s_addr, sizeof(in_addr_t));
-							break;
-					}
-					p += SA_SIZE(sin);
-				}
-			}
-			res = alloc_small(3, 1);
-			Field(res, 0) = copy_string(ifnam);
-			Field(res, 1) = addr;
-			Field(res, 2) = Val_int(masklen);
+			res = get_routemsg(ifa, 1);
 			break;
-		case RTM_IFINFO:
-			ifm = (struct if_msghdr *)buffer;
-			if (if_indextoname(ifm->ifm_index, ifnam) == 0)
-			  failwith("Unknown interface in read_routemsg");
-			res = alloc_small(2, 2);
-			Field(res, 0) = copy_string(ifnam);
-			Field(res, 1) = Val_bool(ifm->ifm_data.ifi_link_state == LINK_STATE_UP);
-			break;
-		case RTM_IFANNOUNCE:
-			ifann = (struct if_announcemsghdr *)buffer;
-			res = alloc_small(2, 3);
-			Field(res, 0) = copy_string(ifann->ifan_name);
-			Field(res, 1) = Val_bool(ifann->ifan_what == IFAN_ARRIVAL);
-			break;
-#if defined(__FreeBSD_version) && __FreeBSD_version >= 600006
-		case RTM_IEEE80211:
-			res = alloc_small(1, 4);
-			break;
-#endif
 		default:
 			res = Val_int(0);
 	}

@@ -54,6 +54,14 @@ let check_reachable _ =
 	unreachable := new_unreachable;
 	reachable_changed
 
+(* This function is the main work horse. It:
+
+     - merges received spanning trees into a new spanning tree.
+     - derives a new routing table from the merged spanning tree
+     - applies the changes between the old and the new routing table to
+       the kernel (if configured to do so)
+     - sends the new spanning tree to the neighbors
+ *)
 let broadcast_run udpsockfd rtsockfd =
 	  Log.log Log.debug "starting broadcast run";
 	  last_time := Unix.gettimeofday ();
@@ -131,15 +139,9 @@ let broadcast_run udpsockfd rtsockfd =
 	  end;
 	  Log.log Log.debug "finished broadcast run"
 
-(* This function is the main work horse. It:
-
-     - polls for interesting events
-     - merges received spanning trees into a new spanning tree.
-     - derives a new routing table from the merged spanning tree
-     - applies the changes between the old and the new routing table to
-       the kernel (if configured to do so)
-     - sends the new spanning tree to the neighbors
- *)
+(* This function is called periodically. It decides whether or not to start
+   a broadcast_run by checking for changes in reachability, expired trees
+   or if it's just time to do so. *)
 let periodic_check udpsockfd rtsockfd =
 	Log.log Log.debug "in alarm_handler";
 
@@ -152,37 +154,6 @@ let periodic_check udpsockfd rtsockfd =
 	   tree and send it around. *)
 	if check_reachable () || expired || its_time then
 	  broadcast_run udpsockfd rtsockfd
-
-let handle_routemsg udpsockfd rtsockfd = function
-	  LowLevel.RTM_NEWADDR (iface, addr, mask) ->
-	  	if Common.addr_in_range addr then begin
-			direct := (Tree.make addr [])::!direct;
-			directnets := (addr, mask)::!directnets;
-			broadcast_run udpsockfd rtsockfd
-		end
-	| LowLevel.RTM_DELADDR (iface, addr, mask) ->
-		if Common.addr_in_range addr then begin
-			direct := List.filter (fun n -> Tree.addr n != addr) !direct;
-			directnets := List.filter (fun (a, m) -> a != addr && m != mask)
-						  !directnets;
-			broadcast_run udpsockfd rtsockfd
-		end
-	| LowLevel.RTM_IFINFO (iface, false) ->
-		Neighbor.nuke_trees_for_iface !neighbors iface;
-		broadcast_run udpsockfd rtsockfd
-	| LowLevel.RTM_IFANNOUNCE (iface, false) ->
-		Neighbor.nuke_trees_for_iface !neighbors iface;
-		broadcast_run udpsockfd rtsockfd
-	| LowLevel.RTM_IFANNOUNCE (iface, true) ->
-		let i = Iface.make iface in
-		ifaces := StringMap.add iface i !ifaces;
-		broadcast_run udpsockfd rtsockfd
-	| LowLevel.RTM_IEEE80211_ASSOC ->  ()
-	| LowLevel.RTM_IEEE80211_REASSOC ->  ()
-	| LowLevel.RTM_IEEE80211_DISASSOC ->  ()
-	| LowLevel.RTM_IEEE80211_JOIN ->  ()
-	| LowLevel.RTM_IEEE80211_LEAVE ->  ()
-	| _ -> ()
 
 let abort_handler _ =
 	Log.log Log.info "Exiting.";
@@ -253,6 +224,19 @@ let read_config _ =
 						!neighbors_wired IPSet.empty;
 	neighbors_wireless_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
 						!neighbors_wireless IPSet.empty
+
+let handle_routemsg udpsockfd rtsockfd = function
+	  LowLevel.RTM_NEWADDR (iface, addr, mask) ->
+	  	if Common.addr_in_range addr then begin
+			read_config ();
+			broadcast_run udpsockfd rtsockfd
+		end
+	| LowLevel.RTM_DELADDR (iface, addr, mask) ->
+		if Common.addr_in_range addr then begin
+			read_config ();
+			broadcast_run udpsockfd rtsockfd
+		end
+	| _ -> ()
 	
 let version_info =
 		["Version info: ";
@@ -357,16 +341,21 @@ let _ =
 	while true do try
 		let fds, _, _ = Unix.select readfds [] []
 					!Common.alarm_timeout in
-		if fds = [] then periodic_check udpsockfd rtsockfd
-		else if List.mem udpsockfd fds then begin
-			let len, sockaddr = Unix.recvfrom udpsockfd s 0
-						(String.length s) [] in
-			logfrom sockaddr;
-			Neighbor.handle_data !neighbors
-					     (String.sub s 0 len) sockaddr;
-			Log.log Log.debug ("data handled");
-		end else if List.mem rtsockfd fds then
-		  handle_routemsg udpsockfd rtsockfd
-		  		  (LowLevel.read_routemsg rtsockfd);
+		if fds = [] then
+		  periodic_check udpsockfd rtsockfd
+		else begin
+			if List.mem udpsockfd fds then begin
+				let len, sockaddr = Unix.recvfrom udpsockfd s 0
+							(String.length s) [] in
+				logfrom sockaddr;
+				Neighbor.handle_data !neighbors
+						     (String.sub s 0 len)
+						     sockaddr;
+				Log.log Log.debug ("data handled");
+			end;
+			if List.mem rtsockfd fds then
+			  handle_routemsg udpsockfd rtsockfd
+					  (LowLevel.read_routemsg rtsockfd);
+		end;
 	with _ -> ()
 	done
