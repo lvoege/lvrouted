@@ -119,7 +119,7 @@ CAMLprim value caml_iface_is_associated(value iface) {
 static inline in_addr_t get_addr(value addr) {
 	if (string_length(addr) != 4)
 	  failwith("I only support IPv4 for now");
-	return ntohl(((struct in_addr *)addr)->s_addr);
+	return ntohl(((struct in_addr *)(String_val(addr)))->s_addr);
 }
 
 static inline unsigned int bitmask(int masklen) {
@@ -734,7 +734,7 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer) {
 	}
 	i <<= 20;
 	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
-	*(int *)buffer = i;
+	*(int *)buffer = htonl(i);
 	CAMLreturn(buffer_tmp);
 }
 
@@ -759,10 +759,10 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 
 	if (*pp >= limit)
 	  failwith("faulty packet");
-	i = *(int *)(*pp);
+	i = ntohl(*(int *)(*pp));
 	*pp += sizeof(int);
 	a = alloc_string(4);
-	*(int *)(String_val(a)) = ntohl(0xac100000 + (i & ((1 << 20) - 1)));
+	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
 	node = alloc_small(2, 0);
 	Field(node, 0) = a;
 	Field(node, 1) = Val_int(0);
