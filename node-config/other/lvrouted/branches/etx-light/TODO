@@ -1,9 +1,6 @@
 - integrate MAC.ml and Iface.ml. They deal in mostly the same issues, ethernet
   interfaces and their addresses.
 
-- rework Neighbor.send into a Neighbor.bcast that only Marshals the tree once for all neighbors.
-  send the numreceived char prepended to the marshalled tree.
-
 - right now, a link is a link is a link. perhaps make a distinction between
   wired and wireless interfaces in the tree merger. propagate the information
   to the merger, and have it hoist the children of a wired neighbor up a

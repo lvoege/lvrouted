@@ -80,6 +80,20 @@ let merge nodes directnets =
 			else IPMap.add a gw map) !routes IPMap.empty;
 	fake.nodes, !routes
 
+let to_string (nodes: node list) = Marshal.to_string nodes []
+
+(* Read a list of nodes from the given string and return a new node. Node as
+   in tree node, not wireless network node. *)
+let from_string s from_addr : node =
+	let goodsig, s' = Common.verify_string s in
+	if not goodsig then
+	  raise InvalidSignature;
+	let s'' = if Common.compress_data then LowLevel.string_decompress s'
+		  else s' in
+	(* This is the most dangerous bit in all of the code: *)
+	let nodes = (Marshal.from_string s'' 0: node list) in
+	{ addr = from_addr; nodes = nodes }
+
 (* This is basically a hack. Given a list of first-level nodes and a set for
    which membership entails being connected to this node through an ethernet
    wire (as opposed to wireless), return a list of first-level nodes with

@@ -30,36 +30,41 @@ let make iface addr =
 
 let iface n = n.iface
 
-(* send the given tree to the given neighbor *)
-let send fd (nodes: Tree.node list) n =
-	try
-		let s = Marshal.to_string (char_of_int (Queue.length n.recvstamps), nodes) [] in
-		let s' = if Common.compress_data then LowLevel.string_compress s
-			 else s in
-		let s'' = Common.sign_string s' in
-		ignore(Unix.sendto fd s'' 0 (String.length s'') []
-				   (Unix.ADDR_INET (n.addr, !Common.port)))
-	with _ ->
-		Log.log Log.info ("Nuking " ^ name n ^ "'s tree after exception while sending");
-		n.tree <- None
+(* Broadcast the given list of tree nodes to the given Set of neighbors over
+   the given file descriptor. *)
+let bcast fd nodes ns =
+	let s = Tree.to_string nodes in
+	let s = if Common.compress_data then LowLevel.string_compress s
+		else s in
+	Set.iter (fun n ->
+		let c = char_of_int (Queue.length n.recvstamps) in
+		let s' = Common.sign_string ((String.make 1 c) ^ s) in
+		ignore(Unix.sendto fd s' 0 (String.length s') []
+			   (Unix.ADDR_INET (n.addr, !Common.port)))) ns
 
-(* Given a list of neighbors, data in a string and the sockaddr it came from,
+(* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Find the neighbor associated with the address, parse the
    tree and mark the time *)
 let handle_data ns s sockaddr =
 	let addr = Common.get_addr_from_sockaddr sockaddr in
-	let goodsig, s' = Common.verify_string s in
+	let goodsig, s = Common.verify_string s in
 	if not goodsig then
 		Log.log Log.warnings
 			("Received invalid signature from " ^ Unix.string_of_inet_addr addr)
-	else try
-		let s'' = if Common.compress_data then LowLevel.string_decompress s'
-			  else s' in
+        else let len = String.length s in
+	     if len = 0 then
+		Log.log Log.warnings
+			("Received zero-length packet from " ^ Unix.string_of_inet_addr addr)
+	else let numreceived = String.get s 0 in
+	     let s = String.sub s 1 (len - 1) in
+	     try
+		let s = if Common.compress_data then LowLevel.string_decompress s
+			else s in
 		let n = Set.filter (fun n -> n.addr = addr) ns in
 		let n = List.hd (Set.elements n) in
 		Log.log Log.debug ("This data is from neighbor " ^ name n);
 		try
-			let numreceived, nodes = (Marshal.from_string s'' 0: (char * (Tree.node list))) in
+			let nodes = (Marshal.from_string s 1: (Tree.node list)) in
 			let numreceived = int_of_char numreceived in
 			if numreceived < Queue.length n.recvstamps - Common.max_lost_packets then
 			  Log.log Log.warnings (name n ^ "'s tree has been ignored because of asymmetry")
@@ -72,7 +77,7 @@ let handle_data ns s sockaddr =
 		with _ ->
 			Log.log Log.warnings
 				("Received invalid packet from " ^ name n)
-	with _ -> 
+	     with _ -> 
 		Log.log Log.debug ("Cannot find neighbor for this data")
 
 (* Given a list of neighbors and interface i, invalidate the trees
