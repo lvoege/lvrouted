@@ -182,8 +182,10 @@ let read_config _ =
 	   geq Common.interlink_netmask. *)
 	let interlinks =
 		List.filter (fun (_, _, _, n, _, _) ->
-			LowLevel.bits_in_inet_addr
-				(Common.from_some n) >= Common.interlink_netmask) routableaddrs in
+			let bits = LowLevel.bits_in_inet_addr
+					(Common.from_some n) in
+			bits >= Common.interlink_netmask && bits < 31
+		) routableaddrs in
 	(* From the eligible interlinks, create a list of (interface name,
 	   address) tuples for all the usable addresses other than our own in
 	   the interlink blocks. *)
