@@ -1,6 +1,6 @@
 - 6-CURRENT's seems to have started pushing 802.11 events through the routing
-  socket. make use of this. open a routing socket, add it to the select() call
-  in the main loop and respond accordingly. remove the polling code.
+  socket. check if making LowLevel.read_routemsg propagate these up would be
+  useful.
 
 - I think ARP entry additions and expiries also come through the routing
   socket. check, and decide whether to do something with it.

@@ -427,9 +427,9 @@
         <tbody>
           <row>
             <entry>SIGHUP</entry>
-            <entry>Re-examine interface addresses. If you add a node to the
-            network, simply <command>kill -HUP</command> the daemon on its 
-            neighbors and they will find the newly added interlink range.</entry>
+            <entry>Re-examine interface addresses. Note that this shouldn't be
+            needed as the daemon listens to the routing socket for address
+            changes, but the option is left from when it didn't.</entry>
           </row>
           <row>
             <entry>SIGUSR1</entry>
