@@ -47,6 +47,8 @@ let make n =
 	  associated = None;
 	  is_associated = None }
 
+let itype i = i.itype
+
 (* Return a MAC.Set of addresses that are associated with the given interface *)
 let associated ifname =
 	Array.fold_left (fun a e -> MAC.Set.add e a)

@@ -1,7 +1,6 @@
 (* Neighbor type definition, management and utility functions *)
 
 type t = {
-	name: string;			(* not really used ATM *)
 	iface: string;			(* "wi0", "ep0", etc *)
 	addr: Unix.inet_addr;		(* address to reach this neighbor on *)
 	mutable macaddr: MAC.t option;	(* MAC address, if known *)
@@ -18,44 +17,47 @@ module Set = Set.Make(struct
 end)
 
 let show n = Unix.string_of_inet_addr n.addr ^ " on " ^ n.iface ^ "\n"
+let name n = Unix.string_of_inet_addr n.addr
 
 (* constructor *)
 let make iface addr =
 	{ iface = iface;
 	  addr = addr;
-	  name = Unix.string_of_inet_addr addr;
 	  last_seen = -1.0;
 	  macaddr = None;
 	  tree = None }
 
 let iface n = n.iface
 
-(* send the given tree to the given neighbor *)
-let send fd (nodes: Tree.node list) n =
-	try Tree.send nodes fd n.addr
-	with _ ->
-		Log.log Log.info ("Nuking " ^ n.name ^ "'s tree after exception while sending");
-		n.tree <- None
+(* Broadcast the given list of tree nodes to the given Set of neighbors over
+   the given file descriptor. *)
+let bcast fd nodes ns =
+	let s = Tree.to_string nodes in
+	Set.iter (fun n ->
+		try
+			ignore(Unix.sendto fd s 0 (String.length s) []
+				   (Unix.ADDR_INET (n.addr, !Common.port)))
+		with _ -> ()) ns
 
-(* Given a list of neighbors, data in a string and the sockaddr it came from,
+(* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Find the neighbor associated with the address, parse the
    tree and mark the time *)
 let handle_data ns s sockaddr =
+	let addr = Common.get_addr_from_sockaddr sockaddr in
 	try	
-		let addr = Common.get_addr_from_sockaddr sockaddr in
 		let n = Set.filter (fun n -> n.addr = addr) ns in
 		let n = List.hd (Set.elements n) in
-		Log.log Log.debug ("This data is from neighbor " ^ n.name);
+		Log.log Log.debug ("This data is from neighbor " ^ name n);
 		try
 			n.tree <- Some (Tree.from_string s addr);
-			Log.log Log.debug (n.name ^ "'s tree has been set");
+			Log.log Log.debug (name n ^ "'s tree has been set");
 			n.last_seen <- Unix.gettimeofday ()
 		with Tree.InvalidSignature ->
 			Log.log Log.warnings
-				("Received invalid signature from " ^ n.name)
+				("Received invalid signature from " ^ name n)
 		   | _ ->
 			Log.log Log.warnings
-				("Received invalid packet from " ^ n.name)
+				("Received invalid packet from " ^ name n)
 	with _ -> 
 		Log.log Log.debug ("Cannot find neighbor for this data")
 
@@ -65,7 +67,7 @@ let nuke_trees_for_iface ns i =
 	Log.log Log.debug ("nuking interface " ^ i);
 	List.iter (fun n -> if n.iface = i then begin
 				n.tree <- None;
-				Log.log Log.debug ("neighbor " ^ n.name ^ " canned")
+				Log.log Log.debug ("neighbor " ^ name n ^ " canned")
 			    end) ns
 
 (* Given a list of neighbors and a number of seconds, invalidate the 
@@ -75,7 +77,7 @@ let nuke_old_trees ns numsecs =
 	let expired = Set.filter (fun n ->
 		n.last_seen < limit && Common.is_some n.tree) ns in
 	Set.iter (fun n ->
-		Log.log Log.debug (n.name ^ " expired");
+		Log.log Log.debug (name n ^ " expired");
 		n.tree <- None) expired;
 	not (Set.is_empty expired)
 
@@ -99,12 +101,12 @@ let check_reachable n iface =
 		try  n.macaddr <- Some (Hashtbl.find arptable n.addr)
 		with Not_found ->
 			Log.log Log.debug ("Cannot determine MAC address for " ^
-					   "neighbor " ^ n.name);
+					   "neighbor " ^ name n);
 	end;
 	let reachable = Common.is_some n.macaddr &&
 			Iface.is_reachable iface (Common.from_some n.macaddr) in
 	if not reachable then begin
-		Log.log Log.debug ("Setting " ^ n.name ^ "'s tree to None");
+		Log.log Log.debug ("Setting " ^ name n ^ "'s tree to None");
 		n.tree <- None;
 		n.last_seen <- 0.0
 	end;

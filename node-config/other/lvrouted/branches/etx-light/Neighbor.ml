@@ -39,8 +39,10 @@ let bcast fd nodes ns =
 	Set.iter (fun n ->
 		let c = char_of_int (Queue.length n.recvstamps) in
 		let s' = Common.sign_string ((String.make 1 c) ^ s) in
-		ignore(Unix.sendto fd s' 0 (String.length s') []
-			   (Unix.ADDR_INET (n.addr, !Common.port)))) ns
+		try
+			ignore(Unix.sendto fd s' 0 (String.length s') []
+				   (Unix.ADDR_INET (n.addr, !Common.port)))
+		with _ -> ()) ns
 
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Find the neighbor associated with the address, parse the

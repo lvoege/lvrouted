@@ -84,13 +84,19 @@ external syslog: int -> string -> unit
 external addr_is_ipv6: Unix.inet_addr -> bool
   = "addr_is_ipv6"
 
+external sbrk: unit -> int
+  = "caml_sbrk"
+
 external pack_addr: Unix.inet_addr -> int -> string
   = "pack_addr"
 
 external unpack_addr: Unix.inet_addr -> int -> string -> Unix.inet_addr
   = "unpack_addr"
 
-(* THIS IS FOR WHEN FREEBSD'S ROUTING SOCKET STARTS DELIVERING 802.11 EVENTS
+(* THIS IS FOR WHEN FREEBSD'S ROUTING SOCKET STARTS DELIVERING 802.11 EVENTS.
+   Stubs for this have begun to appear in /usr/src/sys/net/rtsock.c but aren't
+   used yet.
+
 type routemsg =
 	  RTM_NOTHING
 	| RTM_NEWADDR	of string * Unix.inet_addr * int
@@ -108,4 +114,3 @@ type routemsg =
 
 external read_routemsg: Unix.file_descr -> routemsg
   = "read_routemsg" *)
-

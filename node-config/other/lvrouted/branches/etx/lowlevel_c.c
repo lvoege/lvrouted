@@ -66,7 +66,7 @@ static inline value prepend_listelement(value e, value l) {
 	cell = alloc_small(2, 0);
 	Field(cell, 0) = e;
 	Field(cell, 1) = l;
-	
+
 	CAMLreturn(cell);
 }
 
@@ -156,12 +156,13 @@ CAMLprim value caml_valaddr(value addr) {
 }
 
 CAMLprim value string_compress(value s) {
+	assert(0); /* TESTME first */
+	return Val_unit;
+#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
 	char *buffer;
-
-	assert(0); /* TESTME first */
 
 	buffer = 0;
 	buflen = string_length(s);
@@ -186,15 +187,18 @@ CAMLprim value string_compress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_compress");
 	}
+#endif
 }
 
 CAMLprim value string_decompress(value s) {
+	assert(0); /* TESTME first */
+	return Val_unit;
+#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
 	char *buffer;
 
-	assert(0); /* TESTME first */
 	buffer = 0;
 	buflen = string_length(s) * 2;
 	do {
@@ -217,6 +221,7 @@ CAMLprim value string_decompress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_decompress");
 	}
+#endif
 }
 
 #ifdef __FreeBSD__
@@ -226,6 +231,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 	struct sockaddr_in *addr;
 	static int seq = 1;
 	unsigned char *p;
+	CAMLparam3(dest, masklen, gw);
 
 	msghdr = (struct rt_msghdr *)buffer;	
 	memset(msghdr, 0, sizeof(struct rt_msghdr));
@@ -264,13 +270,14 @@ static int routemsg_add(unsigned char *buffer, int type,
 				ROUNDUP(addr->sin_len)
 				- buffer;
 	
-	return msghdr->rtm_msglen;
+	CAMLreturn(msghdr->rtm_msglen);
 }
 #endif
 
 CAMLprim value routes_commit(value deletes, value adds, value changes) {
-	CAMLparam2(deletes, adds);
+	CAMLparam3(deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
+	CAMLlocal1(v);
 #ifndef __FreeBSD__
 	assert(0);
 #else
@@ -292,7 +299,7 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	for (adderrs = Val_int(0); adds != Val_int(0); adds = Field(adds, 1)) {
-		value v = Field(adds, 0);
+		v = Field(adds, 0);
 		len = routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
 #ifdef DUMP_ROUTEPACKET
 		debug = fopen("/tmp/packet.lvrouted", "w");
@@ -308,7 +315,7 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	for (delerrs = Val_int(0); deletes != Val_int(0); deletes = Field(deletes, 1)) {
-		value v = Field(deletes, 0);
+		v = Field(deletes, 0);
 		len = routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
 		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
@@ -319,7 +326,7 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	for (cherrs = Val_int(0); changes != Val_int(0); changes = Field(changes, 1)) {
-		value v = Field(changes, 0);
+		v = Field(changes, 0);
 		len = routemsg_add(buffer, RTM_CHANGE, Field(v, 0), Field(v, 1), Field(v, 2));
 		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
@@ -415,11 +422,8 @@ CAMLprim value caml_getifaddrs(value unit) {
 
 CAMLprim value bits_in_inet_addr(value addr) {
 	CAMLparam1(addr);
-	CAMLlocal1(result);
 
-	result = Val_int(bitcount(get_addr(addr)));
-
-	CAMLreturn(result);
+	CAMLreturn(Val_int(bitcount(get_addr(addr))));
 }
 
 CAMLprim value caml_strstr(value big, value little) {
@@ -725,6 +729,67 @@ CAMLprim value caml_syslog(value pri, value s) {
 	syslog(tmp[Long_val(pri)], String_val(s));
 	CAMLreturn(Val_unit);
 }
+
+CAMLprim value caml_sbrk(value unit) {
+	CAMLparam1(unit);
+	CAMLreturn(Val_int(sbrk(0)));
+}
+
+#if 0
+/* read a routing message from the given file descriptor and return what it
+ * said. */
+CAMLprim value read_routemsg(value fd) {
+	CAMLparam1(fd);
+	CAMLlocal1(res);
+	char *p, *buffer;
+	struct rt_msghdr *rtm;
+	struct if_msghdr *ifm;
+	struct ifa_msghdr *ifa;
+	struct if_announcemsghdr *ifann;
+
+/* TODO: dubbelcheck of de manier van het hier maken van een waarde (res) van
+ * het algebraische type routemsg goed is. ik *denk* dat het zo gaat:
+ *   - voor constructors zonder argumenten (RTM_NOTHING) is het simpelweg
+ *     Val_int(0-based offset in constructor lijst)
+ *   - voor constructors met argumenten moet je een klein blok met als tag
+ *     de 0-based offset in de constructor lijst maken en de velden er in
+ *     volgorde in opslaan. zo'n blok maken gaat met alloc_small()
+ */
+	
+	rtm = (struct rt_msghdr *)buffer;
+	switch (rtm->rtm_type) {
+		case RTM_NEWADDR:
+			ifa = (struct ifa_msghdr *)buffer;
+			p = (char *)(ifa + 1);
+			res = alloc_small(3, 1);
+			break;
+		case RTM_DELADDR:
+			ifa = (struct ifa_msghdr *)buffer;
+			p = (char *)(ifa + 1);
+			res = alloc_small(3, 2);
+			break;
+		case RTM_IFINFO:
+			ifm = (struct if_msghdr *)buffer;
+			res = alloc_small(2, 3);
+			Store_field(res, 0, Val_bool(ifm->ifm_data.ifi_link_state == LINK_STATE_UP));
+			break;
+		case RTM_IFANNOUNCE:
+			ifann = (struct if_announcemsghdr *)buffer;
+			res = alloc_small(2, 4);
+			Store_field(res, 0, copy_string(ifann->ifan_name));
+			Store_field(res, 1, Val_bool(ifann->ifan_what == IFAN_ARRIVAL));
+			break;
+#if defined(__FreeBSD_version) && __FreeBSD_version >= 600006
+		case RTM_IEEE80211:
+			res = alloc_small(1, 5);
+			break;
+#endif
+		default:
+			res = Val_int(0);
+	}
+	CAMLreturn(res);
+}
+#endif
 
 /* from wicontrol.c: */
 /*

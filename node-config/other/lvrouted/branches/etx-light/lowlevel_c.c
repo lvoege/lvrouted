@@ -66,7 +66,7 @@ static inline value prepend_listelement(value e, value l) {
 	cell = alloc_small(2, 0);
 	Field(cell, 0) = e;
 	Field(cell, 1) = l;
-	
+
 	CAMLreturn(cell);
 }
 
@@ -231,6 +231,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 	struct sockaddr_in *addr;
 	static int seq = 1;
 	unsigned char *p;
+	CAMLparam3(dest, masklen, gw);
 
 	msghdr = (struct rt_msghdr *)buffer;	
 	memset(msghdr, 0, sizeof(struct rt_msghdr));
@@ -272,13 +273,14 @@ static int routemsg_add(unsigned char *buffer, int type,
 				ROUNDUP(addr->sin_len)
 				- buffer;
 	
-	return msghdr->rtm_msglen;
+	CAMLreturn(msghdr->rtm_msglen);
 }
 #endif
 
 CAMLprim value routes_commit(value deletes, value adds, value changes) {
-	CAMLparam2(deletes, adds);
+	CAMLparam3(deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
+	CAMLlocal1(v);
 #ifndef __FreeBSD__
 	assert(0);
 #else
@@ -300,7 +302,7 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	for (adderrs = Val_int(0); adds != Val_int(0); adds = Field(adds, 1)) {
-		value v = Field(adds, 0);
+		v = Field(adds, 0);
 		len = routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
 #ifdef DUMP_ROUTEPACKET
 		debug = fopen("/tmp/packet.lvrouted", "w");
@@ -316,7 +318,7 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	for (delerrs = Val_int(0); deletes != Val_int(0); deletes = Field(deletes, 1)) {
-		value v = Field(deletes, 0);
+		v = Field(deletes, 0);
 		len = routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
 		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
@@ -327,7 +329,7 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	for (cherrs = Val_int(0); changes != Val_int(0); changes = Field(changes, 1)) {
-		value v = Field(changes, 0);
+		v = Field(changes, 0);
 		len = routemsg_add(buffer, RTM_CHANGE, Field(v, 0), Field(v, 1), Field(v, 2));
 		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
@@ -423,11 +425,8 @@ CAMLprim value caml_getifaddrs(value unit) {
 
 CAMLprim value bits_in_inet_addr(value addr) {
 	CAMLparam1(addr);
-	CAMLlocal1(result);
 
-	result = Val_int(bitcount(get_addr(addr)));
-
-	CAMLreturn(result);
+	CAMLreturn(Val_int(bitcount(get_addr(addr))));
 }
 
 CAMLprim value caml_strstr(value big, value little) {
@@ -732,6 +731,11 @@ CAMLprim value caml_syslog(value pri, value s) {
 	  failwith("Invalid priority for syslog()");
 	syslog(tmp[Long_val(pri)], String_val(s));
 	CAMLreturn(Val_unit);
+}
+
+CAMLprim value caml_sbrk(value unit) {
+	CAMLparam1(unit);
+	CAMLreturn(Val_int(sbrk(0)));
 }
 
 #if 0

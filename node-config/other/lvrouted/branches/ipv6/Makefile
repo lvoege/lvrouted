@@ -6,7 +6,7 @@ OCAMLDEP  = ocamldep
 OCAMLFIND = ocamlfind
 OCAMLPROF = ocamlprof
 CFLAGS= -Wall -I`ocamlfind printconf stdlib` -g
-LIBS=-cclib -lbz2 -cclib -lcrypto
+LIBS=-cclib -lcrypto
 
 SOURCES= Version.ml LowLevel.ml Common.ml Log.ml MAC.ml Iface.ml Route.ml Tree.ml Neighbor.ml lvrouted.ml
 MLIS= $(SOURCES:.ml=.mli)
@@ -18,7 +18,9 @@ all: depend lvrouted lvrouted.opt crashme
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
 clean:
-	rm -f lowlevel_c.o $(MLIS) $(BYTECODE) $(OBJCODE) $(SOURCES:.ml=.o) $(SOURCES:.ml=.cmi) *~
+	rm -f lvrouted lvrouted.opt lowlevel_c.o $(MLIS) $(BYTECODE)
+	rm -f $(OBJCODE) $(SOURCES:.ml=.o) $(SOURCES:.ml=.cmi) *~
+	rm -f crashme crashme.cm*
 
 lvrouted.opt: $(OBJCODE) lowlevel_c.o Version.cmx
 	$(OCAMLOPT) -o $@ $(OBJCODE) lowlevel_c.o $(LIBS)

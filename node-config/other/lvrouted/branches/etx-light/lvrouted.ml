@@ -100,9 +100,11 @@ let alarm_handler _ =
 	  output_string out (Tree.show nodes);
 	  close_out out;
 
-	  (* If there's no wired neighbors, send the new tree to the (wireless) neighbors outright.
-	     If there are wired neighbors, send them the tree first, then create a new tree with the
-	     wired neighbors' children promoted to peers and send that to the wireless neighbors *)
+	  (* If there's no wired neighbors, send the new tree to the (wireless)
+	     neighbors outright. If there are wired neighbors, send them the
+	     tree first, then create a new tree with the wired neighbors'
+	     children promoted to peers and send that to the wireless
+	     neighbors. *)
 	  if IPSet.is_empty !neighbors_wired_ip then
 	    Neighbor.bcast !sockfd nodes !neighbors
 	  else begin
@@ -250,15 +252,8 @@ let _ =
 		LowLevel.daemon false false;
 		Log.log Log.info "daemonized";
 	end;
-
-	if !Common.real_route_updates then begin
-		if Route.flush () then
-		  Log.log Log.info "Flushed routes"
-		else begin
-			Log.log Log.errors "Couldn't flush routes!";
-			exit 1;
-		end
-	end;
+	
+	routes := Route.fetch ();
 
 	read_config ();
 	Log.log Log.info "Read config";

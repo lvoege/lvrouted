@@ -66,7 +66,7 @@ static inline value prepend_listelement(value e, value l) {
 	cell = alloc_small(2, 0);
 	Field(cell, 0) = e;
 	Field(cell, 1) = l;
-	
+
 	CAMLreturn(cell);
 }
 
@@ -168,12 +168,13 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 }
 
 CAMLprim value string_compress(value s) {
+	assert(0); /* TESTME first */
+	return Val_unit;
+#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
 	char *buffer;
-
-	assert(0); /* TESTME first */
 
 	buffer = 0;
 	buflen = string_length(s);
@@ -198,15 +199,18 @@ CAMLprim value string_compress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_compress");
 	}
+#endif
 }
 
 CAMLprim value string_decompress(value s) {
+	assert(0); /* TESTME first */
+	return Val_unit;
+#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
 	char *buffer;
 
-	assert(0); /* TESTME first */
 	buffer = 0;
 	buflen = string_length(s) * 2;
 	do {
@@ -229,6 +233,7 @@ CAMLprim value string_decompress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_decompress");
 	}
+#endif
 }
 
 #ifdef __FreeBSD__
@@ -238,6 +243,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 	struct sockaddr_in *addr;
 	static int seq = 1;
 	unsigned char *p;
+	CAMLparam3(dest, masklen, gw);
 
 	msghdr = (struct rt_msghdr *)buffer;	
 	memset(msghdr, 0, sizeof(struct rt_msghdr));
@@ -279,13 +285,14 @@ static int routemsg_add(unsigned char *buffer, int type,
 				ROUNDUP(addr->sin_len)
 				- buffer;
 	
-	return msghdr->rtm_msglen;
+	CAMLreturn(msghdr->rtm_msglen);
 }
 #endif
 
 CAMLprim value routes_commit(value deletes, value adds, value changes) {
-	CAMLparam2(deletes, adds);
+	CAMLparam3(deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
+	CAMLlocal1(v);
 #ifndef __FreeBSD__
 	assert(0);
 #else
@@ -307,7 +314,7 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	for (adderrs = Val_int(0); adds != Val_int(0); adds = Field(adds, 1)) {
-		value v = Field(adds, 0);
+		v = Field(adds, 0);
 		len = routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
 #ifdef DUMP_ROUTEPACKET
 		debug = fopen("/tmp/packet.lvrouted", "w");
@@ -323,7 +330,7 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	for (delerrs = Val_int(0); deletes != Val_int(0); deletes = Field(deletes, 1)) {
-		value v = Field(deletes, 0);
+		v = Field(deletes, 0);
 		len = routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
 		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
@@ -334,7 +341,7 @@ CAMLprim value routes_commit(value deletes, value adds, value changes) {
 	}
 
 	for (cherrs = Val_int(0); changes != Val_int(0); changes = Field(changes, 1)) {
-		value v = Field(changes, 0);
+		v = Field(changes, 0);
 		len = routemsg_add(buffer, RTM_CHANGE, Field(v, 0), Field(v, 1), Field(v, 2));
 		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
@@ -804,6 +811,11 @@ CAMLprim value unpack_addr(value prefix, value prefixlen, value addr) {
 				(sizeof(struct in6_addr) - Long_val(prefixlen)) / 8);
 	}
 	CAMLreturn(result);
+}
+
+CAMLprim value caml_sbrk(value unit) {
+	CAMLparam1(unit);
+	CAMLreturn(Val_int(sbrk(0)));
 }
 
 #if 0
