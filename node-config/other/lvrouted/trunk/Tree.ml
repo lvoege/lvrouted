@@ -67,12 +67,12 @@ let merge nodes directnets =
 	(* step 3 *)
 	let rec traverse routes = function
 		  []			-> routes
-		| (node,p,gw)::xs	-> 
+		| (node,parent,gw)::xs	-> 
 			if IPMap.mem node.addr routes then
 			  traverse routes xs
 			else begin
 				let newnode = make node.addr [] in
-				p.nodes <- newnode::p.nodes;
+				parent.nodes <- newnode::parent.nodes;
 				traverse (IPMap.add node.addr gw routes)
 					 (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
 			end in
