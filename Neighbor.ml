@@ -29,19 +29,23 @@ let make iface addr =
 
 let iface n = n.iface
 
-(* send the given tree to the given neighbor *)
-let send fd (nodes: Tree.node list) n =
-	try Tree.send nodes fd n.addr
-	with _ ->
-		Log.log Log.info ("Nuking " ^ name n ^ "'s tree after exception while sending");
-		n.tree <- None
+(* Broadcast the given list of tree nodes to the given Set of neighbors over
+   the given file descriptor. *)
+let bcast fd nodes ns =
+	let s = Tree.to_string nodes in
+	let s = if Common.compress_data then LowLevel.string_compress s
+		else s in
+	let s = Common.sign_string s in
+	Set.iter (fun n ->
+		ignore(Unix.sendto fd s 0 (String.length s) []
+			   (Unix.ADDR_INET (n.addr, !Common.port)))) ns
 
-(* Given a list of neighbors, data in a string and the sockaddr it came from,
+(* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Find the neighbor associated with the address, parse the
    tree and mark the time *)
 let handle_data ns s sockaddr =
+	let addr = Common.get_addr_from_sockaddr sockaddr in
 	try	
-		let addr = Common.get_addr_from_sockaddr sockaddr in
 		let n = Set.filter (fun n -> n.addr = addr) ns in
 		let n = List.hd (Set.elements n) in
 		Log.log Log.debug ("This data is from neighbor " ^ name n);

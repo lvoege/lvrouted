@@ -1,10 +1,6 @@
 - integrate MAC.ml and Iface.ml. They deal in mostly the same issues, ethernet
   interfaces and their addresses.
 
-- in this version, the packets sent to different neighbors are exactly the same. serialize
-  the data in those packets only once and re-use for all neighbors, instead of serializing
-  over and over for every neighbor.
-
 - looking at -CURRENT's src/sys/net/route.c it appears they're going to be
   pushing 802.11 events through the routing socket. blocking on such a
   socket and waking up whenever something interesting occurs would be much
