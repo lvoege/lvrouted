@@ -20,15 +20,6 @@ let rec copy t = { t with nodes = List.map copy t.nodes }
 let addr n = n.addr
 let nodes n = n.nodes
 
-(* Traverse a list of nodes breadth-first, calling a function for every node. The
-   callback function is fed three parameters: the gateway address to use, the parent
-   node and the node itself. *)
-let rec traverse f l = match l with
-	  []		-> ()
-	| (x,p,gw)::xs	-> f x p gw;
-			   traverse f (List.append xs
-			   		(List.map (fun node -> node, x, gw) x.nodes))
-
 (* Show the given list of nodes *)
 let show l =
 	let s = ref "" in
@@ -41,21 +32,20 @@ let show l =
 	!s
 
 (* Given a list of nodes and a set of our own addresses, return 
-   a list of pruned nodes and a routing table.
+   a list of new, pruned nodes and a routing table.
    
    1. Initialize a routing table with routes to our own addresses.
-   2. Make a temporary node to hook the list in, so the rest of
-      the routine can assume to be working on a node structure.
-   3. Traverse the tree breadth-first. For every node, check if
-      there is a route already. If so, remove this node from
-      the list of children in the parent. If not, add a route.
+   2. Make a new node to hang the new, merged and pruned tree under
+   3. Traverse the tree breadth-first.  For every node, check if
+      there is a route already. If so, produce no new node. If not,
+      add a route and create a new node and prepend it to the parent's
+      list of children.
    4. Filter out routes that are included in a route from the
       list of directly attached routes.
 
    To be able to do this, the callback to the traversal routine
-   needs three pieces of information:
+   needs two pieces of information:
      - the node to work on
-     - the parent of this node, to be able to remove this node
      - the gateway. The top of every node in the 'nodes'
        parameter is the gateway to the tree under it.
 
@@ -65,17 +55,24 @@ TODO: 4 may be nothing more than cosmetics now that route addition
       is just cosmetic now and note it.
 *)
 let merge nodes directnets =
+	let rec traverse f = function
+		  []		-> ()
+		| (x,p,gw)::xs	-> match f x gw with
+			  None -> traverse f xs
+			| Some n ->
+				   p.nodes <- n::p.nodes;
+				   traverse f (xs@(List.map (fun node -> node, n, gw) x.nodes)) in
 	let routes = ref (List.fold_left
 				(fun map (a, _) -> IPMap.add a a map)
 				IPMap.empty directnets) in
-	let nodes = List.map copy nodes in
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
-	traverse (fun node parent gw ->
+	traverse (fun node gw ->
 			if IPMap.mem node.addr !routes then
-			  parent.nodes <- List.filter (fun n ->
-			  	n.addr <> node.addr) parent.nodes
-			else
-			  routes := IPMap.add node.addr gw !routes)
+			  None
+			else begin
+				routes := IPMap.add node.addr gw !routes;
+				Some { addr = node.addr; nodes = []}
+			end)
 		 (List.map (fun node -> node, fake, node.addr) nodes);
 	routes := IPMap.fold (fun a gw map ->
 			if List.exists (fun (a', n) ->
