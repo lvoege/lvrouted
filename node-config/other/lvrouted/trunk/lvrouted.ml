@@ -250,15 +250,8 @@ let _ =
 		LowLevel.daemon false false;
 		Log.log Log.info "daemonized";
 	end;
-
-	if !Common.real_route_updates then begin
-		if Route.flush () then
-		  Log.log Log.info "Flushed routes"
-		else begin
-			Log.log Log.errors "Couldn't flush routes!";
-			exit 1;
-		end
-	end;
+	
+	routes := Route.fetch ();
 
 	read_config ();
 	Log.log Log.info "Read config";
