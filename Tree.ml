@@ -43,11 +43,11 @@ let show l =
    4. Filter out routes that are included in a route from the
       list of directly attached routes.
 
-   To be able to do this, the callback to the traversal routine
-   needs two pieces of information:
-     - the node to work on
-     - the gateway. The top of every node in the 'nodes'
-       parameter is the gateway to the tree under it.
+   The traversal routine applies a callback function to a list of
+   (node, parent, gateway address) tuples. If the callback produces a
+   new node, it is hooked under the parent's list of children and the
+   original node's children are appended to the list of tuples to
+   traverse.
 
 TODO: 4 may be nothing more than cosmetics now that route addition
       finally works right. 4 was added because some of the evidence
@@ -55,30 +55,30 @@ TODO: 4 may be nothing more than cosmetics now that route addition
       is just cosmetic now and note it.
 *)
 let merge nodes directnets =
-	let rec traverse f = function
-		  []		-> ()
-		| (x,p,gw)::xs	-> match f x gw with
-			  None -> traverse f xs
-			| Some n ->
-				   p.nodes <- n::p.nodes;
-				   traverse f (xs@(List.map (fun node -> node, n, gw) x.nodes)) in
-	let routes = ref (List.fold_left
+	(* step 1*)
+	let routes = List.fold_left
 				(fun map (a, _) -> IPMap.add a a map)
-				IPMap.empty directnets) in
+				IPMap.empty directnets in
+	(* step 2 *)
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
-	traverse (fun node gw ->
-			if IPMap.mem node.addr !routes then
-			  None
+	(* step 3 *)
+	let rec traverse routes = function
+		  []		-> routes
+		| (node,p,gw)::xs	-> 
+			if IPMap.mem node.addr routes then
+			  traverse routes xs
 			else begin
-				routes := IPMap.add node.addr gw !routes;
-				Some { addr = node.addr; nodes = []}
-			end)
-		 (List.map (fun node -> node, fake, node.addr) nodes);
-	routes := IPMap.fold (fun a gw map ->
+				p.nodes <- { addr = node.addr; nodes = []}::p.nodes;
+				traverse (IPMap.add node.addr gw routes)
+					 (xs@(List.map (fun node' -> node', node, gw) node.nodes))
+			end in
+	let routes = traverse routes (List.map (fun node -> node, fake, node.addr) nodes) in
+	(* step 4 *)
+	let routes = IPMap.fold (fun a gw map ->
 			if List.exists (fun (a', n) ->
 				Route.includes_impl a' n a 32) directnets then map
-			else IPMap.add a gw map) !routes IPMap.empty;
-	fake.nodes, !routes
+			else IPMap.add a gw map) routes IPMap.empty in
+	fake.nodes, routes
 
 let to_string (nodes: node list) =
 	let s = Marshal.to_string nodes [] in
