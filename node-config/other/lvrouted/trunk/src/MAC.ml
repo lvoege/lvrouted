@@ -49,5 +49,4 @@ let show_arptable h =
 	IPMap.fold (fun addr mac a ->
 		a ^ "\t" ^
 		Unix.string_of_inet_addr addr ^ " -> " ^
-		ether_ntoa mac ^ "\n"
-	) h "Arptable: \n"
+		ether_ntoa mac ^ "\n") h "Arptable: \n"
