@@ -1,0 +1,11 @@
+To install this program:
+
+FreeBSD: 
+	pkg_add -r ocaml
+	pkg_add -r ocaml-findlib
+
+General:
+	You need a BSD make. On BSDs except MacOS X this is the default make.
+	MacOS X uses GNU make by default and the one you need is called
+	"bsdmake". For Linux there's a port of the NetBSD make. For Debian,
+	this is the "pmake" package.
