@@ -15,6 +15,7 @@ let neighbors_wireless = ref Neighbor.Set.empty
 let neighbors_wired = ref Neighbor.Set.empty
 (* The set of IP addresses of wired neighbors *)
 let neighbors_wired_ip = ref IPSet.empty
+let neighbors_wireless_ip = ref IPSet.empty
 (* A dictionary mapping from interface name ('ep0', 'sis1', etc) to Iface.t *)
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
@@ -29,6 +30,8 @@ let sockfd = ref Unix.stdout
 let last_time = ref 0.0
 (* An entry means that neighbor was unreachable last iteration *)
 let unreachable = ref Neighbor.Set.empty
+(* *)
+let configfile = ref "/usr/local/etc/lvrouted.conf"
 
 (* This function is the main work horse. It:
 
@@ -41,6 +44,9 @@ let unreachable = ref Neighbor.Set.empty
  *)
 let alarm_handler _ =
 	Log.log Log.debug "in alarm_handler";
+
+	(* re-trigger the alarm *)
+	ignore(Unix.alarm !Common.alarm_timeout);
 
 	let block_signals = [ Sys.sigalrm ] in
 	ignore(Unix.sigprocmask Unix.SIG_BLOCK block_signals);
@@ -74,7 +80,7 @@ let alarm_handler _ =
 
 	(* If there's enough reason, derive a new routing table and a new
 	   tree and send it around. *)
-	if reachable_changed || expired || its_time then begin
+	if reachable_changed || expired || its_time then begin try
 	  Log.log Log.debug "starting broadcast run";
 	  last_time := now;
 
@@ -106,9 +112,10 @@ let alarm_handler _ =
 	  if IPSet.is_empty !neighbors_wired_ip then
 	    Neighbor.bcast !sockfd nodes !neighbors
 	  else begin
-	  	Neighbor.bcast !sockfd nodes !neighbors_wired;
-		let nodes = Tree.promote_wired_children !neighbors_wired_ip nodes in
-	  	Neighbor.bcast !sockfd nodes !neighbors_wireless;
+	  	let nodes' = Tree.promote_children !neighbors_wireless_ip nodes in
+	  	Neighbor.bcast !sockfd nodes' !neighbors_wired;
+		let nodes' = Tree.promote_children !neighbors_wired_ip nodes in
+	  	Neighbor.bcast !sockfd nodes' !neighbors_wireless;
 	  end;
 
 	  if !Common.real_route_updates then begin
@@ -142,11 +149,11 @@ let alarm_handler _ =
 		close_out out;
 	  end;
 	  Log.log Log.debug "finished broadcast run";
+	with _ ->
+		Log.log Log.errors ("Uncaught exception in alarm handler!");
 	end;
 
-	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals);
-	(* re-trigger the alarm *)
-	ignore(Unix.alarm !Common.alarm_timeout)
+	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
 let abort_handler _ =
 	Log.log Log.warnings "Exiting. Sending neighbors empty trees...";
@@ -157,48 +164,44 @@ let abort_handler _ =
 let read_config _ =
 	(* Block the alarm signal while we're meddling with globals. *)
 	let block_signals = [ Sys.sigalrm ] in
+	Log.log Log.debug ("blocking");
 	ignore(Unix.sigprocmask Unix.SIG_BLOCK block_signals);
 
 	(* Get all routable addresses that also have a netmask. *)
-	let routableaddrs = List.filter
-		(fun (_, _, a, n, _, _) -> match n with
-			  Some _ -> Common.addr_in_range a
-			| _ -> false) (LowLevel.getifaddrs ()) in
-	print_string "foo";
-	print_newline ();
-	List.iter (fun (_, _, a, _, _, _) ->
-		print_string (Unix.string_of_inet_addr a);
-		print_newline ()) routableaddrs;
-	exit 1;
+	let routableaddrs = List.fold_left (fun l (iface, _, a, n, _, _) ->
+		if Common.addr_in_range a && Common.is_some n then
+		  (iface, a, LowLevel.bits_in_inet_addr (Common.from_some n))::l
+		else
+		  l) [] (LowLevel.getifaddrs ()) in
 	
 	(* Construct the direct and directnets lists. direct is a list of
 	   Tree.node's for every directly attached address. directnets is
 	   a list of (address, masklength) tuples for every directly
-	   attached address. *)
-	let direct', directnets' =
-		List.fold_left
-			(fun (direct, nets) (_, _, a, n, _, _) ->
-				(Tree.make a [])::direct,
-				(a, LowLevel.bits_in_inet_addr (Common.from_some n))::nets)
-			([], []) routableaddrs in
-	direct := direct';
-	directnets := directnets';
+	   attached address.*)
+	direct := List.map (fun (_, a, _) -> Tree.make a []) routableaddrs;
+	directnets := List.map (fun (_, a, n) -> a, n) routableaddrs;
+
+	if !configfile <> "" then begin try
+		let chan = open_in !configfile in
+		let lines = snarf_lines_from_channel chan in
+		close_in chan;
+		let extraaddrs = List.map Unix.inet_addr_of_string lines in
+		direct := !direct@(List.map (fun a -> Tree.make a []) extraaddrs);
+		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
+	with _ ->
+		Log.log Log.warnings ("Couldn't read the specified config file");
+	end;
 
 	(* Interlinks can be recognised by routable addresses and a netmask
 	   geq Common.interlink_netmask. *)
-	let interlinks =
-		List.filter (fun (_, _, _, n, _, _) ->
-			let bits = LowLevel.bits_in_inet_addr
-					(Common.from_some n) in
-			bits >= Common.interlink_netmask && bits < 31
-		) routableaddrs in
+	let interlinks = List.filter (fun (_, _, n) -> n >= Common.interlink_netmask && n < 31) routableaddrs in
+
 	(* From the eligible interlinks, create a list of (interface name,
 	   address) tuples for all the usable addresses other than our own in
 	   the interlink blocks. *)
 	let neighboraddrs = List.concat (
-		List.map (fun (iface, _, a, n, _, _) ->
-			let m = LowLevel.bits_in_inet_addr (Common.from_some n) in
-			let addrs = LowLevel.get_addrs_in_block a m in
+		List.map (fun (iface, a, n) ->
+			let addrs = LowLevel.get_addrs_in_block a n in
 			let addrs' = List.filter (fun a' -> a' <> a) addrs in
 			List.map (fun a -> iface, a) addrs') interlinks) in
 
@@ -226,7 +229,10 @@ let read_config _ =
 	neighbors_wireless := q;
 	neighbors_wired_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
 						!neighbors_wired IPSet.empty;
-
+	neighbors_wireless_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
+						!neighbors_wireless IPSet.empty;
+	
+	Log.log Log.debug ("unblocking");
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
 let version_info =
@@ -247,9 +253,32 @@ let dump_version _ =
 	List.iter (fun s -> output_string out (s ^ "\n")) version_info;
 	close_out out
 
+let dump_state _ =
+	let state = !neighbors, !neighbors_wireless, !neighbors_wired,
+		!neighbors_wired_ip, !ifaces, !direct, !directnets,
+		!unreachable, !MAC.arptables in
+	let out = open_out (!Common.tmpdir ^ "lvrouted.state") in
+	output_string out (Marshal.to_string state []);
+	close_out out
+
+let read_state s =
+	let neighbors', neighbors_wireless', neighbors_wired',
+		neighbors_wired_ip', ifaces', direct', directnets',
+		unreachable', arptables' = Marshal.from_string s 0 in
+	neighbors := neighbors';
+	neighbors_wireless := neighbors_wireless';
+	neighbors_wired := neighbors_wired';
+	neighbors_wired_ip := neighbors_wired_ip';
+	ifaces := ifaces';
+	direct := direct';
+	directnets := directnets';
+	unreachable := unreachable';
+	MAC.arptables := arptables'
+
 let argopts = [
 	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
 	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
+	"-c", Arg.Set_string configfile, "Config file";
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
@@ -279,6 +308,7 @@ let _ =
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 	set_handler dump_version [Sys.sigusr1];
+	set_handler dump_state [Sys.sigusr2];
 	Log.log Log.info "Set signal handlers";
 
 	sockfd := Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0;

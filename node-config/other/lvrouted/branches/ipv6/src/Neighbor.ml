@@ -41,9 +41,9 @@ let bcast fd nodes ns =
 		else s in
 	Set.iter (fun n ->
 		let now = LowLevel.pack_int (int_of_float (Unix.time ())) in
-		let s' = Common.sign_string (now ^ s) in
+		let s = Common.sign_string (now ^ s) in
 		try
-			ignore(Unix.sendto fd s' 0 (String.length s') []
+			ignore(Unix.sendto fd s 0 (String.length s) []
 				   (Unix.ADDR_INET (n.addr, !Common.port)))
 		with _ -> ()) ns
 
@@ -70,7 +70,9 @@ let handle_data ns s sockaddr =
 
 	let n = List.hd (Set.elements n) in
 	let stamp = LowLevel.unpack_int (String.sub s 0 4) in
-	bailwhen (stamp <= n.seqno) "Received old sequence number from";
+	bailwhen (stamp <= n.seqno)
+		("Received old sequence number (" ^ string_of_int stamp ^
+		 " <= " ^ string_of_int n.seqno ^ ") from");
 
 	let s = String.sub s 4 (len - 4) in
 	let s = if Common.compress_data then LowLevel.string_decompress s
