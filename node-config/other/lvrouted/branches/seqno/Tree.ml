@@ -13,7 +13,7 @@ type node = {
 exception InvalidSignature
 
 (* Constructor *)
-let make a = { addr = a; nodes = [] }
+let make a nodes = { addr = a; nodes = nodes }
 
 let addr n = n.addr
 let nodes n = n.nodes
@@ -80,11 +80,7 @@ let merge nodes directnets =
 			else IPMap.add a gw map) !routes IPMap.empty;
 	fake.nodes, !routes
 
-let to_string (nodes: node list) =
-	let s = Marshal.to_string nodes [] in
-	let s = if Common.compress_data then LowLevel.string_compress s
-		else s in
-	Common.sign_string s
+let to_string (nodes: node list) = Marshal.to_string nodes []
 
 (* Read a list of nodes from the given string and return a new node. Node as
    in tree node, not wireless network node. *)

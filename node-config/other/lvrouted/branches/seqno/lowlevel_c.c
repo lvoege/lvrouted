@@ -738,6 +738,20 @@ CAMLprim value caml_sbrk(value unit) {
 	CAMLreturn(Val_int(sbrk(0)));
 }
 
+CAMLprim value caml_pack_int(value i) {
+	CAMLparam1(i);
+	CAMLlocal1(res);
+
+	res = alloc_string(sizeof(int));
+	*(int *)(String_val(res)) = Long_val(i);
+	CAMLreturn(res);
+}
+
+CAMLprim value caml_unpack_int(value s) {
+	CAMLparam1(s);
+	CAMLreturn(Val_int(*(int *)(String_val(s))));
+}
+
 #if 0
 /* read a routing message from the given file descriptor and return what it
  * said. */
