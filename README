@@ -1,0 +1,70 @@
+This is a very simple shortest-path routing daemon, featuring:
+
+  - UDP based. no firmware-confusing multi- or broadcasts
+  - no per-node configuration
+  - spanning tree, so no count-to-infinity
+  - some specific wireless hacks, such as keeping an eye on the interface
+    association status for clients and the list of associated stations for
+    masters
+  - the ability to sign packets for some measure of security against malicious
+    packets
+
+No per node configuration: If your network has both a well-defined routable
+range (for us, that's 172.16.0.0/12) and well-defined interlink netmasks
+(anything smaller than 28 for us), the daemon can do the right thing
+automatically. The first assumption is implemented in lowlevel_c.c,
+inet_addr_in_range(). The second assumption is set in Common.interlink_netmask
+
+All addresses on all interfaces are examined to see if they fall
+within the routable range. For interlink subnets all possible addresses are
+treated as possible neighbors and the daemon will try to link up to daemons
+on those addresses.
+
+The algorithm in this branch of the code is OSPF-like. Every node has a
+current spanning tree for the part of the network the node knows about. At
+startup, this is just the collection of local routable addresses. At some
+tunable interval, it derives a new tree from the trees it has received from
+neighbors by a breadth-first traversal of all those trees, building up a
+new routing table and removing superfluous nodes along the way. It then
+sends the new tree to its neighbors and updates the kernel routing table. A
+subtree is superfluous if the top address is already in the routing table
+(this makes it shortest-path) or is one of the node's own addresses (this
+solves count-to-infinity).
+
+The ocaml marshalling of such trees seems to be very efficient, taking an
+average of just over eight bytes per tree node, with a node being an IPv4
+address plus a list of child nodes. That's already pretty good even
+without any kind of tree compression.
+
+For 30 nodes with 155 routable addresses, on-the-wire packets are 1261
+bytes. CPU usage on a Soekris is generally a few percent, peaking to about
+five percent. RSS is about three to four MB.
+
+A couple of other assumptions about the WirelessLeiden network are in the
+code and would need to be adapted for other surroundings:
+
+  - lowlevel_c.c, inet_addr_in_range() says whether or not an address is
+    routable. For WirelessLeiden, this is the range from 172.16.0.0 up to
+    and not including 172.31.255.0. Re-implement as needed.
+  - Common.ml has a definition for the narrowest interlink netmask. This is
+    /28 in WirelessLeiden, with the vast majority of interlink subnets being
+    /30's. 
+  - Common.ml also includes the widest netmask. This is so the route
+    aggregating code can stop in time. For wirelessleiden, this is /12.
+  - some code in lowlevel_c.c assumes FreeBSD and contains only skeleton
+    implementations for other systems, if it compiles at all on those
+    systems. Routing table updates, querying link states (associated or
+    not and media type mainly), arp table reading, those kinds of things.
+
+Common.ml also contains some other settings like the port to use and some
+timeouts. The most interesting flags are also commandline-settable.
+
+Packet signing: A secret key can be specified on the commandline with the "-s"
+flag. If set and not empty, a SHA1 hash is sent prepended to the usual
+packet content. This hash is the hash of the concatenation of the secret key
+with the packet content. On receipt, the hash is checked with the rest of the
+packet before any interpretation of the packet contents, so attacks that try
+to subvert the ocaml marshal module or inject faulty data are averted.
+
+Lodewijk Voge
+lvoge@cs.vu.nl
