@@ -10,6 +10,7 @@
 #include <net/if_media.h>
 #include <net/if_types.h>
 #include <net/ethernet.h>
+#include <ifaddrs.h>
 #else
 #include <netinet/ether.h>
 #endif
@@ -28,6 +29,17 @@
 #include <caml/mlvalues.h>
 
 static int sockfd = -1;
+
+/* stolen from ocaml-3.08.1/byterun/weak.c */
+#define None_val (Val_int(0))
+#define Some_tag 0
+
+static inline int bitcount(unsigned char i) {
+	int c;
+	for (c = 0; i; i >>= 1)
+	  c += i & 1;
+	return c;
+}
 
 CAMLprim value int_of_file_descr(value file_descr) {
 	return file_descr;
@@ -262,11 +274,11 @@ CAMLprim value routes_commit(value deletes, value numdeletes,
 	p = buffer;
 	for (i = 0; i < Long_val(numdeletes); i++) {
 		value v = Field(deletes, i);
-		p += routemsg_add(p, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
+		p += routemsg_add(p, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
 	}
 	for (i = 0; i < Long_val(numadds); i++) {
 		value v = Field(adds, i);
-		p += routemsg_add(p, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
+		p += routemsg_add(p, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
 	}
 	if (write(sockfd, buffer, buflen) < 0) {
 		perror("oops");
@@ -294,4 +306,79 @@ CAMLprim value caml_ether_ntoa(value s, value res) {
 	  return Val_int(0);
 	memcpy(String_val(res), p, strlen(p));
 	return Val_int(1);
+}
+
+CAMLprim value caml_getifaddrs(value unit) {
+	CAMLparam1(unit);
+	struct ifaddrs *ifap, *ifp;
+	int i, num_ifaces;
+	in_addr_t a;
+	CAMLlocal4(result, tuple, addr, option);
+
+	getifaddrs(&ifap);
+
+	num_ifaces = 0;
+	for (ifp = ifap; ifp; ifp = ifp->ifa_next)
+	  num_ifaces += ifp->ifa_addr->sa_family == AF_INET;
+
+	result = alloc(num_ifaces, 0);
+	i = 0;
+	for (ifp = ifap; ifp; ifp = ifp->ifa_next) {
+		if (ifp->ifa_addr->sa_family != AF_INET)
+		  continue;
+
+		tuple = alloc_tuple(6);
+		Store_field(tuple, 0, copy_string(ifp->ifa_name));
+		Store_field(tuple, 1, copy_nativeint(ifp->ifa_flags));
+
+		addr = alloc_string(sizeof(in_addr_t));
+		a = ((struct sockaddr_in *)ifp->ifa_addr)->sin_addr.s_addr;
+		memcpy(String_val(addr), &a, sizeof(in_addr_t));
+		Store_field(tuple, 2, addr);
+/* I'm not sure how the GC preprocessor magic would work with an inline
+ * function here, so I'll use an ugly macro instead */
+#define STORE_OPTIONAL_ADDR(x, idx) \
+		if (ifp->x) { \
+			addr = alloc_string(sizeof(in_addr_t)); \
+			a = ((struct sockaddr_in *)ifp->x)->sin_addr.s_addr; \
+			memcpy(String_val(addr), &a, sizeof(in_addr_t)); \
+			option = alloc_small(1, Some_tag); \
+			Store_field(option, 0, addr); \
+		} else option = None_val; \
+		Store_field(tuple, idx, option);
+		STORE_OPTIONAL_ADDR(ifa_netmask, 3);
+		STORE_OPTIONAL_ADDR(ifa_broadaddr, 4);
+		STORE_OPTIONAL_ADDR(ifa_dstaddr, 5);
+
+		Store_field(result, i, tuple);
+		i++;
+	}
+
+	freeifaddrs(ifap);
+	CAMLreturn(result);
+}
+
+CAMLprim value bits_in_inet_addr(value addr) {
+	CAMLparam1(addr);
+	CAMLlocal1(result);
+	int c, len, i;
+	char *s;
+
+	len = string_length(addr);
+	s = String_val(addr);
+	for (i = c = 0; i < len; i++)
+	  c += bitcount(s[i]);
+	
+	result = Val_int(c);
+	CAMLreturn(result);
+}
+
+CAMLprim value inet_addr_in_range(value addr) {
+	CAMLparam1(addr);
+	CAMLlocal1(result);
+	in_addr_t a;
+
+	memcpy(&a, String_val(addr), sizeof(in_addr_t));
+	result = Val_bool(mask_addr_impl(ntohl(a), 12) == 0xac100000);
+	CAMLreturn(result);
 }

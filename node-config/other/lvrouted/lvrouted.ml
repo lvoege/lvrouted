@@ -90,26 +90,28 @@ let read_config _ =
 	let block_signals = [ Sys.sigalrm ] in
 	let _ = Unix.sigprocmask Unix.SIG_BLOCK block_signals in
 
-	let d, n = Config.parse_file (open_in "/tmp/lvrouted.conf") in
-	direct := d;
+	let localaddrs = List.map (fun (_, _, a, _, _, _) -> a)
+			          (Array.to_list (LowLevel.getifaddrs ())) in
+	let wleidenaddrs = List.filter LowLevel.inet_addr_in_range localaddrs in
+	direct := Array.of_list (List.map (fun a ->
+			Hashtbl.add direct_hash a 1;
+			HopInfo.make a) wleidenaddrs);
+	let n = Config.parse_file (open_in "/tmp/lvrouted.conf") in
 	neighbors := n;
 	Neighbor.extract_ifaces ifaces n;
-
-	(* fill direct_hash *)
-	Array.iter (fun e -> Hashtbl.add direct_hash (HopInfo.addr e) 1) d;
 
 	let _ = Unix.sigprocmask Unix.SIG_UNBLOCK block_signals in
 	()
 
 let main =
 	read_config ();
-	
+
 	let set_handler f = List.iter (fun i -> Sys.set_signal i (Sys.Signal_handle f)) in
 	set_handler alarm_handler [Sys.sigalrm];
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 
-	LowLevel.daemon false false;
+	(*LowLevel.daemon false false; *)
 
 	let _  = Unix.alarm 1 in
 

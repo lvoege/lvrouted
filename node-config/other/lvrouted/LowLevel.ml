@@ -30,3 +30,20 @@ external ether_aton: string -> string -> bool
 
 external ether_ntoa: string -> string -> bool
   = "caml_ether_ntoa"
+
+external getifaddrs: unit -> (string *		(* iface name *)
+			      int *		(* iface flags *)
+			      Unix.inet_addr *	(* iface addr *)
+			      Unix.inet_addr option * (* netmask *)
+			      Unix.inet_addr option * (* broadcast *)
+			      Unix.inet_addr option)   (* dst addr *)
+			     array
+  = "caml_getifaddrs"
+
+external bits_in_inet_addr: Unix.inet_addr -> int
+  = "bits_in_inet_addr"
+
+(* HIGHLY WirelessLeiden SPECIFIC: is the given address in the 172.16.0.0/12
+   range we route? *)
+external inet_addr_in_range: Unix.inet_addr -> bool
+  = "inet_addr_in_range"
