@@ -81,28 +81,7 @@ let broadcast_run udpsockfd rtsockfd =
 	  (* DEBUG: dump the derived tree to the filesystem *)
 	  Tree.dump_tree "lvrouted.mytree" nodes;
 
-	  (* If there's no wired neighbors or wired links are not to be
-	     treated as zero-cost, send the new tree to all neighbors
-	     outright.
-	     
-	     If wired links are zero-cost and there are wired neighbors,
-	     send them the tree first, then create a new tree with the
-	     wired neighbors' children promoted to peers and send that
-	     to the wireless neighbors. *)
-	  if not (Common.wired_links_are_zero_cost) ||
-	     IPSet.is_empty !neighbors_wired_ip then
-	    Neighbor.bcast udpsockfd nodes !neighbors
-	  else begin
-	  	let nodes' = Tree.promote_children !neighbors_wireless_ip nodes in
-	  	Neighbor.bcast udpsockfd nodes' !neighbors_wired;
-
-		Tree.dump_tree "lvrouted.mytree-wired" nodes';
-
-		let nodes' = Tree.promote_children !neighbors_wired_ip nodes in
-	  	Neighbor.bcast udpsockfd nodes' !neighbors_wireless;
-
-		Tree.dump_tree "lvrouted.mytree-wireless" nodes';
-	  end;
+	  Neighbor.bcast udpsockfd nodes !neighbors;
 
 	  if !Common.real_route_updates then begin
 		let deletes, adds, changes = Route.diff (Route.fetch ()) newroutes in
