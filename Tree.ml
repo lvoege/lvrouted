@@ -89,14 +89,19 @@ external deserialize: string -> node = "string_to_tree"
 
 let to_string (nodes: node list) =
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
-	Common.pack_string (serialize fake)
+	let s = if Common.own_marshaller then serialize fake 
+		else Marshal.to_string nodes [] in
+	Common.pack_string s
 
 (* Read a list of nodes from the given string and return a new node. Node as
    in tree node, not wireless network node. *)
 let from_string s from_addr : node =
 	let s = Common.unpack_string s in
-	(* This is the most dangerous bit in all of the code: *)
-	{ (deserialize s) with addr = from_addr }
+	if Common.own_marshaller then
+	  { (deserialize s) with addr = from_addr }
+	else
+	  (* This is the most dangerous bit in all of the code: *)
+	  { addr = from_addr; nodes = (Marshal.from_string s 0: node list) }
 
 (* This is basically a hack. Given a list of first-level nodes and a set for
    which membership entails being connected to this node through an ethernet
