@@ -44,7 +44,7 @@ let alarm_handler _ =
 	(* See what neighbors are unreachable. Per neighbor, fetch the
 	   corresponding Iface.t and see if it's reachable. *)
 	let new_unreachable = Neighbor.Set.filter (fun n ->
-		Log.log Log.debug ("looking at " ^ n.name);
+		Log.log Log.debug ("looking at " ^ Neighbor.show n);
 		let iface = StringMap.find (Neighbor.iface n) !ifaces in
 		not (Neighbor.check_reachable n iface)) !neighbors in
 
@@ -56,7 +56,7 @@ let alarm_handler _ =
 			     || not (Neighbor.Set.is_empty newly_reachable) in
 	(* Log any changes *)
 	if reachable_changed then begin
-		let log s n = Log.log Log.info (n.name ^ " became " ^ s) in
+		let log s n = Log.log Log.info (Neighbor.show n ^ " became " ^ s) in
 		Neighbor.Set.iter (log "unreachable") newly_unreachable;
 		Neighbor.Set.iter (log "reachable") newly_reachable;
 	end;
@@ -76,9 +76,10 @@ let alarm_handler _ =
 
 	  (* DEBUG: Dump the incoming trees to the filesystem *)
 	  Neighbor.Set.iter (fun n ->
-	  	let fname = "/tmp/lvrouted.tree-" ^ n.name in
+	  	let nname = Neighbor.name n in
+	  	let fname = "/tmp/lvrouted.tree-" ^ nname in
 	  	if Common.is_some n.tree then begin
-			let out = open_out ("/tmp/lvrouted.tree-" ^ n.name) in
+			let out = open_out ("/tmp/lvrouted.tree-" ^ nname) in
 			output_string out (Tree.show [Common.from_some n.tree]);
 			close_out out
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
