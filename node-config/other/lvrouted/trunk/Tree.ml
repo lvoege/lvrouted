@@ -31,8 +31,9 @@ let show l =
 	show' 0 l;
 	!s
 
-(* Given a list of nodes and a set of our own addresses, return 
-   a list of new, pruned nodes and a routing table.
+(* Given a list of spanning trees received from neighbors and a set of our
+   own addresses, return the spanning tree for this node, plus a routing
+   table.
    
    1. Initialize a routing table with routes to our own addresses.
    2. Make a new node to hang the new, merged and pruned tree under
@@ -53,6 +54,12 @@ TODO: 4 may be nothing more than cosmetics now that route addition
       finally works right. 4 was added because some of the evidence
       while debugging pointed to such routes acting up. check if it
       is just cosmetic now and note it.
+
+   Note that the resulting spanning tree is returned as the list of
+   first-level nodes, because the top node is relevant only to the
+   receiving end. The list of first-level nodes is sent to a neighbor,
+   which will create a top node based on the address it received the
+   packet from.
 *)
 let merge nodes directnets =
 	(* step 1*)
@@ -60,7 +67,7 @@ let merge nodes directnets =
 				(fun map (a, _) -> IPMap.add a a map)
 				IPMap.empty directnets in
 	(* step 2 *)
-	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
+	let fake = make Unix.inet_addr_any in
 	(* step 3 *)
 	let rec traverse routes = function
 		  []			-> routes
@@ -68,9 +75,10 @@ let merge nodes directnets =
 			if IPMap.mem node.addr routes then
 			  traverse routes xs
 			else begin
-				p.nodes <- { addr = node.addr; nodes = []}::p.nodes;
+				let newnode = make node.addr in
+				p.nodes <- newnode::p.nodes;
 				traverse (IPMap.add node.addr gw routes)
-					 (xs@(List.map (fun node' -> node', node, gw) node.nodes))
+					 (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
 			end in
 	let routes = traverse routes (List.map (fun node -> node, fake, node.addr) nodes) in
 	(* step 4 *)
