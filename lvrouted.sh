@@ -2,7 +2,7 @@
 # sample /usr/local/etc/rc.d/lvrouted.sh script to start the thing when
 # booting
 lvrouted="/usr/local/sbin/lvrouted.opt"
-options="-u"
+options="-u -l -d 3"
 
 pid=`ps ax | grep lvrouted.opt | grep -v grep | sed "s/^ *//" | sed "s/ .*//g"`
 case "$1" in

@@ -83,9 +83,6 @@ external hexdump_string: string -> string
 external syslog: int -> string -> unit
   = "caml_syslog"
 
-external sbrk: unit -> int
-  = "caml_sbrk"
-
 external pack_int: int -> string
   = "caml_pack_int"
 
