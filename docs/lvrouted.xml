@@ -1,6 +1,6 @@
-<?xml version="1.0" standalone="no"?>
-<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.4CR2//EN"
-		      "http://www.oasis-open.org/docbook/xml/4.4CR2/docbookx.dtd" [
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+                        "http://www.oasis-open.org/docbook/xml/4.0/docbookx.dtd" [
 <!ENTITY wleiden "<ulink url='http://www.wirelessleiden.nl/'>WirelessLeiden</ulink>">
 <!ENTITY freebsd "<ulink url='http://www.freebsd.org/'>FreeBSD</ulink>">
 <!ENTITY svn "<ulink url='http://subversion.tigris.org/'>Subversion</ulink>">
@@ -11,7 +11,7 @@
     <title>lvrouted</title>
     <author>
       <firstname>Lodewijk</firstname>
-      <surname>V&ouml;ge</surname>
+      <surname>V&#xf6;ge</surname>
       <affiliation>
         <orgname>WirelessLeiden</orgname>
       </affiliation>
