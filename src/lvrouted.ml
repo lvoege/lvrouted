@@ -262,6 +262,12 @@ let argopts = [
 let _ =
 	Log.log Log.info "Starting up";
 
+	let tenmb = 10 * 1024 * 1024 in
+	if LowLevel.set_limits tenmb tenmb then
+	  Log.log Log.info "Limits set"
+	else
+	  Log.log Log.warnings "Couldn't set limits!";
+
 	Arg.parse argopts ignore "lvrouted";
 	Log.log Log.info "Parsed commandline";
 

@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <ifaddrs.h>
@@ -82,6 +83,25 @@ static inline int bitcount(unsigned int i) {
 	for (c = 0; i; i >>= 1)
 	  c += i & 1;
 	return c;
+}
+
+CAMLprim value set_limits(value data, value core) {
+	CAMLparam2(data, core);
+	int i;
+	struct rlimit rlimit;
+	i = getrlimit(RLIMIT_DATA, &rlimit);
+	if (i == -1)
+	  CAMLreturn(Val_bool(0));
+	rlimit.rlim_max = Long_val(data);
+	i = setrlimit(RLIMIT_DATA, &rlimit);
+	if (i == -1)
+	  CAMLreturn(Val_bool(0));
+
+	i = getrlimit(RLIMIT_CORE, &rlimit);
+	if (i == -1)
+	  CAMLreturn(Val_bool(0));
+	rlimit.rlim_max = Long_val(core);
+	CAMLreturn(Val_bool(setrlimit(RLIMIT_CORE, &rlimit) == 0));
 }
 
 CAMLprim value int_of_file_descr(value file_descr) {
