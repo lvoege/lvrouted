@@ -49,6 +49,8 @@ code and would need to be adapted for other surroundings:
   - Common.ml has a definition for the narrowest interlink netmask. This is
     /28 in WirelessLeiden, with the vast majority of interlink subnets being
     /30's. 
+  - Common.ml also includes the widest netmask. This is so the route
+    aggregating code can stop in time. For wirelessleiden, this is /12.
   - some code in lowlevel_c.c assumes FreeBSD and contains only skeleton
     implementations for other systems, if it compiles at all on those
     systems. Routing table updates, querying link states (associated or

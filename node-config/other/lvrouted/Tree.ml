@@ -1,3 +1,5 @@
+(* This module defines and implements the tree structure that is passed
+   between nodes *)
 open Common
 
 type node = {
@@ -6,7 +8,7 @@ type node = {
 }
 
 (* Tree.from_string will verify the signature of a packet and will throw this
-   exception if that turns out bad *)
+   exception if the signature turns out wrong *)
 exception InvalidSignature
 
 (* Constructor *)

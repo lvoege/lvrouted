@@ -2,9 +2,10 @@
 open Common
 
 type ifacetype =
-	| WIRED
-	| WIFI_CLIENT
-	| WIFI_MASTER
+	| WIRED		(* no notion of association *)
+	| WIFI_CLIENT	(* client of a master, can check for association *)
+	| WIFI_MASTER	(* master of several clients, can check the list of
+			   associated stations for a specific client *)
 
 type t = {
 	name: string;
@@ -24,6 +25,9 @@ type t = {
 (* Constructor *)
 let make n =
 	let iface_type name = 
+		(* This is pretty lame, but this is executed only once per
+		   interface at startup anyway, and it'd be a huge gob of
+		   code in lowlevel_c.c, so I'll leave it like this *)
 		let c = Unix.open_process_in ("/sbin/ifconfig " ^ name) in
 		let re = Str.regexp "^.*media: \\(.*\\)" in
 		let l = Common.snarf_channel_for_re c re 2 in
@@ -83,7 +87,7 @@ let in_arptable iface mac =
 (* Is the given mac address reachable over the given interface? *)
 let is_reachable iface mac =
 	update iface;
-	(in_arptable iface mac) &&
-	  (iface.itype = WIRED ||
-	   (iface.itype = WIFI_MASTER && (MAC.Set.mem mac (Common.from_some iface.associated))) ||
-	   (iface.itype = WIFI_CLIENT && (Common.from_some iface.is_associated)))
+	in_arptable iface mac && match iface.itype with
+	    WIRED -> true
+	  | WIFI_MASTER -> MAC.Set.mem mac (Common.from_some iface.associated)
+	  | WIFI_CLIENT -> Common.from_some iface.is_associated

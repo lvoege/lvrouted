@@ -1,24 +1,21 @@
 (* Neighbor type definition, management and utility functions *)
 
-(* A neighbor has a name, an interface and address to reach it on, 
-   a timestamp when we last successfully received something from the neighbor,
-   and optionally the last tree received *)
 type t = {
-	name: string;
-	iface: string;
-	addr: Unix.inet_addr;
-	mutable macaddr: MAC.t option;
+	name: string;			(* not really used ATM *)
+	iface: string;			(* "wi0", "ep0", etc *)
+	addr: Unix.inet_addr;		(* address to reach this neighbor on *)
+	mutable macaddr: MAC.t option;	(* MAC address, if known *)
 
-	mutable last_seen: float;
-	mutable tree: Tree.node option;
+	mutable last_seen: float;	(* -1.0 if never seen, else unix
+					   timestamp of last received packet *)
+	mutable tree: Tree.node option; (* the tree last received *)
 }
 
 type neighbor = t
-module NeighborType = struct
+module Set = Set.Make(struct
 	type t = neighbor
 	let compare a b = compare a.addr b.addr
-end
-module Set = Set.Make(NeighborType)
+end)
 
 let show n =
 	n.name ^ ": " ^ Unix.string_of_inet_addr n.addr ^ " on " ^
@@ -57,6 +54,9 @@ let handle_data ns s sockaddr =
 		with Tree.InvalidSignature ->
 			Log.log Log.warnings
 				("Received invalid signature from " ^ n.name)
+		   | _ ->
+			Log.log Log.warnings
+				("Received invalid packet from " ^ n.name)
 	with _ -> 
 		Log.log Log.debug ("Cannot find neighbor for this data")
 
@@ -66,7 +66,7 @@ let nuke_trees_for_iface ns i =
 	Log.log Log.debug ("nuking interface " ^ i);
 	List.iter (fun n -> if n.iface = i then begin
 				n.tree <- None;
-				Log.log Log.debug ("neighbor " ^ n.name ^ "canned")
+				Log.log Log.debug ("neighbor " ^ n.name ^ " canned")
 			    end) ns
 
 (* Given a list of neighbors and a number of seconds, invalidate the 

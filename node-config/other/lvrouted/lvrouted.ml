@@ -88,22 +88,23 @@ let alarm_handler _ =
 
 	  if !Common.real_route_updates then begin
 		let deletes, adds, changes = Route.diff !routes newroutes in
-		let logroute r = Log.log Log.info (Route.show r) in
 
-		Log.log Log.info "Deletes:";
-		Route.Set.iter logroute deletes;
-		Log.log Log.info "Adds:";
-		Route.Set.iter logroute adds;
-		Log.log Log.info "Changes:";
-		Route.Set.iter logroute changes;
+		Log.lazylog Log.info (fun _ ->
+			["Deletes:"] @
+			List.map Route.show (Route.Set.elements deletes) @
+			["Adds:"] @
+			List.map Route.show (Route.Set.elements adds) @
+			["Changes:"] @
+			List.map Route.show (Route.Set.elements changes));
 
 		let logerr (r, s) = Log.log Log.info (Route.show r ^ " got " ^ s) in
 		try
 			let delerrs, adderrs, changeerrs =
 				Route.commit deletes adds changes in
-			List.iter logerr delerrs;
-			List.iter logerr adderrs;
-			List.iter logerr changeerrs;
+			
+			Log.lazylog Log.info (fun _ ->
+				List.map (fun (r, s) -> Route.show r ^ " got error " ^ s)
+					 (delerrs @ adderrs @ changeerrs));
 		with Failure s ->
 			Log.log Log.errors ("Couldn't update routing table: " ^ s)
 		   | _ ->

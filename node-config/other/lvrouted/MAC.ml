@@ -1,6 +1,9 @@
 (* MAC address handling *)
 open Common
 
+(* A mac address is just a string, a string being the way to pass around
+   binary data as well as printable data in ocaml. This string is always
+   of length ETHER_ADDR_LEN (== 6) and is binary data. *)
 type t = string
 
 type arptable = (Unix.inet_addr, string) Hashtbl.t
@@ -44,9 +47,9 @@ let arptable iface : arptable =
 	try StringMap.find iface !arptables
 	with Not_found -> Hashtbl.create 1
 
-let show_arptable (h: arptable) =
+let show_arptable h =
 	Hashtbl.fold (fun addr mac a ->
 		a ^ "\t" ^
-		(Unix.string_of_inet_addr addr) ^ " -> " ^
-		(ether_ntoa mac) ^ "\n"
+		Unix.string_of_inet_addr addr ^ " -> " ^
+		ether_ntoa mac ^ "\n"
 	) h "Arptable: \n"
