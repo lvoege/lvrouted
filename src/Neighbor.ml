@@ -77,7 +77,10 @@ let handle_data ns s sockaddr =
 	let s = String.sub s 4 (len - 4) in
 	let s = if Common.compress_data then LowLevel.string_decompress s
 		else s in
-	n.tree <- Some (Tree.from_string s addr);
+	Log.log Log.debug ("deserializing from " ^ addr_s);	
+	begin try
+		n.tree <- Some (Tree.from_string s addr);
+	with _ -> raise InvalidPacket end;
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();
 	Log.log Log.debug (name n ^ "'s tree has been set")

@@ -317,10 +317,13 @@ let _ =
 			let len, sockaddr = Unix.recvfrom udpsockfd s 0
 						(String.length s) [] in
 			logfrom sockaddr;
-			Neighbor.handle_data !neighbors
-					     (String.sub s 0 len)
-					     sockaddr;
-			Log.log Log.debug ("data handled");
+			try
+				Neighbor.handle_data !neighbors
+						     (String.sub s 0 len)
+						     sockaddr;
+				Log.log Log.debug ("data handled");
+			with InvalidPacket ->
+				Log.log Log.errors ("Invalid packet!")
 		end;
 		if List.mem rtsockfd fds then
 		  handle_routemsg udpsockfd rtsockfd

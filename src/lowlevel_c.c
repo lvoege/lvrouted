@@ -792,7 +792,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	CAMLlocal4(a, node, child, chain);
 	int i;
 
-	if (*pp >= limit - sizeof(int))
+	if (*pp >= limit)
 	  failwith("faulty packet");
 	i = ntohl(*(int *)(*pp));
 	*pp += sizeof(int);
@@ -826,11 +826,17 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 
 CAMLprim value string_to_tree(value s) {
 	CAMLparam1(s);
-	CAMLlocal2(res, a);
-	unsigned char *p;
+	CAMLlocal1(res);
+	int len;
+	unsigned char *buffer, *p;
 
-	p = String_val(s);
-	CAMLreturn(string_to_tree_rec(&p, p + string_length(s)));
+	len = string_length(s);
+	buffer = malloc(len);
+	memcpy(buffer, String_val(s), len);
+	p = buffer;
+	res = string_to_tree_rec(&p, p + len);
+	free(buffer);
+	CAMLreturn(res);
 }
 
 CAMLprim value open_rtsock(value unit) {
