@@ -1,3 +1,10 @@
 - integrate MAC.ml and Iface.ml
 - something to counter marginal links that flip between being associated
-  and not being associated relatively quickly.
+  and not being associated relatively quickly. perhaps keep a queue of missed
+  receipt deadlines as a sort of cheapo quality metric. the more missed
+  deadlines in the last while, the worse the link is.
+- looking at -CURRENT's src/sys/net/route.c it appears they're going to be
+  pushing 802.11 events through the routing socket. blocking on such a
+  socket and waking up whenever something interesting occurs would be much
+  better than polling once every such-and-so seconds and checking everything
+  ourselves.
