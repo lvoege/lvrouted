@@ -149,12 +149,6 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 	CAMLreturn(Val_unit);
 }
 
-CAMLprim value caml_valaddr(value addr) {
-	CAMLparam1(addr);
-	assert(string_length(addr) == 4);
-	CAMLreturn(Val_unit);
-}
-
 CAMLprim value string_compress(value s) {
 	assert(0); /* TESTME first */
 	return Val_unit;
@@ -713,11 +707,6 @@ CAMLprim value caml_syslog(value pri, value s) {
 	  failwith("Invalid priority for syslog()");
 	syslog(tmp[Long_val(pri)], String_val(s));
 	CAMLreturn(Val_unit);
-}
-
-CAMLprim value caml_sbrk(value unit) {
-	CAMLparam1(unit);
-	CAMLreturn(Val_int(sbrk(0)));
 }
 
 CAMLprim value caml_pack_int(value i) {

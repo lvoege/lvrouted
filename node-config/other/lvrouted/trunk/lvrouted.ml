@@ -114,13 +114,14 @@ let alarm_handler _ =
 	  if !Common.real_route_updates then begin
 		let deletes, adds, changes = Route.diff (Route.fetch ()) newroutes in
 
+		let log_set t s =
+			if Route.Set.is_empty s then [] 
+			else t::List.map Route.show
+					   (Route.Set.elements s) in
 		Log.lazylog Log.info (fun _ ->
-			["Deletes:"] @
-			List.map Route.show (Route.Set.elements deletes) @
-			["Adds:"] @
-			List.map Route.show (Route.Set.elements adds) @
-			["Changes:"] @
-			List.map Route.show (Route.Set.elements changes));
+			log_set "Deletes:" deletes @
+			log_set "Adds:" adds @
+			log_set "Changes:" changes);
 
 		try
 			let delerrs, adderrs, changeerrs =
