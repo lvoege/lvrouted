@@ -27,8 +27,6 @@ let directnets : (Unix.inet_addr * int) list ref = ref []
 let sockfd = ref Unix.stdout
 (* last broadcast timestamp *)
 let last_time = ref 0.0
-(* The current routing table. This starts out empty. *)
-let routes = ref Route.Set.empty
 (* An entry means that neighbor was unreachable last iteration *)
 let unreachable = ref Neighbor.Set.empty
 
@@ -114,7 +112,7 @@ let alarm_handler _ =
 	  end;
 
 	  if !Common.real_route_updates then begin
-		let deletes, adds, changes = Route.diff !routes newroutes in
+		let deletes, adds, changes = Route.diff (Route.fetch ()) newroutes in
 
 		Log.lazylog Log.info (fun _ ->
 			["Deletes:"] @
@@ -140,7 +138,6 @@ let alarm_handler _ =
 		output_string out (Route.showroutes newroutes);
 		close_out out;
 	  end;
-	  routes := newroutes; 
 	  Log.log Log.debug "finished broadcast run";
 	end;
 
@@ -262,8 +259,6 @@ let _ =
 		Log.log Log.info "daemonized";
 	end;
 	
-	routes := Route.fetch ();
-
 	read_config ();
 	Log.log Log.info "Read config";
 
