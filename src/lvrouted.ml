@@ -114,12 +114,12 @@ let alarm_handler _ =
 	  	let nodes' = Tree.promote_children !neighbors_wireless_ip nodes in
 	  	Neighbor.bcast !sockfd nodes' !neighbors_wired;
 
-		Tree.dump_tree "lvrouted.mytree-wired" nodes;
+		Tree.dump_tree "lvrouted.mytree-wired" nodes';
 
 		let nodes' = Tree.promote_children !neighbors_wired_ip nodes in
 	  	Neighbor.bcast !sockfd nodes' !neighbors_wireless;
 
-		Tree.dump_tree "lvrouted.mytree-wireless" nodes;
+		Tree.dump_tree "lvrouted.mytree-wireless" nodes';
 	  end;
 
 	  if !Common.real_route_updates then begin

@@ -1,5 +1,5 @@
 all:
-	(cd src; $(MAKE))
+	(cd src; touch .depend && make depend && $(MAKE))
 	(cd docs; $(MAKE))
 
 install:
