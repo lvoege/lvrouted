@@ -14,6 +14,16 @@ start)
 		$lvrouted $options
 	fi
 	;;
+continue)
+	if test "$pid" != ""; then
+		kill -USR2 $pid
+		kill $pid
+		$lvrouted -r $options
+	else
+		echo "Not running, will start now"
+		$lvrouted $options
+	fi
+	;;
 reload)
 	if test "$pid" != ""; then
 		kill -HUP $pid
