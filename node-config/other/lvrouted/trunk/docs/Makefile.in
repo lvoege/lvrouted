@@ -1,0 +1,9 @@
+XSLTPROC= @XSLTPROC@
+XSLTPROC_FLAGS = @XSLTPROC_FLAGS@
+DOCBOOK_ROOT= @DOCBOOK_ROOT@
+XML_CATALOG= @XML_CATALOG@
+
+all: lvrouted.html
+
+lvrouted.html: lvrouted.xml
+	XML_CATALOG_FILES=$(XML_CATALOG) $(XSLTPROC) $(XSLTPROC_FLAGS) xhtml.xsl lvrouted.xml > lvrouted.html || rm lvrouted.html
