@@ -89,14 +89,12 @@ external deserialize: string -> node = "string_to_tree"
 
 let to_string (nodes: node list) =
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
-	let s = if Common.own_marshaller then serialize fake 
-		else Marshal.to_string nodes [] in
-	Common.pack_string s
+	if Common.own_marshaller then serialize fake 
+	else Marshal.to_string nodes []
 
 (* Read a list of nodes from the given string and return a new node. Node as
    in tree node, not wireless network node. *)
 let from_string s from_addr : node =
-	let s = Common.unpack_string s in
 	if Common.own_marshaller then
 	  { (deserialize s) with addr = from_addr }
 	else
