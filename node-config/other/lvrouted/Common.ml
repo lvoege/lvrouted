@@ -24,6 +24,13 @@ let arptables_update_every = 60.0
    Note that MAC.ml also caches this, but Iface.ml post-processes the result,
    so this is really about how often to do the post-processing *)
 let iface_arp_update = arptables_update_every
+(* Secret "key". If not the empty string, this is appended to the marshalled
+   trees, the whole thing is SHA1'ed and the hash appended. On receipt, the
+   reverse is done and checked. Someone that doesn't know this key will not
+   be able to produce a good hash. *)
+let secret = ref ""
+(* Whether or not to stay in the foreground or to daemon()ize *)
+let foreground = ref false
 
 (* Types *)
 

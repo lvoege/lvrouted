@@ -29,11 +29,14 @@ end)
 (* Constructor *)
 let make a m g = { addr = a; mask = m; gw = g }
 
+let includes_impl a m1 b m2 =
+	(m1 <= m2) &&
+	  (LowLevel.mask_addr a m1 =
+	   LowLevel.mask_addr b m1)
+
 (* Does route a completely include b? *)
 let includes a b =
-	(a.mask <= b.mask) &&
-	  (LowLevel.mask_addr a.addr a.mask =
-	   LowLevel.mask_addr b.addr a.mask)
+	includes_impl a.addr a.mask b.addr b.mask
 
 (* Does the given addr fall in the given route *)
 let matches route addr =

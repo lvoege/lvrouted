@@ -62,3 +62,6 @@ external get_arp_entries: unit -> (string * Unix.inet_addr * string) array
 
 external get_associated_stations: string -> string array
   = "get_associated_stations"
+
+external sha_string: string -> string
+  = "sha_string"

@@ -5,6 +5,8 @@ type node = {
 	mutable nodes: node list;
 }
 
+exception InvalidSignature
+
 let make a = { addr = a; nodes = [] }
 
 (* Traverse a list of nodes breadth-first, calling a function for every node. The
@@ -44,9 +46,10 @@ let show l =
      - the gateway. The top of every node in the 'nodes'
        parameter is the gateway to the tree under it.
 *)
-let merge nodes directips =
-	let routes = ref (IPSet.fold (fun e map -> IPMap.add e e map)
-				     directips IPMap.empty) in
+let merge nodes (directips: (Unix.inet_addr * int) list) =
+	let routes = ref (List.fold_left
+				(fun map (a, _) -> IPMap.add a a map)
+				IPMap.empty directips) in
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
 	traverse (fun node parent gw ->
 			if IPMap.mem node.addr !routes then
@@ -54,7 +57,10 @@ let merge nodes directips =
 			else
 			  routes := IPMap.add node.addr gw !routes)
 		 (List.map (fun node -> node.addr, fake, node) nodes);
-	IPSet.iter (fun a -> routes := IPMap.remove a !routes) directips;
+	routes := IPMap.fold (fun a gw map ->
+			if List.exists (fun (a', n) ->
+				Route.includes_impl a' n a 32) directips then map
+			else IPMap.add a gw map) !routes IPMap.empty;
 	fake.nodes, !routes
 
 (* Send the given list of nodes over the given file descriptor to the
@@ -63,13 +69,23 @@ let send (ts: node list) fd addr =
 	let s = Marshal.to_string ts [] in
 	let s' = if Common.compress_data then LowLevel.string_compress s
 		 else s in
-	try ignore(Unix.sendto fd s' 0 (String.length s) [] (Unix.ADDR_INET (addr, !Common.port)))
+	let s'' = if !Common.secret = "" then s'
+		  else (LowLevel.sha_string (!Common.secret ^ s')) ^ s' in
+	try ignore(Unix.sendto fd s'' 0 (String.length s'') []
+			(Unix.ADDR_INET (addr, !Common.port)))
 	with _ -> ()
 
-(* Read a list of nodes from the given string and return a new node. *)
+(* Read a list of nodes from the given string and return a new node. Node as
+   in tree node, not wireless network node. *)
 let from_string s from_addr : node =
-	let s' = if Common.compress_data then LowLevel.string_decompress s
-		 else s in
+	let s' = if !Common.secret = "" then s
+		 else let sha = String.sub s 0 20 in
+		      let t = String.sub s 20 (String.length s - 20) in
+		      if LowLevel.sha_string (!Common.secret ^ t) != sha then
+		        raise InvalidSignature;
+		      t in
+	let s'' = if Common.compress_data then LowLevel.string_decompress s'
+		  else s' in
 	(* This is the most dangerous bit in all of the code: *)
-	let nodes = (Marshal.from_string s' 0: node list) in
+	let nodes = (Marshal.from_string s'' 0: node list) in
 	{ addr = from_addr; nodes = nodes }

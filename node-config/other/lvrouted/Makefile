@@ -6,6 +6,7 @@ OCAMLDEP  = ocamldep
 OCAMLFIND = ocamlfind
 OCAMLPROF = ocamlprof
 CFLAGS= -Wall -I`ocamlfind printconf stdlib` -g
+LIBS=-cclib -lbz2 -cclib -lmd
 
 SOURCES= Common.ml Log.ml LowLevel.ml MAC.ml Iface.ml Route.ml Tree.ml Neighbor.ml lvrouted.ml
 MLIS= $(SOURCES:.ml=.mli)
@@ -20,10 +21,10 @@ clean:
 	rm -f $(MLIS) $(BYTECODE) $(OBJCODE) $(SOURCES:.ml=.o) *~
 
 lvrouted.opt: $(OBJCODE) lowlevel_c.o
-	$(OCAMLOPT) -o $@ $(OBJCODE) lowlevel_c.o /usr/lib/libbz2.a
+	$(OCAMLOPT) -o $@ $(OBJCODE) lowlevel_c.o $(LIBS)
 
 lvrouted: $(MLIS) $(BYTECODE) lowlevel_c.o
-	$(OCAMLC) -o $@ -custom lowlevel_c.o $(BYTECODE) /usr/lib/libbz2.a
+	$(OCAMLC) -o $@ -custom lowlevel_c.o $(BYTECODE) $(LIBS)
 
 .o: %.c
 	$(CC) $(CFLAGS) -c $<

@@ -35,6 +35,7 @@
 #include <net/ethernet.h>
 #include <arpa/inet.h>   
 #include <net/route.h>
+#include <sha.h>
 
 #include <bzlib.h>
 
@@ -106,8 +107,12 @@ static inline in_addr_t get_addr(value addr) {
 	return ntohl(((struct in_addr *)addr)->s_addr);
 }
 
-static inline in_addr_t mask_addr_impl(in_addr_t addr, int mask) {
-	return addr & (0xffffffff << (32 - mask));
+static inline unsigned int bitmask(int masklen) {
+	return masklen ? 0xffffffff << (32 - masklen) : 0;
+}
+
+static inline in_addr_t mask_addr_impl(in_addr_t addr, int masklen) {
+	return addr & bitmask(masklen);
 }
 
 CAMLprim value mask_addr(value addr, value mask) {
@@ -213,8 +218,8 @@ static int routemsg_add(unsigned char *buffer, int type,
 	msghdr->rtm_seq = seq++;
 
 	addr = (struct sockaddr_in *)(msghdr + 1);
+	memset(addr, 0, sizeof(struct sockaddr_in));
 #define ADD(x) \
-	memset(addr, 0, sizeof(struct sockaddr_in));	\
 	addr->sin_len = sizeof(struct sockaddr_in);	\
 	addr->sin_family = AF_INET;			\
 	addr->sin_addr.s_addr = htonl(x);		\
@@ -222,7 +227,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 
 	ADD(mask_addr_impl(get_addr(dest), Long_val(masklen)));
 	ADD(get_addr(gw));
-	ADD(0xffffffff << (32 - Long_val(masklen)));
+	ADD(bitmask(Long_val(masklen)));
 
 	msghdr->rtm_msglen = ((unsigned char *)addr) - buffer;
 	return msghdr->rtm_msglen;
@@ -624,6 +629,17 @@ CAMLprim value routes_fetch(value unit) {
 	free(buf);
 	close(sockfd);
 #endif
+	CAMLreturn(result);
+}
+
+CAMLprim value sha_string(value string) {
+	CAMLparam1(string);
+	CAMLlocal1(result);
+	char *p;
+
+	p = SHA1_Data(String_val(string), string_length(string), 0);
+	result = copy_string(p);
+	free(p);
 	CAMLreturn(result);
 }
 

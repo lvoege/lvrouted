@@ -13,9 +13,8 @@ let neighbors : Neighbor.t list ref = ref []
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
 let direct : Tree.node list ref = ref []
-(* A hashtable to be able to quickly see if an address is one of 'our's.
-   The keys are Unix.inet_addr's and the values are 1. *)
-let directips = ref IPSet.empty
+(* A set of address, netmask tuples *)
+let directnets : (Unix.inet_addr * int) list ref = ref []
 (* A socket file handle for everything to use. Unix.file_descr is an abstract
    type, initialize it with Unix.stdout to it typechecks, then have main
    immediately replace it with a real handle. *)
@@ -26,8 +25,6 @@ let last_time = ref 0.0
 let routes = ref Route.Set.empty
 (* Neighbor -> 1. An entry means that neighbor was unreachable last iteration *)
 let unreachable = ref (Hashtbl.create 4)
-(* Whether or not to stay in the foreground or to daemon()ize *)
-let foreground = ref false
 
 let alarm_handler _ =
 	Log.log Log.debug "in alarm_handler";
@@ -51,7 +48,7 @@ let alarm_handler _ =
 		end) !neighbors;
 	unreachable := new_unreachable;
 
-	let expired = Neighbor.nuke_old_hoptables !neighbors Common.timeout in
+	let expired = Neighbor.nuke_old_trees !neighbors Common.timeout in
 
 	let now = Unix.gettimeofday () in
 	let its_time = (now -. !last_time) > !bcast_interval in
@@ -71,7 +68,7 @@ let alarm_handler _ =
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
 
 	  let newroutes, nodes =
-		Neighbor.derive_routes_and_hoptable !directips
+		Neighbor.derive_routes_and_hoptable !directnets
 						    !neighbors in
 	  let nodes' = List.append nodes !direct in 
 
@@ -83,10 +80,10 @@ let alarm_handler _ =
 
 	  if !Common.real_route_updates then begin
 		let deletes, adds = Route.diff !routes newroutes in
-		Log.log Log.debug "Deletes:";
-		List.iter (fun r -> Log.log Log.debug (Route.show r)) deletes;
-		Log.log Log.debug "Adds:";
-		List.iter (fun r -> Log.log Log.debug (Route.show r)) adds;
+		Log.log Log.info "Deletes:";
+		List.iter (fun r -> Log.log Log.info (Route.show r)) deletes;
+		Log.log Log.info "Adds:";
+		List.iter (fun r -> Log.log Log.info (Route.show r)) adds;
 		try
 			Route.commit deletes adds
 		with Failure s ->
@@ -115,12 +112,15 @@ let read_config _ =
 			LowLevel.inet_addr_in_range a &&
 			Common.is_some n) (Array.to_list (LowLevel.getifaddrs())) in
 	
-	(* Construct the direct and directips sets. *)
-	let direct', directips' = List.fold_left (fun (direct, ipset) (_, _, a, _, _, _) ->
+	(* Construct the direct and directnets sets. *)
+	let direct', directnets' =
+		List.fold_left
+			(fun (direct, nets) (_, _, a, n, _, _) ->
 				(Tree.make a)::direct,
-				IPSet.add a ipset) ([], IPSet.empty) routableaddrs in
+				(a, LowLevel.bits_in_inet_addr (Common.from_some n))::nets)
+			([], []) routableaddrs in
 	direct := direct';
-	directips := directips';
+	directnets := directnets';
 
 	(* Interlinks can be recognised by routable addresses and a netmask geq 28. *)
 	let interlinks =
@@ -152,8 +152,9 @@ let argopts = [
 	"-p", Arg.Set_int Common.port, "UDP port to use";
 	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
 	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
-	"-f", Arg.Set foreground, "Stay in the foreground";
+	"-f", Arg.Set Common.foreground, "Stay in the foreground";
 	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
+	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
 ]
 
 let main =
@@ -176,7 +177,7 @@ let main =
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 	Log.log Log.info "Set signal handlers";
 
-	if not !foreground then begin
+	if not !Common.foreground then begin
 		LowLevel.daemon false false;
 		Log.log Log.info "daemonized";
 	end;
