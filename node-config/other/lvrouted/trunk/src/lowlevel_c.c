@@ -16,8 +16,8 @@
 #include <sys/sysctl.h>
 #include <ifaddrs.h>
 #include <netinet/in.h>
-#ifdef __FreeBSD__
 #include <net/if.h>
+#ifdef __FreeBSD__
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
@@ -34,6 +34,8 @@
 #include <dev/wi/if_wireg.h>
 #elif defined(__linux__)
 #include <netinet/ether.h>
+#include <asm/types.h>
+#include <linux/rtnetlink.h>
 #endif
 #include <net/ethernet.h>
 #include <arpa/inet.h>   
@@ -808,6 +810,7 @@ CAMLprim value open_rtsock(value unit) {
 	CAMLreturn(Val_int(sockfd));
 }
 
+#ifdef __FreeBSD__ 
 static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	CAMLparam0();
 	CAMLlocal2(res, addr);
@@ -849,11 +852,13 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	} else res = Val_int(0);
 	CAMLreturn(res);
 }
+#endif
 
 /* read a routing message from the given file descriptor and return what it
  * said. */
 CAMLprim value read_routemsg(value fd) {
 	CAMLparam1(fd);
+#ifdef __FreeBSD__
 	CAMLlocal2(res, addr);
 	char *p, *buffer;
 	int buflen, toread, numread;
@@ -885,6 +890,9 @@ CAMLprim value read_routemsg(value fd) {
 	}
 	free(buffer);
 	CAMLreturn(res);
+#else
+	CAMLreturn(Val_int(0));
+#endif
 }
 
 /* from wicontrol.c: */
