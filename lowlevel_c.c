@@ -256,7 +256,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 
 	/*
 	 * for some reason, the sin_len for the netmask's sockaddr_in should
-	 * not be the length of the sockaddr_in at all, but the position of
+	 * not be the length of the sockaddr_in at all, but the offset of
 	 * the sockaddr_in's last non-zero byte. I don't know why. From
 	 * the last byte of the sockaddr_in, step backwards until there's a
 	 * non-zero byte under the cursor, then set the length.
@@ -774,13 +774,13 @@ CAMLprim value read_routemsg(value fd) {
 		case RTM_IFINFO:
 			ifm = (struct if_msghdr *)buffer;
 			res = alloc_small(2, 3);
-			Store_field(res, 0, Val_bool(ifm->ifm_data.ifi_link_state == LINK_STATE_UP));
+			Field(res, 0) = Val_bool(ifm->ifm_data.ifi_link_state == LINK_STATE_UP);
 			break;
 		case RTM_IFANNOUNCE:
 			ifann = (struct if_announcemsghdr *)buffer;
 			res = alloc_small(2, 4);
-			Store_field(res, 0, copy_string(ifann->ifan_name));
-			Store_field(res, 1, Val_bool(ifann->ifan_what == IFAN_ARRIVAL));
+			Field(res, 0) = copy_string(ifann->ifan_name);
+			Field(res, 1) = Val_bool(ifann->ifan_what == IFAN_ARRIVAL);
 			break;
 #if defined(__FreeBSD_version) && __FreeBSD_version >= 600006
 		case RTM_IEEE80211:

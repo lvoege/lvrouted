@@ -97,8 +97,8 @@ let derive_routes_and_mytree directips ns =
 
 let check_reachable n iface = 
 	if Common.is_none n.macaddr then begin
-		let arptable = MAC.arptable n.iface in
-		try  n.macaddr <- Some (Hashtbl.find arptable n.addr)
+		let arptable = MAC.get_arptable n.iface in
+		try  n.macaddr <- Some (Common.IPMap.find n.addr arptable)
 		with Not_found ->
 			Log.log Log.debug ("Cannot determine MAC address for " ^
 					   "neighbor " ^ name n);
