@@ -32,12 +32,12 @@ external ether_ntoa: string -> string -> bool
   = "caml_ether_ntoa"
 
 (* Wrapper around getifaddrs(3) *)
-external getifaddrs: unit -> (string *		(* iface name *)
-			      int *		(* iface flags *)
-			      Unix.inet_addr *	(* iface addr *)
-			      Unix.inet_addr option * (* netmask *)
-			      Unix.inet_addr option * (* broadcast *)
-			      Unix.inet_addr option)   (* dst addr *)
+external getifaddrs: unit -> ( string		(* iface name *)
+			     * int		(* iface flags *)
+			     * Unix.inet_addr 	(* iface addr *)
+			     * Unix.inet_addr option	(* netmask *)
+			     * Unix.inet_addr option	(* broadcast *)
+			     * Unix.inet_addr option)	(* dst addr *)
 			     list
   = "caml_getifaddrs"
 

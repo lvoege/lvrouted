@@ -8,7 +8,7 @@ open Neighbor
    able to use them *)
 
 (* A list of Neighbor.t's *)
-let neighbors : Neighbor.t list ref = ref []
+let neighbors = ref Neighbor.Set.empty
 (* A list of strings with interface names. 'ep0', 'sis1' etc *)
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
@@ -23,29 +23,35 @@ let sockfd = ref Unix.stdout
 let last_time = ref 0.0
 (* The current routing table. This starts out empty. *)
 let routes = ref Route.Set.empty
-(* Neighbor -> 1. An entry means that neighbor was unreachable last iteration *)
-let unreachable = ref (Hashtbl.create 4)
+(* An entry means that neighbor was unreachable last iteration *)
+let unreachable = ref Neighbor.Set.empty
 
 let alarm_handler _ =
 	Log.log Log.debug "in alarm_handler";
 
-	(* re-trigger het alarm *)
+	(* re-trigger the alarm *)
 	ignore(Unix.alarm !Common.alarm_timeout);
 
-	(* See if anything previously reachable now isn't *)
-	let someone_became_unreachable = ref false in
-	let new_unreachable = Hashtbl.create 4 in
-	List.iter (fun n ->
+	(* See what neighbors are unreachable. Per neighbor, fetch the
+	   corresponding Iface.t and see if it's reachable. *)
+	let new_unreachable = Neighbor.Set.filter (fun n ->
 		Log.log Log.debug ("looking at " ^ (Neighbor.name n));
 		let iface = StringMap.find (Neighbor.iface n) !ifaces in
-		if not (Neighbor.check_reachable n iface) then begin
-		  Hashtbl.add new_unreachable n 1;
-		  try
-		  	ignore(Hashtbl.find !unreachable n)
-		  with Not_found ->
-		  	Log.log Log.info ((Neighbor.name n) ^ " became unreachable");
-		  	someone_became_unreachable := true
-		end) !neighbors;
+		not (Neighbor.check_reachable n iface)) !neighbors in
+
+	(* See what is now unreachable that wasn't before, and what wasn't
+	   reachable before but now is. *)
+	let newly_unreachable = Neighbor.Set.diff new_unreachable !unreachable in
+	let newly_reachable = Neighbor.Set.diff !unreachable new_unreachable in
+	let reachable_changed = not (Neighbor.Set.is_empty newly_unreachable)
+			     || not (Neighbor.Set.is_empty newly_reachable) in
+	(* Log any changes *)
+	if reachable_changed then begin
+		let log s n = Log.log Log.info (n.name ^ " became " ^ s) in
+		Neighbor.Set.iter (log "unreachable") newly_unreachable;
+		Neighbor.Set.iter (log "reachable") newly_reachable;
+	end;
+	(* And update the global *)
 	unreachable := new_unreachable;
 
 	let expired = Neighbor.nuke_old_trees !neighbors Common.timeout in
@@ -54,12 +60,13 @@ let alarm_handler _ =
 	let its_time = (now -. !last_time) > !bcast_interval in
 
 	(* If there's enough reason, derive a new routing table and a new
-	   hop table and send it around. *)
-	if !someone_became_unreachable || expired || its_time then begin
+	   tree and send it around. *)
+	if reachable_changed || expired || its_time then begin
 	  Log.log Log.debug "starting broadcast run";
 	  last_time := now;
 
-	  List.iter (fun n ->
+	  (* DEBUG: Dump the incoming trees to the filesystem *)
+	  Neighbor.Set.iter (fun n ->
 	  	let fname = "/tmp/lvrouted.tree-" ^ n.name in
 	  	if Common.is_some n.tree then begin
 			let out = open_out ("/tmp/lvrouted.tree-" ^ n.name) in
@@ -68,15 +75,16 @@ let alarm_handler _ =
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
 
 	  let newroutes, nodes =
-		Neighbor.derive_routes_and_hoptable !directnets
-						    !neighbors in
+		Neighbor.derive_routes_and_mytree !directnets
+						  !neighbors in
 	  let nodes' = List.append nodes !direct in 
 
+	  (* DEBUG: dump the derived tree to the filesystem *)
 	  let out = open_out ("/tmp/lvrouted.mytree") in
 	  output_string out (Tree.show nodes');
 	  close_out out;
 
-	  List.iter (Neighbor.send (!sockfd) nodes') (!neighbors);
+	  Neighbor.Set.iter (Neighbor.send !sockfd nodes') !neighbors;
 
 	  if !Common.real_route_updates then begin
 		let deletes, adds = Route.diff !routes newroutes in
@@ -89,11 +97,18 @@ let alarm_handler _ =
 
 		let logerr (r, s) = Log.log Log.info (Route.show r ^ " got " ^ s) in
 		try
-			let delerrs, adderrs = Route.commit deletes adds in
-			List.iter logerr delerrs;
+			let delerrs1, adderrs = Route.commit deletes adds in
+			List.iter logerr delerrs1;
 			List.iter logerr adderrs;
+			(* Wait a while and then re-do the deletes. This seems
+			   to be needed sometimes. *)
+			Unix.sleep 2;
+			let delerrs2, _ = Route.commit deletes [] in
+			List.iter logerr delerrs2;
 		with Failure s ->
 			Log.log Log.errors ("Couldn't update routing table: " ^ s)
+		   | _ ->
+			Log.log Log.errors ("Unknown exception updating routing table")
 	  end else begin
 		let out = open_out "/tmp/lvrouted.routes" in
 		output_string out (Route.showroutes newroutes);
@@ -104,16 +119,17 @@ let alarm_handler _ =
 	end
 
 let abort_handler _ =
-	Log.log Log.warnings "Exiting";
+	Log.log Log.warnings "Exiting. Sending neighbors empty trees...";
+	Neighbor.Set.iter (Neighbor.send !sockfd []) !neighbors;
+	Log.log Log.warnings "Empty trees sent, now exiting for real.";
 	exit 0
 
 let read_config _ =
 	(* Block the alarm signal while we're meddling with globals. *)
 	let block_signals = [ Sys.sigalrm ] in
-	let _ = Unix.sigprocmask Unix.SIG_BLOCK block_signals in
+	ignore(Unix.sigprocmask Unix.SIG_BLOCK block_signals);
 
 	(* Get all routable addresses that also have a netmask *)
-	
 	let routableaddrs = List.filter (fun (_, _, a, n, _, _) ->
 			LowLevel.inet_addr_in_range a &&
 			Common.is_some n) (LowLevel.getifaddrs ()) in
@@ -143,11 +159,16 @@ let read_config _ =
 				compare a' a != 0) addrs in
 			List.map (fun a -> iface, a) addrs') interlinks) in
 
-	let ifaces', neighbors' = List.fold_left (fun (ifacemap, neighbors) (iface, a) ->
+	(* And finally construct the global ifaces map and neighbors set *)
+	let ifaces', neighbors' = List.fold_left (
+		fun (ifacemap, neighbors) (iface, a) ->
 			let name = Unix.string_of_inet_addr a in
 			Log.log Log.debug ("neighbor " ^ name ^ " on " ^ iface);
-			StringMap.add iface (Iface.make iface) ifacemap,
-			((Neighbor.make name iface a)::neighbors)) (StringMap.empty, []) neighboraddrs in
+			let i = Iface.make iface in
+			let n = Neighbor.make name iface a in
+			StringMap.add iface i ifacemap,
+			Neighbor.Set.add n neighbors)
+		(StringMap.empty, Neighbor.Set.empty) neighboraddrs in
 	ifaces := ifaces';
 	neighbors := neighbors';
 
@@ -166,7 +187,7 @@ let argopts = [
 let main =
 	Log.log Log.info "Starting up";
 
-	Arg.parse argopts (fun _ -> ()) "lvrouted";
+	Arg.parse argopts ignore "lvrouted";
 	Log.log Log.info "Parsed commandline";
 
 	if not !Common.foreground then begin
@@ -175,8 +196,12 @@ let main =
 	end;
 
 	if !Common.real_route_updates then begin
-		Route.flush ();
-		Log.log Log.info "Flushed routes";
+		if Route.flush () then
+		  Log.log Log.info "Flushed routes"
+		else begin
+			Log.log Log.errors "Couldn't flush routes!";
+			exit 1;
+		end
 	end;
 
 	read_config ();

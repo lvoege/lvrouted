@@ -19,7 +19,6 @@ module NeighborType = struct
 	let compare a b = compare a.addr b.addr
 end
 module Set = Set.Make(NeighborType)
-module Map = Map.Make(NeighborType)
 
 let show n =
 	n.name ^ ": " ^ Unix.string_of_inet_addr n.addr ^ " on " ^
@@ -46,7 +45,8 @@ let send fd (nodes: Tree.node list) n =
 let handle_data ns s sockaddr =
 	try	
 		let addr = Common.get_addr_from_sockaddr sockaddr in
-		let n = List.find (fun n -> n.addr = addr) ns in
+		let n = Set.filter (fun n -> n.addr = addr) ns in
+		let n = List.hd (Set.elements n) in
 		Log.log Log.debug ("This data is from neighbor " ^ n.name);
 		try
 			n.tree <- Some (Tree.from_string s addr);
@@ -72,7 +72,7 @@ let nuke_trees_for_iface ns i =
 let nuke_old_trees ns numsecs =
 	let limit = (Unix.gettimeofday ()) -. numsecs in
 	let res = ref false in
-	List.iter (fun n -> 
+	Set.iter (fun n -> 
 		if n.last_seen < limit &&
 		   Common.is_some n.tree then begin
 			Log.log Log.debug (n.name ^ " expired");
@@ -83,9 +83,10 @@ let nuke_old_trees ns numsecs =
 
 (* From the given set of direct IPs and list of neighbors, derive a list of
    (unaggregated) routes and a merged tree. *)
-let derive_routes_and_hoptable directips ns = 
+let derive_routes_and_mytree directips ns = 
 	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
-			             (fun n -> Common.from_some n.tree) ns in
+			             (fun n -> Common.from_some n.tree) 
+				     (Set.elements ns) in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
 			   string_of_int (List.length nodes));
 	let nodes', routemap = Tree.merge nodes directips in

@@ -31,6 +31,8 @@ let iface_arp_update = arptables_update_every
 let secret = ref ""
 (* Whether or not to stay in the foreground or to daemon()ize *)
 let foreground = ref false
+(* Maximum number of route flush attempts *)
+let max_route_flush_tries = 10
 
 (* Types *)
 

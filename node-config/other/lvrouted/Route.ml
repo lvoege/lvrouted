@@ -113,11 +113,12 @@ external fetch: unit -> route list
   = "routes_fetch"
 
 let flush () =
-	(* TODO, figure out why this doesn't work:
-	commit (fetch ()) []
-
-	I suspect the route deletes need all the sockaddrs that were
-	specified for a route to be able to delete it, and this only
-	propagates dst, gw and netmask.  *)
-	let c = Unix.open_process_in "/sbin/route -q flush" in
-	ignore(Unix.close_process_in c);
+	let i = ref 0 in
+	let rs = ref (fetch ()) in
+	while List.length !rs > 0 && !i < Common.max_route_flush_tries do
+		ignore(commit !rs []);
+		Unix.sleep 1;
+		rs := fetch ();
+		incr i;
+	done;
+	!i < Common.max_route_flush_tries
