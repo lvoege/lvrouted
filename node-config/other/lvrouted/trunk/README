@@ -12,8 +12,9 @@ This is a very simple shortest-path routing daemon, featuring:
 No per node configuration: If your network has both a well-defined routable
 range (for us, that's 172.16.0.0/12) and well-defined interlink netmasks
 (anything smaller than 28 for us), the daemon can do the right thing
-automatically. The first assumption is implemented in lowlevel_c.c,
-inet_addr_in_range(). The second assumption is set in Common.interlink_netmask
+automatically. The first assumption is implemented in Common.min_routable and
+Common.max_routable, the second assumption is set in
+Common.interlink_netmask.
 
 All addresses on all interfaces are examined to see if they fall
 within the routable range. For interlink subnets all possible addresses are
@@ -43,9 +44,9 @@ five percent. RSS is about three to four MB.
 A couple of other assumptions about the WirelessLeiden network are in the
 code and would need to be adapted for other surroundings:
 
-  - lowlevel_c.c, inet_addr_in_range() says whether or not an address is
-    routable. For WirelessLeiden, this is the range from 172.16.0.0 up to
-    and not including 172.31.255.0. Re-implement as needed.
+  - Common.min_routable and Common.max_routable specify the bounds of the
+    routable range. For WirelessLeiden, this is the range from 172.16.0.0
+    up to and not including 172.31.255.0. Re-implement as needed.
   - Common.ml has a definition for the narrowest interlink netmask. This is
     /28 in WirelessLeiden, with the vast majority of interlink subnets being
     /30's. 
