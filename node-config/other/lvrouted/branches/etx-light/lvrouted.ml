@@ -69,7 +69,7 @@ let alarm_handler _ =
 	(* And update the global *)
 	unreachable := new_unreachable;
 
-	let expired = Neighbor.nuke_old_trees !neighbors Common.timeout in
+	let expired = Neighbor.nuke_old_stuff !neighbors Common.timeout in
 
 	let now = Unix.gettimeofday () in
 	let its_time = (now -. !last_time) > !bcast_interval in
@@ -167,7 +167,7 @@ let read_config _ =
 	let direct', directnets' =
 		List.fold_left
 			(fun (direct, nets) (_, _, a, n, _, _) ->
-				(Tree.make a)::direct,
+				(Tree.make a [])::direct,
 				(a, LowLevel.bits_in_inet_addr (Common.from_some n))::nets)
 			([], []) routableaddrs in
 	direct := direct';

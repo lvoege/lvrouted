@@ -13,7 +13,7 @@ type node = {
 exception InvalidSignature
 
 (* Constructor *)
-let make a = { addr = a; nodes = [] }
+let make a n = { addr = a; nodes = n }
 
 let addr n = n.addr
 let nodes n = n.nodes
@@ -79,28 +79,6 @@ let merge nodes directnets =
 				Route.includes_impl a' n a 32) directnets then map
 			else IPMap.add a gw map) !routes IPMap.empty;
 	fake.nodes, !routes
-
-(* Send the given list of nodes over the given file descriptor to the
-   given addr *)
-let send (ts: node list) fd addr = 
-	let s = Marshal.to_string ts [] in
-	let s' = if Common.compress_data then LowLevel.string_compress s
-		 else s in
-	let s'' = Common.sign_string s' in
-	ignore(Unix.sendto fd s'' 0 (String.length s'') []
-			   (Unix.ADDR_INET (addr, !Common.port)))
-
-(* Read a list of nodes from the given string and return a new node. Node as
-   in tree node, not wireless network node. *)
-let from_string s from_addr : node =
-	let goodsig, s' = Common.verify_string s in
-	if not goodsig then
-	  raise InvalidSignature;
-	let s'' = if Common.compress_data then LowLevel.string_decompress s'
-		  else s' in
-	(* This is the most dangerous bit in all of the code: *)
-	let nodes = (Marshal.from_string s'' 0: node list) in
-	{ addr = from_addr; nodes = nodes }
 
 (* This is basically a hack. Given a list of first-level nodes and a set for
    which membership entails being connected to this node through an ethernet

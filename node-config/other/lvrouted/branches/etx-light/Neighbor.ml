@@ -5,8 +5,8 @@ type t = {
 	addr: Unix.inet_addr;		(* address to reach this neighbor on *)
 	mutable macaddr: MAC.t option;	(* MAC address, if known *)
 
-	mutable last_seen: float;	(* -1.0 if never seen, else unix
-					   timestamp of last received packet *)
+	recvstamps: float Queue.t;
+	mutable last_seen: float;
 	mutable tree: Tree.node option; (* the tree last received *)
 }
 
@@ -23,6 +23,7 @@ let name n = Unix.string_of_inet_addr n.addr
 let make iface addr =
 	{ iface = iface;
 	  addr = addr;
+	  recvstamps = Queue.create ();
 	  last_seen = -1.0;
 	  macaddr = None;
 	  tree = None }
@@ -31,7 +32,13 @@ let iface n = n.iface
 
 (* send the given tree to the given neighbor *)
 let send fd (nodes: Tree.node list) n =
-	try Tree.send nodes fd n.addr
+	try
+		let s = Marshal.to_string (char_of_int (Queue.length n.recvstamps), nodes) [] in
+		let s' = if Common.compress_data then LowLevel.string_compress s
+			 else s in
+		let s'' = Common.sign_string s' in
+		ignore(Unix.sendto fd s'' 0 (String.length s'') []
+				   (Unix.ADDR_INET (n.addr, !Common.port)))
 	with _ ->
 		Log.log Log.info ("Nuking " ^ name n ^ "'s tree after exception while sending");
 		n.tree <- None
@@ -40,19 +47,29 @@ let send fd (nodes: Tree.node list) n =
    handle it. Find the neighbor associated with the address, parse the
    tree and mark the time *)
 let handle_data ns s sockaddr =
-	try	
-		let addr = Common.get_addr_from_sockaddr sockaddr in
+	let addr = Common.get_addr_from_sockaddr sockaddr in
+	let goodsig, s' = Common.verify_string s in
+	if not goodsig then
+		Log.log Log.warnings
+			("Received invalid signature from " ^ Unix.string_of_inet_addr addr)
+	else try
+		let s'' = if Common.compress_data then LowLevel.string_decompress s'
+			  else s' in
 		let n = Set.filter (fun n -> n.addr = addr) ns in
 		let n = List.hd (Set.elements n) in
 		Log.log Log.debug ("This data is from neighbor " ^ name n);
 		try
-			n.tree <- Some (Tree.from_string s addr);
-			Log.log Log.debug (name n ^ "'s tree has been set");
-			n.last_seen <- Unix.gettimeofday ()
-		with Tree.InvalidSignature ->
-			Log.log Log.warnings
-				("Received invalid signature from " ^ name n)
-		   | _ ->
+			let numreceived, nodes = (Marshal.from_string s'' 0: (char * (Tree.node list))) in
+			let numreceived = int_of_char numreceived in
+			if numreceived < Queue.length n.recvstamps - Common.max_lost_packets then
+			  Log.log Log.warnings (name n ^ "'s tree has been ignored because of asymmetry")
+			else begin
+				n.tree <- Some (Tree.make addr nodes);
+				Log.log Log.debug (name n ^ "'s tree has been set");
+				n.last_seen <- Unix.gettimeofday ();
+				Queue.push n.last_seen n.recvstamps
+			end
+		with _ ->
 			Log.log Log.warnings
 				("Received invalid packet from " ^ name n)
 	with _ -> 
@@ -68,9 +85,16 @@ let nuke_trees_for_iface ns i =
 			    end) ns
 
 (* Given a list of neighbors and a number of seconds, invalidate the 
-   trees of all neighbors not heard from since numsecs ago *)
-let nuke_old_trees ns numsecs =
+   trees of all neighbors not heard from since numsecs ago and trim the recvstamps queues  *)
+let nuke_old_stuff ns numsecs =
 	let limit = (Unix.gettimeofday ()) -. numsecs in
+	(* expire old timestamps for all neighbors *)
+	Set.iter (fun n ->
+		while not (Queue.is_empty n.recvstamps) && 
+		      Queue.peek n.recvstamps <= limit do
+			ignore(Queue.pop n.recvstamps)
+		done) ns;
+	(* now nuke trees of neighbors not heard of since the limit *)
 	let expired = Set.filter (fun n ->
 		n.last_seen < limit && Common.is_some n.tree) ns in
 	Set.iter (fun n ->

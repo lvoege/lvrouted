@@ -41,6 +41,8 @@ let min_mask = ref 24
    exclusive. *)
 let min_routable = Unix.inet_addr_of_string "172.16.0.0"
 let max_routable = Unix.inet_addr_of_string "172.31.255.0"
+(* *)
+let max_lost_packets = 5
 
 (* Types *)
 
