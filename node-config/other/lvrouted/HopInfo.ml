@@ -1,8 +1,9 @@
 open Route
+open Common
 
 type t = {
 	addr: Unix.inet_addr;
-	path: Unix.inet_addr array;
+	path: IPSet.t;
 }
 
 type hopelts = t array
@@ -11,9 +12,9 @@ type hopelts = t array
 let addr e = e.addr
 
 (* constructor *)
-let make a = { addr = a; path = [| |] }
+let make a = { addr = a; path = IPSet.empty }
 
-let hopcount h = Array.length h.path
+let hopcount h = IPSet.cardinal h.path
 
 let show h =
 	Unix.string_of_inet_addr h.addr ^ " -> " ^
@@ -46,7 +47,7 @@ let from_string s from_addr : hopelts =
 	(* This is the most dangerous bit in all of the code: *)
 	let res = (Marshal.from_string s' 0: hopelts) in
 	Array.iteri (fun i e ->
-		res.(i) <- { e with path = Array.append [| from_addr |] e.path }
+		res.(i) <- { e with path = IPSet.add from_addr e.path }
 	) res;
 	res
 
@@ -63,12 +64,5 @@ let filter hs routes gw =
 	Array.of_list (List.filter f (Array.to_list hs))
 
 (* are any of the path components in h present in addrhash? *)
-let path_in_hash h addrhash =
-	let res = ref false in
-	Array.iter (fun a -> 
-		try
-			let _ = Hashtbl.find addrhash a in
-			res := true
-		with Not_found -> ()) h.path;
-	!res
-	
+let path_in_set (h: t) (addrset: IPSet.t) =
+	not (IPSet.is_empty (IPSet.inter h.path addrset))

@@ -13,6 +13,14 @@ type t = {
 	mutable hoptable: HopInfo.hopelts option;
 }
 
+type neighbor = t
+module NeighborType = struct
+	type t = neighbor
+	let compare a b = compare a.addr b.addr
+end
+module Set = Set.Make(NeighborType)
+module Map = Map.Make(NeighborType)
+
 let show n =
 	n.name ^ ": " ^ Unix.string_of_inet_addr n.addr ^ " on " ^
 			n.iface ^ "\n"
@@ -23,6 +31,9 @@ let make name iface addr =
 	  last_seen = -1.0;
 	  macaddr = None;
 	  hoptable = None }
+
+let name n = n.name
+let iface n = n.iface
 
 (* send the given hoptable to the given neighbor under the current routing
    table. hoptable entries going through the neighbor per the routing table
@@ -73,7 +84,7 @@ let nuke_old_hoptables ns numsecs =
 
 (* From the given direct hoptable and list of neighbors, derive a list of
    (unaggregated) routes and a merged hoptable. *)
-let derive_routes_and_hoptable direct direct_hash ns = 
+let derive_routes_and_hoptable direct directips ns = 
 	let ns' = List.filter (fun n -> Common.is_some n.hoptable) ns in
 	Log.log Log.debug ("Number of eligible neighbors: " ^ string_of_int (List.length ns'));
 	if List.length ns' = 0 then
@@ -85,7 +96,7 @@ let derive_routes_and_hoptable direct direct_hash ns =
 		Array.iter (fun e ->
 			let addr = HopInfo.addr e in
 			try
-				if (not (HopInfo.path_in_hash e direct_hash)) &&
+				if (not (HopInfo.path_in_set e directips)) &&
 				   HopInfo.compare e (fst (Hashtbl.find h addr)) < 0 then
 				  Hashtbl.replace h addr (e, n)
 			with Not_found ->

@@ -1,6 +1,5 @@
 (* Main module. A receive loop plus an alarm handler that'll do the
    sending to neighbors and the updating of the route table. *)
-open Neighbor
 open Common
 open Log
 
@@ -8,14 +7,14 @@ open Log
    able to use them *)
 
 (* A list of Neighbor.t's *)
-let neighbors = ref []
+let neighbors : Neighbor.t list ref = ref []
 (* A list of strings with interface names. 'ep0', 'sis1' etc *)
-let ifaces = Hashtbl.create 16
+let ifaces = ref StringMap.empty
 (* An array of HopInfo.t's for every one of 'our' addresses. *)
 let direct = ref [| |]
 (* A hashtable to be able to quickly see if an address is one of 'our's.
    The keys are Unix.inet_addr's and the values are 1. *)
-let direct_hash = Hashtbl.create 16
+let directips = ref IPSet.empty
 (* A socket file handle for everything to use. Unix.file_descr is an abstract
    type, initialize it with Unix.stdout to it typechecks, then have main
    immediately replace it with a real handle. *)
@@ -38,15 +37,15 @@ let alarm_handler _ =
 	let someone_became_unreachable = ref false in
 	let new_unreachable = Hashtbl.create 4 in
 	List.iter (fun n ->
-		Log.log Log.debug ("looking at " ^ n.name);
-		let iface = Hashtbl.find ifaces n.iface in
+		Log.log Log.debug ("looking at " ^ (Neighbor.name n));
+		let iface = StringMap.find (Neighbor.iface n) !ifaces in
 		if not (Neighbor.check_reachable n iface) then begin
 		  Hashtbl.add new_unreachable n 1;
 		  try
 		  	let _ = Hashtbl.find !unreachable n in
 			()
 		  with Not_found ->
-		  	Log.log Log.info (n.name ^ " became unreachable");
+		  	Log.log Log.info ((Neighbor.name n) ^ " became unreachable");
 		  	someone_became_unreachable := true
 		end) !neighbors;
 	unreachable := new_unreachable;
@@ -63,9 +62,9 @@ let alarm_handler _ =
 	  last_time := now;
 
 	  let newroutes, hoptable =
-		Neighbor.derive_routes_and_hoptable (!direct)
-						    direct_hash
-						    (!neighbors) in
+		Neighbor.derive_routes_and_hoptable !direct
+						    !directips
+						    !neighbors in
 
 	  let routes' = Route.aggregate newroutes in
 	  List.iter (Neighbor.send (!sockfd) routes' hoptable) (!neighbors);
@@ -95,11 +94,12 @@ let read_config _ =
 	let routableaddrs = List.filter (fun (_, _, a, n, _, _) ->
 			LowLevel.inet_addr_in_range a &&
 			Common.is_some n) (Array.to_list (LowLevel.getifaddrs())) in
+	directips := IPSet.empty;
 	(* add all routable addresses to the direct array *)
 	direct := Array.of_list (List.map (fun (_, _, a, _, _, _) ->
 			Log.log Log.debug ("direct " ^
 					Unix.string_of_inet_addr a);
-			Hashtbl.add direct_hash a 1;
+			directips := IPSet.add a !directips;
 			HopInfo.make a) routableaddrs);
 
 	(* interlinks can be recognised by routable addresses and a netmask
@@ -115,11 +115,12 @@ let read_config _ =
 			let addrs' = List.filter (fun a' ->
 				compare a' a != 0) (Array.to_list addrs) in
 			List.map (fun a -> iface, a) addrs') interlinks) in
+	ifaces := StringMap.empty;
 	neighbors := List.map (fun (iface, a) -> 
 			let name = Unix.string_of_inet_addr a in
 			Log.log Log.debug ("neighbor " ^
 				name ^ " on " ^ iface);
-			Hashtbl.replace ifaces iface (Iface.make iface);
+			ifaces := StringMap.add iface (Iface.make iface) !ifaces;
 			Neighbor.make name iface a) neighboraddrs;
 	Log.log Log.debug ("numneighbors: " ^ string_of_int (List.length !neighbors));
 

@@ -5,8 +5,8 @@ type route = {
 	gw: Unix.inet_addr;
 }
 
-(* Make struct with an OrderedType signature, to build a Set later on. *)
-module RouteType = struct
+(* Make a Set of routes *)
+module RouteSet = Set.Make(struct
 	type t = route
 	(* compare first on the netmask, then on the address and finally on the gateway *)
 	let compare a b =
@@ -19,10 +19,7 @@ module RouteType = struct
 		    res'
 		else
 		  res
-end
-
-(* And make a Set of routes *)
-module RouteSet = Set.Make(RouteType)
+end)
 
 (* Constructor *)
 let make a m g = { addr = a; mask = m; gw = g }

@@ -3,7 +3,7 @@ type t = string
 
 type arptable = (Unix.inet_addr, string) Hashtbl.t
 
-module MacSet = Set.Make(String)
+module Set = Set.Make(String)
 
 (* Keep one global hash from interface name to interface-specific arp table,
    together with some information to be able to refresh it every now and

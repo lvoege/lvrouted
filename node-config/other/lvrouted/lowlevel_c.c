@@ -10,11 +10,9 @@
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
-#include <net/ethernet.h>
 #include <ifaddrs.h>
-#else
-#include <netinet/ether.h>
 #endif
+#include <net/ethernet.h>
 #include <arpa/inet.h>   
 #include <net/route.h>
 #include <netinet/in.h>
