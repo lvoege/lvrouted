@@ -129,26 +129,34 @@ let abort_handler _ =
 	Log.log Log.info "Exiting.";
 	exit 0
 
-(* For the given interface and netblock, add all possible neighbors to the
-   global set *)
+(* For the given interface and netblock, add the neighbors to the global set.
+   If we have the lowest address, we're the accesspoint and all other
+   addresses are neighbors. If we do not have the lowest address, we're a
+   client and the only possible neighbor is the lowest address. *)
 let add_neighbors iface addr mask =
 	if not (StringMap.mem iface !ifaces) then begin
 		let i = Iface.make iface in
 		ifaces := StringMap.add iface i !ifaces
 	end;
-	let addrs = List.filter ((<>) addr)
-				(LowLevel.get_addrs_in_block addr mask) in
-	List.iter (fun a ->
+	let add_neighbor a =
 		let n = Neighbor.make iface a in
-		neighbors := Neighbor.Set.add n !neighbors) addrs
+		neighbors := Neighbor.Set.add n !neighbors in
+	let all_addrs = LowLevel.get_addrs_in_block addr mask in
+	if Iface.itype (StringMap.find iface !ifaces) = Iface.WIRED then
+		List.iter add_neighbor all_addrs
+	else begin
+		let ap_addr = List.hd all_addrs in
+		if addr = ap_addr then
+			List.iter add_neighbor (List.tl all_addrs)
+		else
+			add_neighbor ap_addr
+	end
 
 let delete_neighbors iface addr mask = 
-	let addrs = List.filter ((<>) addr)
-				(LowLevel.get_addrs_in_block addr mask) in
-	let to_delete = List.fold_left (fun s a ->
-		let n = Neighbor.make iface a in
-		Neighbor.Set.add n s) Neighbor.Set.empty addrs in
-	neighbors := Neighbor.Set.diff !neighbors to_delete
+	let addrs = LowLevel.get_addrs_in_block addr mask in
+	neighbors := List.fold_left (fun s a ->
+			let n = Neighbor.make iface a in
+			Neighbor.Set.remove n s) !neighbors addrs
 
 let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
