@@ -48,8 +48,8 @@ let bcast fd nodes ns =
 		with _ -> ()) ns
 
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
-   handle it. Find the neighbor associated with the address, parse the
-   tree and mark the time. *)
+   handle it. Verify the signature, find the neighbor associated with the
+   address, verify the sequence number, parse the tree and mark the time. *)
 let handle_data ns s sockaddr =
 	let addr = Common.get_addr_from_sockaddr sockaddr in
 	let addr_s = Unix.string_of_inet_addr addr in
