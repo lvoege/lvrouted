@@ -59,6 +59,10 @@ let showroutes rs =
 
      If the netmask is the minimum netmask, move the route to the done list
      and recurse.
+
+     If the address is the same as the gateway address and it's a host route,
+     drop it. Tree.merge can pass these in the routing table, and this is the
+     most convenient place to remove them code-wise.
     
      Else expand the netmask by one bit. Check if it gobbles up any routes
      to different gateways.

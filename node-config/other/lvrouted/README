@@ -5,10 +5,7 @@ client (http://subversion.tigris.org/) to make use of. The directories are:
 trunk/ 			the regular shortest path version in use right now
 branches/etx-light	an ETX-like trick to try and cope with asymmetrically
 			lossy links.
-branches/etx		the full ETX version.
 branches/ipv6		version that can propagate IPv6 addresses.
-branches/rtsock		version that listens to messages that come over the
-			routing socket instead of polling
 tags/			this keeps a symbolic record of important versions,
 			such as actually deployed versions.
 
