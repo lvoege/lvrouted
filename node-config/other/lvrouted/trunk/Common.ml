@@ -1,5 +1,9 @@
 (* This module contains tunables and convenience types and functions *)
 
+(* unpack_string will verify the signature of a packet and will throw this
+   exception if the signature turns out wrong *)
+exception InvalidSignature
+
 (*s Constants *)
 
 (* The port to listen on *)
@@ -55,31 +59,30 @@ module IPMap = Map.Make(IPStruct)
 (* Convenience functions *)
 
 (* Given an 'a option, it it a Some of a? *)
-let is_some e = match e with
-	  None -> false
-	| _ -> true
+let is_some = function
+	  None	-> false
+	| _	-> true
 
 (* or is it a None? *)
 let is_none e = not (is_some e)
 
 (* Given an 'a option that is a Some of a, return the a *)
-let from_some e = match e with
+let from_some = function
 	  Some t -> t
 	| _ -> raise (Failure "oops, from_some called on a None!")
 
 (* Given a filtering function, a mapping function and a list, return
    the filtered-and-then-mapped list *)
-let rec filtermap ff mf l = match l with
+let rec filtermap ff mf = function
 	  []	-> []
-	| x::xs	-> if ff x then ((mf x)::(filtermap ff mf xs))
+	| x::xs	-> if ff x then (mf x)::(filtermap ff mf xs)
 		   else filtermap ff mf xs
 
-let get_addr_from_sockaddr sockaddr =
-	match sockaddr with
+let get_addr_from_sockaddr = function
 	  Unix.ADDR_UNIX _	-> raise (Failure "Huh, got a unix address?!")
 	| Unix.ADDR_INET (a, _)	-> a
 
-(* Given an open read channel, return a list of all lines *)
+(* Given an open read channel, return a reversed (!) list of all lines *)
 let snarf_lines_from_channel c =
 	let res = ref [] in
 	try
@@ -88,7 +91,7 @@ let snarf_lines_from_channel c =
 		done;
 		!res
 	with End_of_file ->
-		List.rev !res
+		!res
 
 (* Given a channel, a regular expression and the number of groups to expect, return a list of
    arrays. The arrays are the matched groups. Note that the number of groups should include
@@ -96,16 +99,13 @@ let snarf_lines_from_channel c =
    pairs plus one for the whole string. *)
 let snarf_channel_for_re c re numgroups =
 	let lines = snarf_lines_from_channel c in
-	let res = ref [] in
-	List.iter (fun l ->
+	List.fold_left (fun acc l ->
 		if Str.string_match re l 0 then begin
 			let s = Str.matched_string l in
 			let a = Array.init numgroups 
 				(fun i -> Str.matched_group i s) in
-			res := a::(!res)
-		end
-	) lines;
-	List.rev (!res)
+			a::acc
+		end else acc) [] lines
 
 let sign_string s = 
 	if !secret = "" then s
@@ -126,3 +126,15 @@ let try_max_times max f =
 	t 0
 
 let addr_in_range a = a >= min_routable && a < max_routable
+
+let pack_string s =
+	let s = if compress_data then LowLevel.string_compress s
+		else s in
+	sign_string s
+
+let unpack_string s =
+	let goodsig, s = verify_string s in
+	if not goodsig then
+	  raise InvalidSignature;
+	if compress_data then LowLevel.string_decompress s
+	else s

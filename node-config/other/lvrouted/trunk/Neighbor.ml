@@ -52,7 +52,7 @@ let handle_data ns s sockaddr =
 			n.tree <- Some (Tree.from_string s addr);
 			Log.log Log.debug (name n ^ "'s tree has been set");
 			n.last_seen <- Unix.gettimeofday ()
-		with Tree.InvalidSignature ->
+		with Common.InvalidSignature ->
 			Log.log Log.warnings
 				("Received invalid signature from " ^ name n)
 		   | _ ->
