@@ -12,5 +12,5 @@ Makefile: Makefile.in src/Makefile.in docs/Makefile.in config.status
 config.status: configure
 	./config.status --recheck
 
-configure: configure.in
+configure: configure.ac
 	autoconf
