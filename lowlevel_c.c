@@ -720,6 +720,20 @@ CAMLprim value caml_sbrk(value unit) {
 	CAMLreturn(Val_int(sbrk(0)));
 }
 
+CAMLprim value caml_pack_int(value i) {
+	CAMLparam1(i);
+	CAMLlocal1(res);
+
+	res = alloc_string(sizeof(int));
+	*(int *)(String_val(res)) = Long_val(i);
+	CAMLreturn(res);
+}
+
+CAMLprim value caml_unpack_int(value s) {
+	CAMLparam1(s);
+	CAMLreturn(Val_int(*(int *)(String_val(s))));
+}
+
 static unsigned char *tree_to_string_rec(value node, unsigned char *buffer) {
 	CAMLparam1(node);
 	CAMLlocal1(t);

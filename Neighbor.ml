@@ -7,8 +7,11 @@ type t = {
 
 	mutable last_seen: float;	(* -1.0 if never seen, else unix
 					   timestamp of last received packet *)
+	mutable seqno: int;
 	mutable tree: Tree.node option; (* the tree last received *)
 }
+
+exception InvalidPacket
 
 type neighbor = t
 module Set = Set.Make(struct
@@ -25,6 +28,7 @@ let make iface addr =
 	  addr = addr;
 	  last_seen = -1.0;
 	  macaddr = None;
+	  seqno = 0;
 	  tree = None }
 
 let iface n = n.iface
@@ -33,33 +37,49 @@ let iface n = n.iface
    the given file descriptor. *)
 let bcast fd nodes ns =
 	let s = Tree.to_string nodes in
+	let s = if Common.compress_data then LowLevel.string_compress s
+		else s in
 	Set.iter (fun n ->
+		let now = LowLevel.pack_int (int_of_float (Unix.time ())) in
+		let s' = Common.sign_string (now ^ s) in
 		try
-			ignore(Unix.sendto fd s 0 (String.length s) []
+			ignore(Unix.sendto fd s' 0 (String.length s') []
 				   (Unix.ADDR_INET (n.addr, !Common.port)))
 		with _ -> ()) ns
 
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Find the neighbor associated with the address, parse the
-   tree and mark the time *)
+   tree and mark the time. *)
 let handle_data ns s sockaddr =
 	let addr = Common.get_addr_from_sockaddr sockaddr in
-	try	
-		let n = Set.filter (fun n -> n.addr = addr) ns in
-		let n = List.hd (Set.elements n) in
-		Log.log Log.debug ("This data is from neighbor " ^ name n);
-		try
-			n.tree <- Some (Tree.from_string s addr);
-			Log.log Log.debug (name n ^ "'s tree has been set");
-			n.last_seen <- Unix.gettimeofday ()
-		with Common.InvalidSignature ->
-			Log.log Log.warnings
-				("Received invalid signature from " ^ name n)
-		   | _ ->
-			Log.log Log.warnings
-				("Received invalid packet from " ^ name n)
-	with _ -> 
-		Log.log Log.debug ("Cannot find neighbor for this data")
+	let addr_s = Unix.string_of_inet_addr addr in
+	let bailwhen c s =
+		if c then begin
+			Log.log Log.info (s ^ " " ^ addr_s);
+			raise InvalidPacket
+		end in
+
+	let goodsig, s = Common.verify_string s in
+	bailwhen (not goodsig) "Received invalid signature from";
+
+        let len = String.length s in
+	bailwhen (len < 4) "Received short packet from";
+
+	let n = Set.filter (fun n -> n.addr = addr) ns in
+	bailwhen (Set.is_empty n) "Cannot find neighbor with address";
+
+	let n = List.hd (Set.elements n) in
+	let stamp = LowLevel.unpack_int (String.sub s 0 4) in
+	bailwhen (stamp <= n.seqno) "Received old sequence number from";
+
+	let s = String.sub s 4 (len - 4) in
+	let s = if Common.compress_data then LowLevel.string_decompress s
+		else s in
+	let nodes = (Marshal.from_string s 0: (Tree.node list)) in
+	n.tree <- Some (Tree.make addr nodes);
+	n.seqno <- stamp;
+	n.last_seen <- Unix.gettimeofday ();
+	Log.log Log.debug (name n ^ "'s tree has been set")
 
 (* Given a list of neighbors and interface i, invalidate the trees
    for all the neighbors on that interface *)

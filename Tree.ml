@@ -9,7 +9,7 @@ type node = {
 }
 
 (* Constructor *)
-let make a = { addr = a; nodes = [] }
+let make a nodes = { addr = a; nodes = nodes }
 
 let rec copy t = { t with nodes = List.map copy t.nodes }
 
@@ -63,7 +63,7 @@ let merge nodes directnets =
 				(fun map (a, _) -> IPMap.add a a map)
 				IPMap.empty directnets in
 	(* step 2 *)
-	let fake = make Unix.inet_addr_any in
+	let fake = make Unix.inet_addr_any [] in
 	(* step 3 *)
 	let rec traverse routes = function
 		  []			-> routes
@@ -71,7 +71,7 @@ let merge nodes directnets =
 			if IPMap.mem node.addr routes then
 			  traverse routes xs
 			else begin
-				let newnode = make node.addr in
+				let newnode = make node.addr [] in
 				p.nodes <- newnode::p.nodes;
 				traverse (IPMap.add node.addr gw routes)
 					 (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))

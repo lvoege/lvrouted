@@ -86,6 +86,12 @@ external syslog: int -> string -> unit
 external sbrk: unit -> int
   = "caml_sbrk"
 
+external pack_int: int -> string
+  = "caml_pack_int"
+
+external unpack_int: string -> int
+  = "caml_unpack_int"
+
 (* THIS IS FOR WHEN FREEBSD'S ROUTING SOCKET STARTS DELIVERING 802.11 EVENTS.
    Stubs for this have begun to appear in /usr/src/sys/net/rtsock.c but aren't
    used yet.
