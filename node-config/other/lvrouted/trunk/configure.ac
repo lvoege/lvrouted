@@ -133,6 +133,9 @@ AC_SUBST(OCAMLFIND)
 AC_SUBST(XSLTPROC)
 AC_SUBST(EXE)
 
+AC_CONFIG_HEADERS(src/config.h)
+AC_CHECK_HEADERS([ net/if_dl.h net/if_ieee80211.h net80211/ieee80211.h sys/param.h netinet/ether.h dev/wi/if_wavelan_ieee.h ])
+
 # Finally create the Makefile from Makefile.in
 AC_OUTPUT([
 	Makefile
