@@ -6,7 +6,7 @@ type route = {
 }
 
 (* Make a Set of routes *)
-module RouteSet = Set.Make(struct
+module Set = Set.Make(struct
 	type t = route
 	(* compare first on the netmask, then on the address and finally on the gateway *)
 	let compare a b =
@@ -37,11 +37,11 @@ let matches route addr =
 
 (* Given a list of routes, find the gateway for the given addr. *)
 let lookup routes addr =
-	let matches = RouteSet.filter (fun r -> matches r addr) routes in
-	if RouteSet.is_empty matches then
+	let matches = Set.filter (fun r -> matches r addr) routes in
+	if Set.is_empty matches then
 	  raise Not_found
 	else begin
-		let es = List.sort (fun a b -> compare a.mask b.mask) (RouteSet.elements matches) in
+		let es = List.sort (fun a b -> compare a.mask b.mask) (Set.elements matches) in
 		(List.hd es).gw
 	end
 
@@ -77,13 +77,13 @@ let aggregate routes =
 						not (includes r' t)) rs in
 				  aggregate' (r'::rs') done_
 			end in
-	List.fold_left (fun a r -> RouteSet.add r a) RouteSet.empty (aggregate' (RouteSet.elements routes) [])
+	List.fold_left (fun a r -> Set.add r a) Set.empty (aggregate' (Set.elements routes) [])
 
 (* Given a set of old routes and a set of new routes, produce a list
    of routes to delete and another list of routes to add *)
 let diff oldroutes newroutes =
-	RouteSet.elements (RouteSet.diff oldroutes newroutes),
-	RouteSet.elements (RouteSet.diff newroutes oldroutes)
+	Set.elements (Set.diff oldroutes newroutes),
+	Set.elements (Set.diff newroutes oldroutes)
 
 (* Don't use, call commit instead *)
 external routes_commit: route array -> int -> route array -> int -> int

@@ -1,12 +1,15 @@
-open Route
 open Common
 
 type t = {
 	addr: Unix.inet_addr;
-	path: IPSet.t;
+	mutable path: IPSet.t;
 }
 
-type hopelts = t array
+type hopelt = t
+module Set = Set.Make(struct
+	type t = hopelt
+	let compare a b = compare a.addr b.addr
+end)
 
 (* accessors *)
 let addr e = e.addr
@@ -23,12 +26,12 @@ let show h =
 let printelts hs =
 	print_string ("Hoptable: ");
 	print_newline ();
-	Array.iter (fun e ->
+	Set.iter (fun e ->
 		print_string ("\t" ^ show e);
 		print_newline ()) hs
 
 (* Send the given hoptable over the given file descriptor to the given addr *)
-let send (hs:hopelts) fd addr = 
+let send (hs: Set.t) fd addr = 
 	let s = Marshal.to_string hs [] in
 	let s' = if Common.compress_data then LowLevel.string_compress s
 		 else s in
@@ -41,27 +44,26 @@ let send (hs:hopelts) fd addr =
 
 (* Read a hoptable from the given file descriptor. Will throw exceptions if
    the input is not a valid hoptable *)
-let from_string s from_addr : hopelts =
+let from_string s from_addr : Set.t =
 	let s' = if Common.compress_data then LowLevel.string_decompress s
 		 else s in
 	(* This is the most dangerous bit in all of the code: *)
-	let res = (Marshal.from_string s' 0: hopelts) in
-	Array.iteri (fun i e ->
-		res.(i) <- { e with path = IPSet.add from_addr e.path }
-	) res;
+	let res = (Marshal.from_string s' 0: Set.t) in
+	Set.iter (fun e ->
+		e.path <- IPSet.add from_addr e.path) res;
 	res
 
 let compare a b = compare (hopcount a) (hopcount b)
 
 (* Filter all hopelements in hs that point to the given gateway per the
    given routing table. This helps prevent the count-to-infinity problem. *)
-let filter hs routes gw = 
-	let f e =
+let filter (hs: Set.t) (routes: Route.Set.t) gw = 
+	Set.filter (fun e ->
 	  try
 		let r = Route.lookup routes e.addr != gw in
 		r
-	  with Not_found -> true in
-	Array.of_list (List.filter f (Array.to_list hs))
+	  with Not_found ->
+	  	true) hs
 
 (* are any of the path components in h present in addrhash? *)
 let path_in_set (h: t) (addrset: IPSet.t) =

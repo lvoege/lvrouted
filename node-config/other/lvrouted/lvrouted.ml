@@ -11,7 +11,7 @@ let neighbors : Neighbor.t list ref = ref []
 (* A list of strings with interface names. 'ep0', 'sis1' etc *)
 let ifaces = ref StringMap.empty
 (* An array of HopInfo.t's for every one of 'our' addresses. *)
-let direct = ref [| |]
+let direct = ref HopInfo.Set.empty
 (* A hashtable to be able to quickly see if an address is one of 'our's.
    The keys are Unix.inet_addr's and the values are 1. *)
 let directips = ref IPSet.empty
@@ -22,7 +22,7 @@ let sockfd = ref Unix.stdout
 (* last broadcast timestamp *)
 let last_time = ref 0.0
 (* The current routing table. This starts out empty. *)
-let routes = ref Route.RouteSet.empty
+let routes = ref Route.Set.empty
 (* Neighbor -> 1. An entry means that neighbor was unreachable last iteration *)
 (*let unreachable: (Neighbor.t, int) Hashtbl.t = Hashtbl.create 4*)
 let unreachable = ref (Hashtbl.create 4)
@@ -66,27 +66,26 @@ let alarm_handler _ =
 						    !directips
 						    !neighbors in
 
-	  let routes' = Route.aggregate newroutes in
-	  List.iter (Neighbor.send (!sockfd) routes' hoptable) (!neighbors);
+	  List.iter (Neighbor.send (!sockfd) newroutes hoptable) (!neighbors);
 
 	  if Common.real_route_updates then begin
-		let deletes, adds = Route.diff !routes routes' in
+		let deletes, adds = Route.diff !routes newroutes in
 		Route.commit deletes adds
 	  end else begin
 		let out = open_out "/tmp/lvrouted.routes" in
 		output_string out ("Route table:\n");
-		Route.RouteSet.iter (fun r ->
-			output_string out ("\t" ^ Route.show r ^ "\n")) routes';
+		Route.Set.iter (fun r ->
+			output_string out ("\t" ^ Route.show r ^ "\n")) newroutes;
 		close_out out;
 	  end;
-	  routes := routes';
+	  routes := newroutes; 
 	  Log.log Log.debug "finished broadcast run";
 	end
 
 let abort_handler _ = ()
 
 let read_config _ =
-	(* block the alarm signal while we're meddling with globals *)
+	(* Block the alarm signal while we're meddling with globals. *)
 	let block_signals = [ Sys.sigalrm ] in
 	let _ = Unix.sigprocmask Unix.SIG_BLOCK block_signals in
 
@@ -94,20 +93,21 @@ let read_config _ =
 	let routableaddrs = List.filter (fun (_, _, a, n, _, _) ->
 			LowLevel.inet_addr_in_range a &&
 			Common.is_some n) (Array.to_list (LowLevel.getifaddrs())) in
-	directips := IPSet.empty;
-	(* add all routable addresses to the direct array *)
-	direct := Array.of_list (List.map (fun (_, _, a, _, _, _) ->
-			Log.log Log.debug ("direct " ^
-					Unix.string_of_inet_addr a);
-			directips := IPSet.add a !directips;
-			HopInfo.make a) routableaddrs);
+	
+	(* Construct the direct and directips sets. *)
+	let direct', directips' = List.fold_left (fun (hopset, ipset) (_, _, a, _, _, _) ->
+				HopInfo.Set.add (HopInfo.make a) hopset,
+				IPSet.add a ipset) (HopInfo.Set.empty, IPSet.empty) routableaddrs in
+	direct := direct';
+	directips := directips';
 
-	(* interlinks can be recognised by routable addresses and a netmask
-	   geq 28 *)
+	(* Interlinks can be recognised by routable addresses and a netmask geq 28. *)
 	let interlinks =
 		List.filter (fun (_, _, _, n, _, _) ->
 			LowLevel.bits_in_inet_addr
 				(Common.from_some n) >= Common.interlink_netmask) routableaddrs in
+	(* From the eligible interlinks, create a list of (interface name, address) tuples for all
+	   the usable addresses not our own in the interlink blocks. *)
 	let neighboraddrs = List.concat (
 		List.map (fun (iface, _, a, n, _, _) ->
 			let m = LowLevel.bits_in_inet_addr (Common.from_some n) in
@@ -115,14 +115,14 @@ let read_config _ =
 			let addrs' = List.filter (fun a' ->
 				compare a' a != 0) (Array.to_list addrs) in
 			List.map (fun a -> iface, a) addrs') interlinks) in
-	ifaces := StringMap.empty;
-	neighbors := List.map (fun (iface, a) -> 
+
+	let ifaces', neighbors' = List.fold_left (fun (ifacemap, neighbors) (iface, a) ->
 			let name = Unix.string_of_inet_addr a in
-			Log.log Log.debug ("neighbor " ^
-				name ^ " on " ^ iface);
-			ifaces := StringMap.add iface (Iface.make iface) !ifaces;
-			Neighbor.make name iface a) neighboraddrs;
-	Log.log Log.debug ("numneighbors: " ^ string_of_int (List.length !neighbors));
+			Log.log Log.debug ("neighbor " ^ name ^ " on " ^ iface);
+			StringMap.add iface (Iface.make iface) ifacemap,
+			((Neighbor.make name iface a)::neighbors)) (StringMap.empty, []) neighboraddrs in
+	ifaces := ifaces';
+	neighbors := neighbors';
 
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 

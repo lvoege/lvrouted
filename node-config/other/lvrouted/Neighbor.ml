@@ -10,7 +10,7 @@ type t = {
 	mutable macaddr: MAC.t option;
 
 	mutable last_seen: float;
-	mutable hoptable: HopInfo.hopelts option;
+	mutable hoptable: HopInfo.Set.t option;
 }
 
 type neighbor = t
@@ -38,7 +38,7 @@ let iface n = n.iface
 (* send the given hoptable to the given neighbor under the current routing
    table. hoptable entries going through the neighbor per the routing table
    will be filtered to counter the count-to-infinity problem *)
-let send fd routes hs n =
+let send fd (routes: Route.Set.t) (hs: HopInfo.Set.t) n =
 	let hs' = HopInfo.filter hs routes n.addr in
 	try
 		HopInfo.send hs' fd n.addr;
@@ -88,12 +88,12 @@ let derive_routes_and_hoptable direct directips ns =
 	let ns' = List.filter (fun n -> Common.is_some n.hoptable) ns in
 	Log.log Log.debug ("Number of eligible neighbors: " ^ string_of_int (List.length ns'));
 	if List.length ns' = 0 then
-	  Route.RouteSet.empty, [| |]
+	  Route.Set.empty, HopInfo.Set.empty
 	else begin
-	  let h = Hashtbl.create (Array.length (Common.from_some (List.hd ns').hoptable)) in
+	  let h = Hashtbl.create (HopInfo.Set.cardinal (Common.from_some (List.hd ns').hoptable)) in
 	  List.iter (fun n ->
 		Log.log Log.debug ("Considering " ^ n.name ^ "'s hoptable");
-		Array.iter (fun e ->
+		HopInfo.Set.iter (fun e ->
 			let addr = HopInfo.addr e in
 			try
 				if (not (HopInfo.path_in_set e directips)) &&
@@ -103,14 +103,10 @@ let derive_routes_and_hoptable direct directips ns =
 				Hashtbl.add h addr (e, n)
 		) (Common.from_some n.hoptable)
 	  ) ns';
-	  let routes = ref (Route.RouteSet.empty) in
-	  let hoptable = ref [] in
-	  Hashtbl.iter (fun a (e, n) ->
-	  	routes := Route.RouteSet.add (Route.make a 32 n.addr) !routes;
-		hoptable := e::(!hoptable)
-	  ) h;
-	  let hoptable' = Array.append direct (Array.of_list (!hoptable)) in
-	  !routes, hoptable'
+	  let routeset, hopset = Hashtbl.fold (fun a (e, n) (routeset, hopset) ->
+	  		Route.Set.add (Route.make a 32 n.addr) routeset,
+			HopInfo.Set.add e hopset) h (Route.Set.empty, direct) in
+	  Route.aggregate routeset, hopset
 	end
 
 let check_reachable n iface = 
