@@ -199,28 +199,26 @@ CAMLprim value string_decompress(value s) {
 	}
 }
 
+#ifdef __FreeBSD__
 static int routemsg_add(unsigned char *buffer, int type,
 			value dest, value masklen, value gw) {
-#ifndef __FreeBSD__
-	assert(0);
-	return 0;
-#else
 	struct rt_msghdr *msghdr;
 	struct sockaddr_in *addr;
-	static int seq = 0;
+	static int seq = 1;
+	unsigned char *p;
 
 	msghdr = (struct rt_msghdr *)buffer;	
 	memset(msghdr, 0, sizeof(struct rt_msghdr));
 	msghdr->rtm_version = RTM_VERSION;
 	msghdr->rtm_type = type;
 	msghdr->rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
-	msghdr->rtm_pid = getpid();
+	msghdr->rtm_pid = 0;
 	msghdr->rtm_flags = RTF_UP | RTF_GATEWAY | RTF_STATIC;
 	msghdr->rtm_seq = seq++;
 
 	addr = (struct sockaddr_in *)(msghdr + 1);
-	memset(addr, 0, sizeof(struct sockaddr_in));
 #define ADD(x) \
+	memset(addr, 0, sizeof(struct sockaddr_in));	\
 	addr->sin_len = sizeof(struct sockaddr_in);	\
 	addr->sin_family = AF_INET;			\
 	addr->sin_addr.s_addr = htonl(x);		\
@@ -230,20 +228,28 @@ static int routemsg_add(unsigned char *buffer, int type,
 	ADD(get_addr(gw));
 	ADD(bitmask(Long_val(masklen)));
 
-	msghdr->rtm_msglen = ((unsigned char *)addr) - buffer;
+	addr--;
+	for (p = (unsigned char *)(addr + 1); p > (unsigned char *)addr; p--)
+	  if (*p) {
+		addr->sin_len = p - (unsigned char *)addr + 1;
+		break;
+	  }
+
+	msghdr->rtm_msglen = (unsigned char *)addr + SA_SIZE(addr) - buffer;
+	
 	return msghdr->rtm_msglen;
-#endif
 }
+#endif
 
 CAMLprim value routes_commit(value deletes, value numdeletes,
 			     value adds, value numadds) {
 #ifndef __FreeBSD__
 	assert(0);
 #else
-	int i, sockfd, buflen;
+	int i, sockfd, buflen, len;
 	unsigned char *buffer;
 
-	sockfd = socket(PF_ROUTE, SOCK_RAW, AF_INET);
+	sockfd = socket(PF_ROUTE, SOCK_RAW, 0);
 	if (sockfd == -1)
 	  failwith("routing socket");
 	shutdown(sockfd, SHUT_RD); 
@@ -255,15 +261,15 @@ CAMLprim value routes_commit(value deletes, value numdeletes,
 	}
 	for (i = 0; i < Long_val(numadds); i++) {
 		value v = Field(adds, i);
-		routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
+		len = routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
 	// FIXME: error checking
-		write(sockfd, buffer, buflen);
+		write(sockfd, buffer, len);
 	}
 	for (i = 0; i < Long_val(numdeletes); i++) {
 		value v = Field(deletes, i);
-		routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
+		len = routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
 	// FIXME: error checking
-		write(sockfd, buffer, buflen);
+		write(sockfd, buffer, len);
 	}
 	free(buffer);
 	close(sockfd);
@@ -521,6 +527,7 @@ CAMLprim value get_associated_stations(value iface) {
 		s++;
 		Store_field(result, i, mac);
 	}
+	close(sockfd);
 #else
 	struct hostap_getall    reqall;
 	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
@@ -548,11 +555,11 @@ CAMLprim value get_associated_stations(value iface) {
 		memcpy(String_val(mac), stas[i].addr, ETHER_ADDR_LEN);
 		Store_field(result, i, mac);
 	}
+	close(sockfd);
 #endif
 #else
 	result = alloc_tuple(0);
 #endif
-	close(sockfd);
 	CAMLreturn(result);
 }
 

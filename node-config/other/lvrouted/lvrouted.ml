@@ -163,6 +163,11 @@ let main =
 	Arg.parse argopts (fun _ -> ()) "lvrouted";
 	Log.log Log.info "Parsed commandline";
 
+	if not !Common.foreground then begin
+		LowLevel.daemon false false;
+		Log.log Log.info "daemonized";
+	end;
+
 	if !Common.real_route_updates then begin
 		Route.flush ();
 		Log.log Log.info "Flushed routes";
@@ -176,11 +181,6 @@ let main =
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 	Log.log Log.info "Set signal handlers";
-
-	if not !Common.foreground then begin
-		LowLevel.daemon false false;
-		Log.log Log.info "daemonized";
-	end;
 
 	ignore(Unix.alarm 1);
 	Log.log Log.info "Triggered the alarm";
