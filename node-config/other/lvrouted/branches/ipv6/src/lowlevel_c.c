@@ -70,6 +70,7 @@ static inline value prepend_listelement(value e, value l) {
 	CAMLreturn(cell);
 }
 
+/* how many bits set in int i? */
 static inline int bitcount(unsigned int i) {
 	int c;
 	for (c = 0; i; i >>= 1)
@@ -163,7 +164,8 @@ CAMLprim value mask_addr(value addr, value mask) {
 
 CAMLprim value caml_daemon(value nochdir, value noclose) {
 	CAMLparam2(nochdir, noclose);
-	daemon(Long_val(nochdir), Long_val(noclose));
+	if (daemon(Long_val(nochdir), Long_val(noclose)) < 0)
+	  failwith(strerror(errno));
 	CAMLreturn(Val_unit);
 }
 
@@ -822,52 +824,29 @@ CAMLprim value caml_syslog(value pri, value s) {
 	CAMLreturn(Val_unit);
 }
 
-CAMLprim value addr_is_ipv6(value addr) {
-	CAMLparam1(addr);
-	CAMLreturn(Val_bool(string_length(addr) == sizeof(struct in6_addr)));
+CAMLprim value caml_pack_int(value i) {
+	CAMLparam1(i);
+	CAMLlocal1(res);
+
+	res = alloc_string(sizeof(int));
+	*(int *)(String_val(res)) = Long_val(i);
+	CAMLreturn(res);
 }
 
-CAMLprim value pack_addr(value addr, value prefixlen) {
-	CAMLparam2(addr, prefixlen);
-	CAMLlocal1(result);
-	int len;
-	switch (string_length(addr)) {
-		case sizeof(in_addr_t):
-			result = addr;
-			break;
-		case sizeof(struct in6_addr):
-			len = sizeof(struct in6_addr) - Long_val(prefixlen);
-			result = alloc_string(len);
-			memcpy(String_val(result), String_val(addr) + Long_val(prefixlen), len);
-			break;
-		default:
-			failwith("Ouch, bogus Unix.inet_addr!");
-	}
-	CAMLreturn(result);
+CAMLprim value caml_unpack_int(value s) {
+	CAMLparam1(s);
+	CAMLreturn(Val_int(*(int *)(String_val(s))));
 }
 
-CAMLprim value unpack_addr(value prefix, value prefixlen, value addr) {
-	CAMLparam3(prefix, prefixlen, addr);
-	CAMLlocal1(result);
-	int i;
-
-	if (string_length(addr) == sizeof(in_addr_t))
-	  result = addr;
-	else {
-		i = Long_val(prefixlen) / 8;
-		result = alloc_string(sizeof(struct in6_addr));
-		memcpy(String_val(result), String_val(prefix), i);
-		memcpy(String_val(result) + i, String_val(addr) + i,
-				(sizeof(struct in6_addr) - Long_val(prefixlen)) / 8);
-	}
-	CAMLreturn(result);
-}
-
-CAMLprim value caml_sbrk(value unit) {
-	CAMLparam1(unit);
-	CAMLreturn(Val_int(sbrk(0)));
-}
-
+/* Store a node into a buffer. It is enough to store the node contents
+ * (the address in this case) plus the number of children and recurse.
+ * Since the 172.16.0.0/12 range only uses 20 bits, the number of children
+ * can be packed into the 12 fixed bits.
+ * 
+ * It is conceivable for our nodes to have more than 16 addresses to
+ * propagate, so packing a node in 24 bits instead of 32 would probably
+ * be pushing our luck.
+ */
 static unsigned char *tree_to_string_rec(value node, unsigned char *buffer) {
 	CAMLparam1(node);
 	CAMLlocal1(t);
@@ -902,8 +881,8 @@ CAMLprim value tree_to_string(value node) {
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
-	int i;
 	CAMLlocal4(a, node, child, chain);
+	int i;
 
 	if (*pp >= limit)
 	  failwith("faulty packet");
@@ -938,6 +917,23 @@ CAMLprim value string_to_tree(value s) {
 
 	p = String_val(s);
 	CAMLreturn(string_to_tree_rec(&p, p + string_length(s)));
+}
+
+CAMLprim value addr_is_ipv6(value addr) {
+	CAMLparam1(addr);
+	CAMLreturn(Val_bool(string_length(addr) == sizeof(struct in6_addr)));
+}
+
+CAMLprim value chop_prefix(value addr, value prefixlen) {
+	CAMLparam2(addr, prefixlen);
+	CAMLlocal1(result);
+	int len;
+	if (string_length(addr) < sizeof(struct in6_addr))
+	  failwith("Oops, LowLevel.chop_prefix used on a non-IPv6 address!");
+	len = sizeof(struct in6_addr) - Long_val(prefixlen);
+	result = alloc_string(len);
+	memcpy(String_val(result), String_val(addr) + Long_val(prefixlen), len);
+	CAMLreturn(result);
 }
 
 #if 0

@@ -11,8 +11,8 @@ Additional assumptions the tree serializer makes wrt the (IPv4-only) trunk:
   - the serializer needs to be able to (de)serialize trees with both IPv4 and
     IPv6 addresses, so it needs to be able to distinguish between the two. one
     bit will do.
-  - no one node will ever have more than seven IPv6 user ranges (/64's), so
-    three bits will do to describe the number of ranges 
+  - no one node will ever have more than seven user ranges (/64's for IPv6, 
+    /24 for IPv4), so three bits will do to describe the number of ranges
   - no more than 4096 /64's will be deployed for some time to come, so
     actually 12 bits of address are enough to propagate
   - 1 + 3 + 12 = 16 bits to propagate IPv6 addresses

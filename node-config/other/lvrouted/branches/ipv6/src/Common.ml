@@ -45,11 +45,13 @@ let min_mask = ref 24
    exclusive. *)
 let min_routable = Unix.inet_addr_of_string "172.16.0.0"
 let max_routable = Unix.inet_addr_of_string "172.31.255.0"
+(* Use Tree.(de)serialize instead of the Marshal module. *)
+let own_marshaller = true
+(* Where to dump debug stuff and such *)
+let tmpdir = ref "/tmp/"
 (* The IPv6 prefix of the network. *)
 let prefix = Unix.inet_addr_of_string "2001:888:1084::"
 let prefixlen = 48
-(* Use Tree.(de)serialize instead of the Marshal module. *)
-let own_marshaller = false
 
 (* Types *)
 
@@ -130,15 +132,6 @@ let try_max_times max f =
 		else t (i + 1) in
 	t 0
 
-let addr_in_range a =
-	if LowLevel.addr_is_ipv6 a then
-	  LowLevel.mask_addr a prefixlen = prefix
-	else
-	  a >= min_routable && a < max_routable
-
-let pack_addr a = LowLevel.pack_addr a prefixlen
-let unpack_addr = LowLevel.unpack_addr prefix prefixlen
-
 let pack_string s =
 	let s = if compress_data then LowLevel.string_compress s
 		else s in
@@ -150,3 +143,9 @@ let unpack_string s =
 	  raise InvalidSignature;
 	if compress_data then LowLevel.string_decompress s
 	else s
+
+let addr_in_range a =
+	if LowLevel.addr_is_ipv6 a then
+	  LowLevel.mask_addr a prefixlen = prefix
+	else
+	  a >= min_routable && a < max_routable

@@ -9,7 +9,7 @@ type node = {
 }
 
 (* Constructor *)
-let make a = { addr = a; nodes = [] }
+let make a nodes = { addr = a; nodes = nodes }
 
 let rec copy t = { t with nodes = List.map copy t.nodes }
 
@@ -22,8 +22,7 @@ let show l =
 	let rec show' indent l =
 		let i = String.make indent '\t' in
 		List.iter (fun n ->
-			let a = n.addr in
-			s := !s ^ i ^ Unix.string_of_inet_addr a ^ "\n";
+			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ "\n";
 			show' (indent + 1) n.nodes) l in
 	show' 0 l;
 	!s
@@ -64,16 +63,16 @@ let merge nodes directnets =
 				(fun map (a, _) -> IPMap.add a a map)
 				IPMap.empty directnets in
 	(* step 2 *)
-	let fake = make Unix.inet_addr_any in
+	let fake = make Unix.inet_addr_any [] in
 	(* step 3 *)
 	let rec traverse routes = function
 		  []			-> routes
-		| (node,p,gw)::xs	-> 
+		| (node,parent,gw)::xs	-> 
 			if IPMap.mem node.addr routes then
 			  traverse routes xs
 			else begin
-				let newnode = make node.addr in
-				p.nodes <- newnode::p.nodes;
+				let newnode = make node.addr [] in
+				parent.nodes <- newnode::parent.nodes;
 				traverse (IPMap.add node.addr gw routes)
 					 (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
 			end in
@@ -90,14 +89,12 @@ external deserialize: string -> node = "string_to_tree"
 
 let to_string (nodes: node list) =
 	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
-	let s = if Common.own_marshaller then serialize fake 
-		else Marshal.to_string nodes [] in
-	Common.pack_string s
+	if Common.own_marshaller then serialize fake 
+	else Marshal.to_string nodes []
 
 (* Read a list of nodes from the given string and return a new node. Node as
    in tree node, not wireless network node. *)
 let from_string s from_addr : node =
-	let s = Common.unpack_string s in
 	if Common.own_marshaller then
 	  { (deserialize s) with addr = from_addr }
 	else

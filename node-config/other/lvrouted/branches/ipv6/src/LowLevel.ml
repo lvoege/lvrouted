@@ -1,11 +1,11 @@
 (* Interface to functions in lowlevel_c.c *)
 
-(* For debugging purposes it's handy to be able to print a file descriptor *)
+(* For debugging purposes it's handy to be able to print a file descriptor. *)
 external int_of_file_descr: Unix.file_descr -> int
   = "int_of_file_descr"
 
-(* Given an address and a mask (like, for example, 24), create a bitmask and
-   apply it to the address *)
+(* Given an address and a mask length (like, for example, 24), create a
+   bitmask and apply it to the address *)
 external mask_addr: Unix.inet_addr -> int -> Unix.inet_addr
   = "mask_addr"
 
@@ -17,11 +17,11 @@ external iface_is_associated: string -> bool
 external daemon: bool -> bool -> unit
   = "caml_daemon"
 
-(* bzip2 the given string *)
+(* bzip2 the given string. NEEDS TESTING. *)
 external string_compress: string -> string
   = "string_compress"
 
-(* bzip2 -d the given string *)
+(* bzip2 -d the given string. NEEDS TESTING. *)
 external string_decompress: string -> string
   = "string_decompress"
 
@@ -33,7 +33,7 @@ external ether_aton: string -> string -> bool
 external ether_ntoa: string -> string -> bool
   = "caml_ether_ntoa"
 
-(* getifaddrs(3) *)
+(* getifaddrs(3). Will only return IPv4 addresses for now. *)
 external getifaddrs: unit -> ( string			(* iface name *)
 			     * int			(* iface flags *)
 			     * Unix.inet_addr 		(* iface addr *)
@@ -52,7 +52,7 @@ external strstr: string -> string -> int
   = "caml_strstr"
 
 (* Given an address and a netmask, return all the usable addresses in that
-   block *)
+   block. So 172.16.0.1/30 will return 172.16.0.1 and 172.16.0.2. *)
 external get_addrs_in_block: Unix.inet_addr -> int -> Unix.inet_addr list
   = "get_addrs_in_block"
 
@@ -64,7 +64,7 @@ external get_arp_entries: unit -> ( string		(* iface name *)
   = "get_arp_entries"
 
 (* Get all the MAC.t's that are associated with the interface with the given 
-   name *)
+   name. *)
 external get_associated_stations: string -> string array
   = "get_associated_stations"
 
@@ -72,6 +72,8 @@ external get_associated_stations: string -> string array
 external sha_string: string -> string
   = "sha_string"
 
+(* Return a primitively hexdumped version of the given (possibly binary)
+   string. Useful when debugging. *)
 external hexdump_string: string -> string
   = "hexdump_string"
 
@@ -81,23 +83,24 @@ external hexdump_string: string -> string
 external syslog: int -> string -> unit
   = "caml_syslog"
 
+external pack_int: int -> string
+  = "caml_pack_int"
+
+external unpack_int: string -> int
+  = "caml_unpack_int"
+
 (* Is the given Unix.inet_addr an IPv6 address? *)
 external addr_is_ipv6: Unix.inet_addr -> bool
   = "addr_is_ipv6"
 
-external sbrk: unit -> int
-  = "caml_sbrk"
-
-external pack_addr: Unix.inet_addr -> int -> string
-  = "pack_addr"
-
-external unpack_addr: Unix.inet_addr -> int -> string -> Unix.inet_addr
-  = "unpack_addr"
+(* Given an IPv6 address and a prefix length, return a binary string of the
+   address without the prefix. This cuts down on storage cost. *)
+external chop_prefix: Unix.inet_addr -> int -> string
+  = "chop_prefix"
 
 (* THIS IS FOR WHEN FREEBSD'S ROUTING SOCKET STARTS DELIVERING 802.11 EVENTS.
    Stubs for this have begun to appear in /usr/src/sys/net/rtsock.c but aren't
    used yet.
-
 type routemsg =
 	  RTM_NOTHING
 	| RTM_NEWADDR	of string * Unix.inet_addr * int

@@ -15,15 +15,15 @@ let neighbors_wireless = ref Neighbor.Set.empty
 let neighbors_wired = ref Neighbor.Set.empty
 (* The set of IP addresses of wired neighbors *)
 let neighbors_wired_ip = ref IPSet.empty
-(* A list of strings with interface names. 'ep0', 'sis1' etc *)
+(* A dictionary mapping from interface name ('ep0', 'sis1', etc) to Iface.t *)
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
 let direct : Tree.node list ref = ref []
-(* A set of address, netmask tuples *)
+(* A list of address, netmask tuples of the same *)
 let directnets : (Unix.inet_addr * int) list ref = ref []
 (* A socket file handle for everything to use. Unix.file_descr is an abstract
-   type, initialize it with Unix.stdout to it typechecks, then have main
-   immediately replace it with a real handle. *)
+   type, initialize it with Unix.stdout so it typechecks, then have main
+   replace it with a real handle before any use. *)
 let sockfd = ref Unix.stdout
 (* last broadcast timestamp *)
 let last_time = ref 0.0
@@ -81,9 +81,9 @@ let alarm_handler _ =
 	  (* DEBUG: Dump the incoming trees to the filesystem *)
 	  Neighbor.Set.iter (fun n ->
 	  	let nname = Neighbor.name n in
-	  	let fname = "/tmp/lvrouted.tree-" ^ nname in
+	  	let fname = !Common.tmpdir ^ "lvrouted.tree-" ^ nname in
 	  	if Common.is_some n.tree then begin
-			let out = open_out ("/tmp/lvrouted.tree-" ^ nname) in
+			let out = open_out (!Common.tmpdir ^ "lvrouted.tree-" ^ nname) in
 			output_string out (Tree.show [Common.from_some n.tree]);
 			close_out out
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
@@ -94,7 +94,7 @@ let alarm_handler _ =
 	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
-	  let out = open_out ("/tmp/lvrouted.mytree") in
+	  let out = open_out (!Common.tmpdir ^ "lvrouted.mytree") in
 	  output_string out (Tree.show nodes);
 	  close_out out;
 
@@ -114,14 +114,17 @@ let alarm_handler _ =
 	  if !Common.real_route_updates then begin
 		let deletes, adds, changes = Route.diff (Route.fetch ()) newroutes in
 
+		(* log the updates *)
+		let log_set t s =
+			if Route.Set.is_empty s then [] 
+			else t::List.map Route.show
+					   (Route.Set.elements s) in
 		Log.lazylog Log.info (fun _ ->
-			["Deletes:"] @
-			List.map Route.show (Route.Set.elements deletes) @
-			["Adds:"] @
-			List.map Route.show (Route.Set.elements adds) @
-			["Changes:"] @
-			List.map Route.show (Route.Set.elements changes));
+			log_set "Deletes:" deletes @
+			log_set "Adds:" adds @
+			log_set "Changes:" changes);
 
+		(* commit the updates to the kernel *)
 		try
 			let delerrs, adderrs, changeerrs =
 				Route.commit deletes adds changes in
@@ -134,7 +137,7 @@ let alarm_handler _ =
 		   | _ ->
 			Log.log Log.errors ("Unknown exception updating routing table")
 	  end else begin
-		let out = open_out "/tmp/lvrouted.routes" in
+		let out = open_out (!Common.tmpdir ^ "lvrouted.routes") in
 		output_string out (Route.showroutes newroutes);
 		close_out out;
 	  end;
@@ -144,7 +147,6 @@ let alarm_handler _ =
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals);
 	(* re-trigger the alarm *)
 	ignore(Unix.alarm !Common.alarm_timeout)
-
 
 let abort_handler _ =
 	Log.log Log.warnings "Exiting. Sending neighbors empty trees...";
@@ -176,7 +178,7 @@ let read_config _ =
 	let direct', directnets' =
 		List.fold_left
 			(fun (direct, nets) (_, _, a, n, _, _) ->
-				(Tree.make a)::direct,
+				(Tree.make a [])::direct,
 				(a, LowLevel.bits_in_inet_addr (Common.from_some n))::nets)
 			([], []) routableaddrs in
 	direct := direct';
@@ -222,7 +224,8 @@ let read_config _ =
 			Iface.itype i = Iface.WIRED) neighbors' in
 	neighbors_wired := p;
 	neighbors_wireless := q;
-	neighbors_wired_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr) !neighbors_wired IPSet.empty;
+	neighbors_wired_ip := Neighbor.Set.fold (fun n -> IPSet.add n.addr)
+						!neighbors_wired IPSet.empty;
 
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
@@ -240,19 +243,20 @@ let print_version _ =
 	exit 1
 
 let dump_version _ =
-	let out = open_out "/tmp/lvrouted.version" in
+	let out = open_out (!Common.tmpdir ^ "lvrouted.version") in
 	List.iter (fun s -> output_string out (s ^ "\n")) version_info;
 	close_out out
 
 let argopts = [
-	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
-	"-p", Arg.Set_int Common.port, "UDP port to use";
-	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
 	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
+	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
+	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
-	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
-	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
+	"-p", Arg.Set_int Common.port, "UDP port to use";
+	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
+	"-t", Arg.Set_string Common.tmpdir, "Temporary directory";
+	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
 	"-v", Arg.Unit print_version, "Print version information";
 ]
 
@@ -277,14 +281,13 @@ let _ =
 	set_handler dump_version [Sys.sigusr1];
 	Log.log Log.info "Set signal handlers";
 
-	ignore(Unix.alarm 1);
-	Log.log Log.info "Triggered the alarm";
-
 	sockfd := Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0;
 	Unix.setsockopt !sockfd Unix.SO_REUSEADDR true;
 	Unix.bind !sockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
-
 	Log.log Log.info "Opened and bound socket";
+
+	ignore(Unix.alarm 1);
+	Log.log Log.info "Triggered the alarm";
 
 	let logfrom s = Log.log Log.debug
 			("got data from " ^
