@@ -1,8 +1,8 @@
 digraph "lvrouted" {
 main -> parse_args
-daemonize [ label="daemonize()" ];
-main -> daemonize
+main -> "LowLevel.daemon"
 main -> open_sockets
+open_sockets -> "LowLevel.open_rtsock" [ label = "gebruikt oa" ];
 main -> install_handlers
 main -> read_config
 main -> select
@@ -11,12 +11,20 @@ select -> handle_data [ label = "als data" ];
 select -> handle_routemsg [ label = "als routemsg" ];
 select -> periodic_check [ label = "als tijd" ];
 select -> select [ label = "main loop" ];
-broadcast_run -> newroutes
+broadcast_run -> newroutes [ label = "doet een" ];
 newroutes [ label = "Neighbor.derive_routes_and_mytree" ];
-periodic_check -> broadcast_run [ label = "als reden" ];
+periodic_check -> broadcast_run [ label = "als genoeg reden" ];
+periodic_check -> check_reachable [ label = "gebruikt" ];
+check_reachable -> "Neighbor.check_reachable" [ label = "gebruikt" ];
+"Neighbor.check_reachable" -> "Iface.is_reachable"[ label = "gebruikt" ];
 newroutes -> "Neighbor.bcast" [ label = "boom naar" ];
+"Neighbor.bcast" -> "Tree.to_string" [ label = "gebruikt" ];
+"Tree.to_string" -> "tree_to_string" [ label = "gebruikt" ];
 newroutes -> "Route.diff" [ label = "routes naar" ];
+"Route.fetch" -> "Route.diff" [ label = "oude routes naar" ];
+"Route.fetch" -> "routes_fetch" [ label = "gebruikt" ];
 "Route.diff" -> "Route.commit" [ label = "naar" ];
+"Route.commit" -> "routes_commit" [ label = "gebruikt" ];
 newroutes -> "Tree.merge" [ label = "gebruikt" ];
 
 read_config -> "LowLevel.getifaddrs"
