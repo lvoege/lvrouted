@@ -1,9 +1,9 @@
 (* Neighbor type definition, management and utility functions *)
-module Neighbor = struct
 open HopInfo
 open Common
 open LowLevel
 open Route
+open Iface
 
 (* A neighbor has a name, an interface and address to reach it on, 
    a timestamp when we last successfully received something from the neighbor,
@@ -12,20 +12,21 @@ type t = {
 	name: string;
 	iface: string;
 	addr: Unix.inet_addr;
+	mutable macaddr: MAC.t option;
 
 	mutable last_seen: float;
 	mutable hoptable: HopInfo.hopelts option;
 }
 
 let show n =
-	print_string (n.name ^ ": " ^ Unix.string_of_inet_addr n.addr ^ " on " ^
-			n.iface ^ "\n");
-	print_newline ()
+	n.name ^ ": " ^ Unix.string_of_inet_addr n.addr ^ " on " ^
+			n.iface ^ "\n"
 
 (* constructor *)
 let make name iface addr =
 	{ name = name; iface = iface; addr = addr;
 	  last_seen = -1.0;
+	  macaddr = None;
 	  hoptable = None }
 
 (* send the given hoptable to the given neighbor under the current routing
@@ -50,7 +51,7 @@ let handle_data ns s sockaddr =
 		let addr = Common.get_addr_from_sockaddr sockaddr in
 		let n = List.find (fun n -> n.addr = addr) ns in
 		n.hoptable <- Some (HopInfo.from_string s addr);
-		n.last_seen <- Unix.time ()
+		n.last_seen <- Unix.gettimeofday ()
 	with _ -> 
 		()
 
@@ -63,7 +64,7 @@ let nuke_hoptable_for_iface ns i =
 (* Given a list of neighbors and a number of seconds, invalidate the 
    hoptables of all neighbors not heard from since numsecs ago *)
 let nuke_old_hoptables ns numsecs =
-	let limit = (Unix.time ()) -. numsecs in
+	let limit = (Unix.gettimeofday ()) -. numsecs in
 	let res = ref false in
 	List.iter (fun n -> 
 		if n.last_seen < limit then begin
@@ -77,7 +78,7 @@ let nuke_old_hoptables ns numsecs =
 let derive_routes_and_hoptable direct direct_hash ns = 
 	let ns' = List.filter (fun n -> Common.is_some n.hoptable) ns in
 	if List.length ns' = 0 then
-	  [], [| |]
+	  Route.RouteSet.empty, [| |]
 	else begin
 	  let h = Hashtbl.create (Array.length (Common.from_some (List.hd ns').hoptable)) in
 	  List.iter (fun n ->
@@ -91,10 +92,10 @@ let derive_routes_and_hoptable direct direct_hash ns =
 				Hashtbl.add h addr (e, n)
 		) (Common.from_some n.hoptable)
 	  ) ns';
-	  let routes = ref [] in
+	  let routes = ref (Route.RouteSet.empty) in
 	  let hoptable = ref [] in
 	  Hashtbl.iter (fun a (e, n) ->
-		routes := (Route.make a (HopInfo.mask e) n.addr)::(!routes);
+	  	routes := Route.RouteSet.add (Route.make a 32 n.addr) !routes;
 		hoptable := e::(!hoptable)
 	  ) h;
 	  let hoptable' = Array.append direct (Array.of_list (!hoptable)) in
@@ -105,12 +106,22 @@ let derive_routes_and_hoptable direct direct_hash ns =
 	  !routes, hoptable'
 	end
 
-(* Extract a list of distinct interfaces from the given list of neighbors *)
-let extract_ifaces ns =
-	let h = Hashtbl.create 4 in
-	let ifaces = ref [] in
-	List.iter (fun n -> Hashtbl.replace h n.iface 1) ns;
-	Hashtbl.iter (fun iface _ -> ifaces := iface::!ifaces) h;
-	!ifaces
+(* Fill the given hashtable with a mapping of interface name to Iface.t
+   as extracted from the given list of neighbors *)
+let extract_ifaces h ns =
+	let h = Hashtbl.create 8 in
+	List.iter (fun n -> Hashtbl.replace h n.iface (Iface.make n.iface)) ns
 
-end (* module Neighbor *)
+let check_reachable n iface = 
+	if Common.is_none n.macaddr then begin
+		let arptable = MAC.arptable n.iface in
+		try  n.macaddr <- Some (Hashtbl.find arptable n.addr)
+		with Not_found -> ()
+	end;
+	let reachable = (Common.is_some n.macaddr) &&
+			(Iface.is_reachable iface (Common.from_some n.macaddr)) in
+	if not reachable then begin
+		n.hoptable <- None;
+		n.last_seen <- 0.0
+	end;
+	reachable
