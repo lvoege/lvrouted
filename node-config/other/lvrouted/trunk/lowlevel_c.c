@@ -156,12 +156,13 @@ CAMLprim value caml_valaddr(value addr) {
 }
 
 CAMLprim value string_compress(value s) {
+	assert(0); /* TESTME first */
+	return Val_unit;
+#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
 	char *buffer;
-
-	assert(0); /* TESTME first */
 
 	buffer = 0;
 	buflen = string_length(s);
@@ -186,15 +187,18 @@ CAMLprim value string_compress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_compress");
 	}
+#endif
 }
 
 CAMLprim value string_decompress(value s) {
+	assert(0); /* TESTME first */
+	return Val_unit;
+#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
 	int code, buflen;
 	char *buffer;
 
-	assert(0); /* TESTME first */
 	buffer = 0;
 	buflen = string_length(s) * 2;
 	do {
@@ -217,6 +221,7 @@ CAMLprim value string_decompress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_decompress");
 	}
+#endif
 }
 
 #ifdef __FreeBSD__
