@@ -48,7 +48,9 @@ let max_routable = Unix.inet_addr_of_string "172.31.255.0"
 (* Use Tree.(de)serialize instead of the Marshal module. *)
 let own_marshaller = true
 (* Where to dump debug stuff and such *)
-let tmpdir = ref "/tmp/";
+let tmpdir = ref "/tmp/"
+(* Are wired links zero-cost? They are for us, but they may not be for you. *)
+let wired_links_are_zero_cost = true
 
 (* Types *)
 
