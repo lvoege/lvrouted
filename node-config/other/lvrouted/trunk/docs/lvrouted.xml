@@ -48,7 +48,7 @@
       </listitem>
       <listitem>
         <para>
-	  No per-node configuration.
+	  Little or no per-node configuration.
 	</para>
       </listitem>
       <listitem>
@@ -71,35 +71,48 @@
     </itemizedlist>
   </section>
   <section>
-    <title>Auto-configuration</title>
-    <para>
-      If your network has both a well-defined routable range <footnote>
-        <para>
-	  For &wleiden;, this is 172.16.0.0/12.
-	</para>
-      </footnote> and well-defined interlink netmasks (say, anything narrower
-      than a /29), the daemon will be able to do the right thing
-      automatically. Relevant tunables are
-      <varname>Common.min_routable</varname>,
-      <varname>Common.max_routable</varname> and
-      <varname>Common.interlink_netmask</varname>.
-    </para>
-    <warning>
+    <title>Configuration</title>
+    <section>
+      <title>Autoconfiguration</title>
       <para>
-        Do not set <varname>Common.interlink_netmask</varname> too wide. The
-        daemon will consider all addresses in the interlink subnet other than
-        its own possible neighbors. It will allocate resources for them and
-        spend time trying to reach its peers on those addresses. Keep your
-        interlinks as narrow as possible.
+        If your network has both a well-defined routable range <footnote>
+          <para>
+            For &wleiden;, this is 172.16.0.0/12.
+          </para>
+        </footnote> and well-defined interlink netmasks (say, anything narrower
+        than a /29), the daemon will be able to do the right thing
+        automatically. Relevant tunables are
+        <varname>Common.min_routable</varname>,
+        <varname>Common.max_routable</varname> and
+        <varname>Common.interlink_netmask</varname>.
       </para>
-    </warning>
-    <para>
-      If your network does not have such clearly recognizable interlinks, you
-      would have to hack in a configuration file scheme into
-      <function>lvrouted.read_config</function>. An older version of the source
-      tree may help. Revision 2957 of &root; is the last version that did work
-      with a config file.
-    </para>
+      <warning>
+        <para>
+          Do not set <varname>Common.interlink_netmask</varname> too wide. The
+          daemon will consider all addresses in the interlink subnet other than
+          its own possible neighbors. It will allocate resources for them and
+          spend time trying to reach its peers on those addresses. Keep your
+          interlinks as narrow as possible.
+        </para>
+      </warning>
+      <para>
+        If your network does not have such clearly recognizable interlinks, you
+        would have to hack in a configuration file scheme into
+        <function>lvrouted.read_config</function>. An older version of the source
+        tree may help. Revision 2957 of &root; is the last version that did work
+        with a config file.
+      </para>
+    </section>
+    <section>
+      <title>Extra addresses</title>
+      <para>
+        If necessary, extra addresses can be specified. This was necessary in &wleiden;
+        for some tunneling experiments. If a config file, by default
+        <filename>/usr/local/etc/lvrouted.conf</filename>, exists, it is read and parsed as
+        having one address per line. Those addresses will be advertised as being directly
+        attached to the node.
+      </para>
+    </section>
   </section>
   <section>
     <title>Spanning trees</title>
