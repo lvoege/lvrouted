@@ -5,13 +5,14 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <netinet/ether.h>
 #include <ifaddrs.h>
 #ifndef __linux__
 #include <net/if.h>
 #include <net/if_dl.h>
 #include <net/if_media.h>
 #include <net/if_types.h>
+#else
+#include <netinet/ether.h>
 #endif
 #include <net/ethernet.h>
 #include <arpa/inet.h>   
