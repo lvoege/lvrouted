@@ -423,11 +423,8 @@ CAMLprim value caml_getifaddrs(value unit) {
 
 CAMLprim value bits_in_inet_addr(value addr) {
 	CAMLparam1(addr);
-	CAMLlocal1(result);
 
-	result = Val_int(bitcount(get_addr(addr)));
-
-	CAMLreturn(result);
+	CAMLreturn(Val_int(bitcount(get_addr(addr))));
 }
 
 CAMLprim value caml_strstr(value big, value little) {

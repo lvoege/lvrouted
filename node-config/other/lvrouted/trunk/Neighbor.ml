@@ -33,9 +33,6 @@ let iface n = n.iface
    the given file descriptor. *)
 let bcast fd nodes ns =
 	let s = Tree.to_string nodes in
-	let s = if Common.compress_data then LowLevel.string_compress s
-		else s in
-	let s = Common.sign_string s in
 	Set.iter (fun n ->
 		ignore(Unix.sendto fd s 0 (String.length s) []
 			   (Unix.ADDR_INET (n.addr, !Common.port)))) ns
