@@ -29,6 +29,8 @@ let sockfd = ref Unix.stdout
 let last_time = ref 0.0
 (* An entry means that neighbor was unreachable last iteration *)
 let unreachable = ref Neighbor.Set.empty
+(* *)
+let configfile = ref ""
 
 (* This function is the main work horse. It:
 
@@ -82,6 +84,7 @@ let alarm_handler _ =
 	  last_time := now;
 
 	  (* DEBUG: Dump the incoming trees to the filesystem *)
+try
 	  Neighbor.Set.iter (fun n ->
 	  	let nname = Neighbor.name n in
 	  	let fname = !Common.tmpdir ^ "lvrouted.tree-" ^ nname in
@@ -90,17 +93,27 @@ let alarm_handler _ =
 			output_string out (Tree.show [Common.from_some n.tree]);
 			close_out out
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
+with _ ->
+	Log.log Log.errors ("exception1");
 
 	  let newroutes, nodes =
+try
 		Neighbor.derive_routes_and_mytree !directnets
-						  !neighbors in
+						  !neighbors
+with _ ->
+	Log.log Log.errors ("exception4");
+	Route.Set.empty, [] in
 	  let nodes = List.append nodes !direct in 
 
+try
 	  (* DEBUG: dump the derived tree to the filesystem *)
 	  let out = open_out (!Common.tmpdir ^ "lvrouted.mytree") in
 	  output_string out (Tree.show nodes);
 	  close_out out;
+with _ ->
+	Log.log Log.errors ("exception2");
 
+try
 	  (* If there's no wired neighbors, send the new tree to the (wireless)
 	     neighbors outright. If there are wired neighbors, send them the
 	     tree first, then create a new tree with the wired neighbors'
@@ -113,6 +126,8 @@ let alarm_handler _ =
 		let nodes = Tree.promote_wired_children !neighbors_wired_ip nodes in
 	  	Neighbor.bcast !sockfd nodes !neighbors_wireless;
 	  end;
+with _ ->
+	Log.log Log.errors ("exception3");
 
 	  if !Common.real_route_updates then begin
 		let deletes, adds, changes = Route.diff (Route.fetch ()) newroutes in
@@ -161,38 +176,39 @@ let read_config _ =
 	ignore(Unix.sigprocmask Unix.SIG_BLOCK block_signals);
 
 	(* Get all routable addresses that also have a netmask. *)
-	let routableaddrs = List.filter (fun (_, _, a, n, _, _) ->
-			Common.addr_in_range a &&
-			Common.is_some n) (LowLevel.getifaddrs ()) in
+	let routableaddrs = List.fold_left (fun l (iface, _, a, n, _, _) ->
+		if Common.addr_in_range a && Common.is_some n then
+		  (iface, a, LowLevel.bits_in_inet_addr (Common.from_some n))::l
+		else
+		  l) [] (LowLevel.getifaddrs ()) in
 	
 	(* Construct the direct and directnets lists. direct is a list of
 	   Tree.node's for every directly attached address. directnets is
 	   a list of (address, masklength) tuples for every directly
-	   attached address. *)
-	let direct', directnets' =
-		List.fold_left
-			(fun (direct, nets) (_, _, a, n, _, _) ->
-				(Tree.make a [])::direct,
-				(a, LowLevel.bits_in_inet_addr (Common.from_some n))::nets)
-			([], []) routableaddrs in
-	direct := direct';
-	directnets := directnets';
+	   attached address.*)
+	direct := List.map (fun (_, a, _) -> Tree.make a []) routableaddrs;
+	directnets := List.map (fun (_, a, n) -> a, n) routableaddrs;
+
+	if !configfile <> "" then try
+		let chan = open_in !configfile in
+		let lines = snarf_lines_from_channel chan in
+		close_in chan;
+		let extraaddrs = List.map Unix.inet_addr_of_string lines in
+		direct := !direct@(List.map (fun a -> Tree.make a []) extraaddrs);
+		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
+	with _ ->
+		Log.log Log.warnings ("Couldn't read the specified config file");
 
 	(* Interlinks can be recognised by routable addresses and a netmask
 	   geq Common.interlink_netmask. *)
-	let interlinks =
-		List.filter (fun (_, _, _, n, _, _) ->
-			let bits = LowLevel.bits_in_inet_addr
-					(Common.from_some n) in
-			bits >= Common.interlink_netmask && bits < 31
-		) routableaddrs in
+	let interlinks = List.filter (fun (_, _, n) -> n >= Common.interlink_netmask && n < 31) routableaddrs in
+
 	(* From the eligible interlinks, create a list of (interface name,
 	   address) tuples for all the usable addresses other than our own in
 	   the interlink blocks. *)
 	let neighboraddrs = List.concat (
-		List.map (fun (iface, _, a, n, _, _) ->
-			let m = LowLevel.bits_in_inet_addr (Common.from_some n) in
-			let addrs = LowLevel.get_addrs_in_block a m in
+		List.map (fun (iface, a, n) ->
+			let addrs = LowLevel.get_addrs_in_block a n in
 			let addrs' = List.filter (fun a' -> a' <> a) addrs in
 			List.map (fun a -> iface, a) addrs') interlinks) in
 
@@ -252,6 +268,7 @@ let dump_state _ =
 let argopts = [
 	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
 	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
+	"-c", Arg.Set_string configfile, "Config file";
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";

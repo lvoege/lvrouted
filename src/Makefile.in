@@ -60,7 +60,7 @@ byte: $(NAME).byte
 opt: $(NAME).opt
 
 $(NAME).byte: $(CMO) lowlevel_c.o
-	$(OCAMLC) $(BFLAGS) -o $@ $(CMO) lowlevel_c.o
+	$(OCAMLC) $(BFLAGS) -custom -o $@ $(CMO) lowlevel_c.o
 
 $(NAME).opt: $(CMX) lowlevel_c.o
 	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) lowlevel_c.o
