@@ -34,7 +34,7 @@ OCAMLWIN32 = @OCAMLWIN32@
 EXE = @EXE@
 
 INCLUDES = 
-LIBS=-cclib -lcrypto
+LIBS=-cclib -lcrypto -cclib -lbz2
 CFLAGS= -Wall -I`$(OCAMLFIND) printconf stdlib` -g
 BFLAGS = -g $(INCLUDES) $(LIBS)
 OFLAGS = $(INCLUDES) $(LIBS)
