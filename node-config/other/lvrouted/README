@@ -7,10 +7,8 @@ branches/etx-light	an ETX-like trick to try and cope with asymmetrically
 			lossy links.
 branches/etx		the full ETX version.
 branches/ipv6		version that can propagate IPv6 addresses.
-branches/select		version that uses a select()-based model instead of
-			a loop with a blocking read plus an alarm.
-branches/rtsock		spinoff of the select branch that listens to messages
-			that come over the routing socket.
+branches/rtsock		version that listens to messages that come over the
+			routing socket instead of polling
 tags/			this keeps a symbolic record of important versions,
 			such as actually deployed versions.
 
