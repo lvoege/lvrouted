@@ -4,7 +4,7 @@ echo \(\* DO NOT EDIT BY HAND \*\) > Version.ml
 if [ -e ".svn/entries" ]; then
 	echo Extracting svn version info
 	echo let version=`svn info . | grep Revision | sed "s/.* //g"` >> Version.ml
-	echo let branch=\"`pwd | sed "s/.*lvrouted\///g" | sed "s/\/src//g"`\" >> Version.ml
+	echo let branch=\"`svn info . | grep URL | sed "s/.*lvrouted\///g" | sed "s/\/src//g"`\" >> Version.ml
 else
 	echo Extracting svk version info
 	echo let version=`svk info . | grep Mirrored | sed "s/.*Rev. //g"` >> Version.ml
