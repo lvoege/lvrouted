@@ -10,6 +10,7 @@ type ifacetype =
 type t = {
 	name: string;
 	itype: ifacetype;
+	speed: int;
 
 	(* when was the last arpentries and associated update? *)
 	mutable last_assoc_update: float;
@@ -42,6 +43,7 @@ let make n =
 			  WIRED in
 	{ name = n;
 	  itype = iface_type n;
+	  speed = 100;
 	  last_assoc_update = -1.0;
 	  last_arp_update = -1.0;
 	  arpentries = None;

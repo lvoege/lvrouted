@@ -11,7 +11,7 @@ let neighbors = ref Neighbor.Set.empty
 (* A dictionary mapping from interface name ('ep0', 'sis1', etc) to Iface.t *)
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
-let direct : Tree.node list ref = ref []
+let direct : Tree.edge list ref = ref []
 (* A list of address, netmask tuples of the same *)
 let directnets : (Unix.inet_addr * int) list ref = ref []
 (* last broadcast timestamp *)
@@ -66,15 +66,15 @@ let broadcast_run udpsockfd rtsockfd =
 			close_out out
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
 
-	  let newroutes, nodes =
+	  let newroutes, edges =
 		Neighbor.derive_routes_and_mytree !directnets
 						  !neighbors in
-	  let nodes = List.append nodes !direct in 
+	  let edges = List.append edges !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
-	  Tree.dump_tree "lvrouted.mytree" nodes;
+	  Tree.dump_tree "lvrouted.mytree" edges;
 
-	  Neighbor.bcast udpsockfd nodes !neighbors;
+	  Neighbor.bcast udpsockfd edges !neighbors;
 
 	  if !Common.real_route_updates then begin
 		let deletes, adds, changes = Route.diff (Route.fetch ()) newroutes in
@@ -153,7 +153,7 @@ let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
 		Log.log Log.info ("New address " ^
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
-		direct := (Tree.make addr [])::!direct;
+		direct := (Tree.make_edge (Tree.make_node addr []))::!direct;
 		directnets := (addr, mask)::!directnets;
 		if mask >= Common.interlink_netmask then
 		  add_neighbors iface addr mask;

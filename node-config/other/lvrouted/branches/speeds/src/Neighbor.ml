@@ -8,7 +8,7 @@ type neighbor = {
 	mutable last_seen: float;	(* -1.0 if never seen, else unix
 					   timestamp of last received packet *)
 	mutable seqno: int;		(* last seen sequence number *)
-	mutable tree: Tree.node option; (* the tree last received *)
+	mutable tree: Tree.edge option; (* the tree last received *)
 }
 
 (* the exception handle_data will throw if given a faulty packet *)
@@ -50,7 +50,7 @@ let bcast fd nodes ns =
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Verify the signature, find the neighbor associated with the
    address, verify the sequence number, parse the tree and mark the time. *)
-let handle_data ns s sockaddr =
+let handle_data ns s sockaddr speedmapper =
 	let addr = Common.get_addr_from_sockaddr sockaddr in
 	let addr_s = Unix.string_of_inet_addr addr in
 	let bailwhen c s =
@@ -77,7 +77,9 @@ let handle_data ns s sockaddr =
 	let s = String.sub s 4 (len - 4) in
 	let s = if Common.compress_data then LowLevel.string_decompress s
 		else s in
-	n.tree <- Some (Tree.from_string s addr);
+	let node = Tree.from_string s addr in
+	let edge = Tree.make_edge (speedmapper n.iface) node in
+	n.tree <- Some edge;
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();
 	Log.log Log.debug (name n ^ "'s tree has been set")
@@ -106,19 +108,19 @@ let nuke_old_trees ns numsecs =
    (unaggregated) routes and a merged tree. *)
 let derive_routes_and_mytree directips ns = 
 	(* Fetch all valid trees from the neighbors *)
-	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
+	let edges = Common.filtermap (fun n -> Common.is_some n.tree)
 			             (fun n -> Common.from_some n.tree) 
 				     (Set.elements ns) in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
-			   string_of_int (List.length nodes));
+			   string_of_int (List.length edges));
 	(* Merge the trees into a new tree and an IPMap.t *)
-	let nodes', routemap = Tree.merge nodes directips in
+	let edges', routemap = Tree.merge edges directips in
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
 		Common.IPMap.fold (fun addr gw ->
 				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
-	Route.aggregate routeset, nodes'
+	Route.aggregate routeset, edges'
 
 (* Check if the given neighbor is reachable over the given Iface.t. If it
    isn't, set the neighbor's tree to None. *)

@@ -16,8 +16,9 @@ module IntQueue = PrioQueue.Make(struct
 	let compare = compare
 end)
 
-(* Constructor *)
-let make a edges = { addr = a; edges = edges }
+(* Constructors *)
+let make_edge s n = { edge_speed = s; edge_node = n }
+let make_node a edges = { addr = a; edges = edges }
 
 (* Accessors *)
 let addr n = n.addr
@@ -29,9 +30,10 @@ let show l =
 	let s = ref "" in
 	let rec show' indent l =
 		let i = String.make indent '\t' in
-		List.iter (fun n ->
+		List.iter (fun e ->
+			let n = e.edge_node in
 			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ "\n";
-			show' (indent + 1) (nodes n)) l in
+			show' (indent + 1) n.edges) l in
 	show' 0 l;
 	!s
 
@@ -71,7 +73,7 @@ let merge edges directnets =
 	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
 				    IPMap.empty directnets in
 	(* step 2 *)
-	let fake = make Unix.inet_addr_any [] in
+	let fake = make_node Unix.inet_addr_any [] in
 	(* step 3 *)
 	let rec traverse routes queue =
 		try
@@ -81,7 +83,7 @@ let merge edges directnets =
 			  traverse routes queue' (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
-				let newnode = make node.addr [] in
+				let newnode = make_node node.addr [] in
 				parent.edges <-  { edge_speed = mbps;
 						   edge_node = newnode}::parent.edges;
 				(* push the children on the queue *)
@@ -109,19 +111,19 @@ let merge edges directnets =
 external serialize: node -> string = "tree_to_string"
 external deserialize: string -> node = "string_to_tree"
 
-let to_string (nodes: node list) =
-	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
+let to_string (edges: edge list) =
+	let fake = { addr = Unix.inet_addr_any; edges = edges } in
 	if Common.own_marshaller then serialize fake 
 	else Marshal.to_string nodes []
 
-(* Read a list of nodes from the given string and return a new node. Node as
+(* Read a list of edges from the given string and return a new node. Node as
    in tree node, not wireless network node. *)
 let from_string s from_addr : node =
 	if Common.own_marshaller then
 	  { (deserialize s) with addr = from_addr }
 	else
 	  (* This is the most dangerous bit in all of the code: *)
-	  { addr = from_addr; nodes = (Marshal.from_string s 0: node list) }
+	  { addr = from_addr; edges = (Marshal.from_string s 0: edge list) }
 
 let dump_tree fname nodes =
 	let out = open_out (!Common.tmpdir ^ fname) in
