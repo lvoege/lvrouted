@@ -35,7 +35,7 @@ let get_arptable iface : arptable =
 	if !arptables_last_update < now -. Common.arptables_update_every then begin
 		Log.log Log.debug "getting arp entries";
 		let a = LowLevel.get_arp_entries () in
-		arptables := Array.fold_left (fun map (iface, ip, mac) ->
+		arptables := List.fold_left (fun map (iface, ip, mac) ->
 			let ifmap = try  StringMap.find iface map
 				    with Not_found -> IPMap.empty in
 			let ifmap = IPMap.add ip mac ifmap in
