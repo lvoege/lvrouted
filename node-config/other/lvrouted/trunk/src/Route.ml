@@ -1,4 +1,5 @@
 (* Route type definition and management *)
+open Common
 
 type route = {
 	addr: Unix.inet_addr;
@@ -18,11 +19,6 @@ module Set = Set.Make(struct
 		if r = 0 then
 		  compare a.mask b.mask
 		else r
-end)
-(* Make a Map with an address as its key *)
-module Map = Map.Make(struct
-	type t = Unix.inet_addr
-	let compare = compare
 end)
 
 (* Constructor *)
@@ -114,14 +110,14 @@ let diff oldroutes newroutes =
 	let dels = Set.diff oldroutes newroutes in
 	let adds = Set.diff newroutes oldroutes in
 
-	let oldmap = Set.fold (fun r -> Map.add r.addr r)
-		     oldroutes Map.empty in
-	let newmap = Set.fold (fun r -> Map.add r.addr r)
-		     newroutes Map.empty in
+	let oldmap = Set.fold (fun r -> IPMap.add r.addr r)
+		     oldroutes IPMap.empty in
+	let newmap = Set.fold (fun r -> IPMap.add r.addr r)
+		     newroutes IPMap.empty in
 	let isect = Set.inter oldroutes newroutes in
 	let changes = Set.fold (fun r set ->
-			let old_r = Map.find r.addr oldmap in
-			let new_r = Map.find r.addr newmap in
+			let old_r = IPMap.find r.addr oldmap in
+			let new_r = IPMap.find r.addr newmap in
 			if old_r.gw <> new_r.gw then
 			  Set.add new_r set
 			else
