@@ -155,14 +155,18 @@ let periodic_check udpsockfd rtsockfd =
 
 let handle_routemsg udpsockfd rtsockfd = function
 	  LowLevel.RTM_NEWADDR (iface, addr, mask) ->
-	  	direct := (Tree.make addr [])::!direct;
-		directnets := (addr, mask)::!directnets;
-		broadcast_run udpsockfd rtsockfd
+	  	if Common.addr_in_range addr then begin
+			direct := (Tree.make addr [])::!direct;
+			directnets := (addr, mask)::!directnets;
+			broadcast_run udpsockfd rtsockfd
+		end
 	| LowLevel.RTM_DELADDR (iface, addr, mask) ->
-		direct := List.filter (fun n -> Tree.addr n != addr) !direct;
-		directnets := List.filter (fun (a, m) -> a != addr && m != mask)
-					  !directnets;
-		broadcast_run udpsockfd rtsockfd
+		if Common.addr_in_range addr then begin
+			direct := List.filter (fun n -> Tree.addr n != addr) !direct;
+			directnets := List.filter (fun (a, m) -> a != addr && m != mask)
+						  !directnets;
+			broadcast_run udpsockfd rtsockfd
+		end
 	| LowLevel.RTM_IFINFO (iface, false) ->
 		Neighbor.nuke_trees_for_iface !neighbors iface;
 		broadcast_run udpsockfd rtsockfd

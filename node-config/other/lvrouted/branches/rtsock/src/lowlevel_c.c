@@ -812,53 +812,102 @@ CAMLprim value open_rtsock(value unit) {
  * said. */
 CAMLprim value read_routemsg(value fd) {
 	CAMLparam1(fd);
-	CAMLlocal1(res);
+	CAMLlocal2(res, addr);
 	char *p, *buffer;
+	char ifnam[IFNAMSIZ];
+	int i, buflen, toread, numread, masklen;
 	struct rt_msghdr *rtm;
 	struct if_msghdr *ifm;
 	struct ifa_msghdr *ifa;
 	struct if_announcemsghdr *ifann;
+	struct sockaddr_in *sin;
 
-/* TODO: dubbelcheck of de manier van het hier maken van een waarde (res) van
- * het algebraische type routemsg goed is. ik *denk* dat het zo gaat:
- *   - voor constructors zonder argumenten (RTM_NOTHING) is het simpelweg
- *     Val_int(0-based offset in constructor lijst)
- *   - voor constructors met argumenten moet je een klein blok met als tag
- *     de 0-based offset in de constructor lijst maken en de velden er in
- *     volgorde in opslaan. zo'n blok maken gaat met alloc_small()
- */
+	buflen = toread = 1024;
+	buffer = p = malloc(buflen);
+	if (buffer == 0)
+	  failwith("malloc in read_routemsg");
+	while ((numread = read(Long_val(fd), p, toread)) == toread) {
+		numread += p - buffer;
+		buflen += 1024;
+		buffer = realloc(buffer, buflen);
+		p = buffer + numread;
+	}
 	
 	rtm = (struct rt_msghdr *)buffer;
 	switch (rtm->rtm_type) {
 		case RTM_NEWADDR:
 			ifa = (struct ifa_msghdr *)buffer;
+			if (if_indextoname(ifa->ifam_index, ifnam) == 0)
+			  failwith("Unknown interface in read_routemsg");
 			p = (char *)(ifa + 1);
-			res = alloc_small(3, 1);
+			for (i = 1; i; i <<= 1) {
+				if (ifa->ifam_addrs & i) {
+					sin = (struct sockaddr_in *)p;
+					switch (i) {
+						case RTA_NETMASK:
+							masklen = bitcount(sin->sin_addr.s_addr);
+							break;
+						case RTA_IFA:
+							addr = alloc_string(4);
+							memcpy(String_val(addr), &sin->sin_addr.s_addr, sizeof(in_addr_t));
+							break;
+					}
+					p += SA_SIZE(sin);
+				}
+			}
+			res = alloc_small(3, 0);
+			Field(res, 0) = copy_string(ifnam);
+			Field(res, 1) = addr;
+			Field(res, 2) = Val_int(masklen);
 			break;
 		case RTM_DELADDR:
 			ifa = (struct ifa_msghdr *)buffer;
+			if (if_indextoname(ifa->ifam_index, ifnam) == 0)
+			  failwith("Unknown interface in read_routemsg");
 			p = (char *)(ifa + 1);
-			res = alloc_small(3, 2);
+			for (i = 1; i; i <<= 1) {
+				if (ifa->ifam_addrs & i) {
+					sin = (struct sockaddr_in *)p;
+					switch (i) {
+						case RTA_NETMASK:
+							masklen = bitcount(sin->sin_addr.s_addr);
+							break;
+						case RTA_IFA:
+							addr = alloc_string(4);
+							memcpy(String_val(addr), &sin->sin_addr.s_addr, sizeof(in_addr_t));
+							break;
+					}
+					p += SA_SIZE(sin);
+				}
+			}
+			res = alloc_small(3, 1);
+			Field(res, 0) = copy_string(ifnam);
+			Field(res, 1) = addr;
+			Field(res, 2) = Val_int(masklen);
 			break;
 		case RTM_IFINFO:
 			ifm = (struct if_msghdr *)buffer;
-			res = alloc_small(2, 3);
-			Field(res, 0) = Val_bool(ifm->ifm_data.ifi_link_state == LINK_STATE_UP);
+			if (if_indextoname(ifm->ifm_index, ifnam) == 0)
+			  failwith("Unknown interface in read_routemsg");
+			res = alloc_small(2, 2);
+			Field(res, 0) = copy_string(ifnam);
+			Field(res, 1) = Val_bool(ifm->ifm_data.ifi_link_state == LINK_STATE_UP);
 			break;
 		case RTM_IFANNOUNCE:
 			ifann = (struct if_announcemsghdr *)buffer;
-			res = alloc_small(2, 4);
+			res = alloc_small(2, 3);
 			Field(res, 0) = copy_string(ifann->ifan_name);
 			Field(res, 1) = Val_bool(ifann->ifan_what == IFAN_ARRIVAL);
 			break;
 #if defined(__FreeBSD_version) && __FreeBSD_version >= 600006
 		case RTM_IEEE80211:
-			res = alloc_small(1, 5);
+			res = alloc_small(1, 4);
 			break;
 #endif
 		default:
 			res = Val_int(0);
 	}
+	free(buffer);
 	CAMLreturn(res);
 }
 
