@@ -2,6 +2,7 @@
 /* There's plenty of code from FreeBSD's /usr/src here. For the BSD
  * license blurbs see the end of the file. */
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,11 +96,6 @@ static inline int iface_is_associated(const char *iface) {
 		return 1;
 	}
 	free(media_list);
-#if 0
-	if ((ifmr.ifm_status & IFM_AVALID) &&
-	    (ifmr.ifm_status & IFM_ACTIVE))
-	  printf("iface %s i up!\n", iface);
-#endif
 	return (ifmr.ifm_status & IFM_AVALID) &&
 	       (ifmr.ifm_status & IFM_ACTIVE);
 #endif
@@ -215,26 +211,33 @@ static int routemsg_add(unsigned char *buffer, int type,
 #else
 	struct rt_msghdr *msghdr;
 	struct sockaddr_in *addr;
+	static int seq = 0;
 
 	msghdr = (struct rt_msghdr *)buffer;	
+	memset(msghdr, 0, sizeof(struct rt_msghdr));
 	msghdr->rtm_version = RTM_VERSION;
 	msghdr->rtm_type = type;
 	msghdr->rtm_addrs = RTA_DST | RTA_GATEWAY | RTA_NETMASK;
 	msghdr->rtm_pid = getpid();
 	msghdr->rtm_flags = RTF_UP | RTF_GATEWAY | RTF_STATIC;
+	msghdr->rtm_seq = seq++;
 
 	addr = (struct sockaddr_in *)(msghdr + 1);
+	memset(addr, 0, sizeof(struct sockaddr_in));
 	addr->sin_len = sizeof(struct sockaddr_in);
 	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = dest;
+	addr->sin_addr.s_addr = htonl(get_addr(dest));
 	addr++;
+	memset(addr, 0, sizeof(struct sockaddr_in));
 	addr->sin_len = sizeof(struct sockaddr_in);
 	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = -1 - ((1 << (32 - masklen)) - 1);
+	addr->sin_addr.s_addr = -1 - ((1 << (32 - Long_val(masklen))) - 1);
 	addr++;
+	memset(addr, 0, sizeof(struct sockaddr_in));
 	addr->sin_len = sizeof(struct sockaddr_in);
 	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = gw;
+	addr->sin_addr.s_addr = htonl(get_addr(gw));
+	addr++;
 
 	msghdr->rtm_msglen = ((unsigned char *)addr) - buffer;
 	return msghdr->rtm_msglen;
@@ -247,22 +250,26 @@ CAMLprim value routes_commit(value deletes, value numdeletes,
 	assert(0);
 #else
 	int i, sockfd, buflen;
-	unsigned char *buffer, *p;
+	unsigned char *buffer;
 
 	sockfd = socket(PF_ROUTE, SOCK_RAW, AF_INET);
-	buflen = (numdeletes + numadds) * (sizeof(struct rt_msghdr) + 3 * sizeof(struct sockaddr_in));
+	if (sockfd == -1)
+	  failwith("routing socket");
+	buflen = sizeof(struct rt_msghdr) + 3 * sizeof(struct sockaddr_in);
 	buffer = malloc(buflen);
-	p = buffer;
+	if (buffer == 0)
+	  failwith("malloc");
 	for (i = 0; i < Long_val(numdeletes); i++) {
 		value v = Field(deletes, i);
-		p += routemsg_add(p, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
+		routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
+		if (write(sockfd, buffer, buflen) < 0)
+		  failwith(strerror(errno));
 	}
 	for (i = 0; i < Long_val(numadds); i++) {
 		value v = Field(adds, i);
-		p += routemsg_add(p, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
-	}
-	if (write(sockfd, buffer, buflen) < 0) {
-		perror("oops");
+		routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
+		if (write(sockfd, buffer, buflen) < 0)
+		  failwith(strerror(errno));
 	}
 	free(buffer);
 	close(sockfd);

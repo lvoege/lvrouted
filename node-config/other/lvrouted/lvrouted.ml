@@ -25,14 +25,15 @@ let last_time = ref 0.0
 (* The current routing table. This starts out empty. *)
 let routes = ref Route.Set.empty
 (* Neighbor -> 1. An entry means that neighbor was unreachable last iteration *)
-(*let unreachable: (Neighbor.t, int) Hashtbl.t = Hashtbl.create 4*)
 let unreachable = ref (Hashtbl.create 4)
+(* Whether or not to stay in the foreground or to daemon()ize *)
+let foreground = ref false
 
 let alarm_handler _ =
 	Log.log Log.debug "in alarm_handler";
 
 	(* re-trigger het alarm *)
-	let _ = Unix.alarm Common.alarm_timeout in
+	ignore(Unix.alarm !Common.alarm_timeout);
 
 	(* See if anything previously reachable now isn't *)
 	let someone_became_unreachable = ref false in
@@ -54,7 +55,7 @@ let alarm_handler _ =
 	let expired = Neighbor.nuke_old_hoptables !neighbors Common.timeout in
 
 	let now = Unix.gettimeofday () in
-	let its_time = (now -. !last_time) > bcast_interval in
+	let its_time = (now -. !last_time) > !bcast_interval in
 
 	(* If there's enough reason, derive a new routing table and a new
 	   hop table and send it around. *)
@@ -139,6 +140,10 @@ let read_config _ =
 
 let argopts = [
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
+	"-p", Arg.Set_int Common.port, "UDP port to use";
+	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
+	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
+	"-f", Arg.Set foreground, "Stay in the foreground";
 ]
 
 let main =
@@ -150,14 +155,16 @@ let main =
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 
-	LowLevel.daemon false false;
-	Log.log Log.debug "daemonized";
+	if not !foreground then begin
+		LowLevel.daemon false false;
+		Log.log Log.debug "daemonized";
+	end;
 
 	ignore(Unix.alarm 1);
 
 	sockfd := Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0;
 	Unix.setsockopt !sockfd Unix.SO_REUSEADDR true;
-	Unix.bind !sockfd (Unix.ADDR_INET (Unix.inet_addr_any, Common.port));
+	Unix.bind !sockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
 
 	let s = String.create 10240 in
 	while true do 

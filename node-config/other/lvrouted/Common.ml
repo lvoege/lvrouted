@@ -3,13 +3,13 @@
 (*s Constants *)
 
 (* The port to listen on *)
-let port = 12345
+let port = ref 12345
 (* How many seconds between advertising the hoptable to neighbors? *)
-let bcast_interval: float = 30.0
+let bcast_interval = ref 30.0
 (* How many seconds not hearing from a neighbor until considering it lost? *)
-let timeout: float = 2.0 *. bcast_interval
+let timeout: float = 2.0 *. !bcast_interval
 (* How many seconds between checking interfaces and expiry times? *)
-let alarm_timeout: int = 9
+let alarm_timeout = ref 9
 (* Whether or not to compress the data that goes over the wire *)
 let compress_data = false
 (* Whether or not to really update the kernel's routing table *)
