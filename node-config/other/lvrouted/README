@@ -1,0 +1,8 @@
+This repository has the following directories:
+
+trunk/ 			the regular shortest path version in use right now
+branches/etx-light	an ETX-like trick to try and cope with asymmetrically
+			lossy links. doesn't work yet.
+branches/etx		the full ETX version. doesn't work yet either.
+tags/			this keeps a symbolic record of important versions,
+			such as actually deployed versions.
