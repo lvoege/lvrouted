@@ -1,3 +1,4 @@
+/* implementation of the definitions in LowLevel.ml */
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>

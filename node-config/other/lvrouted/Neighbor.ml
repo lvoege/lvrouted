@@ -28,10 +28,6 @@ let make name iface addr =
    table. hoptable entries going through the neighbor per the routing table
    will be filtered to counter the count-to-infinity problem *)
 let send fd routes hs n =
-(*
-	print_string ("sending hoptable to " ^ n.name);
-	print_newline ();
-	HopInfo.printelts hs; *)
 	let hs' = HopInfo.filter hs routes n.addr in
 	try
 		HopInfo.send hs' fd n.addr;
@@ -75,7 +71,7 @@ let nuke_old_hoptables ns numsecs =
 		end) ns;
 	!res
 
-(* from the given direct hoptable and list of neighbors, derive a list of
+(* From the given direct hoptable and list of neighbors, derive a list of
    (unaggregated) routes and a merged hoptable. *)
 let derive_routes_and_hoptable direct direct_hash ns = 
 	let ns' = List.filter (fun n -> Common.is_some n.hoptable) ns in
@@ -103,10 +99,6 @@ let derive_routes_and_hoptable direct direct_hash ns =
 		hoptable := e::(!hoptable)
 	  ) h;
 	  let hoptable' = Array.append direct (Array.of_list (!hoptable)) in
-(*
-	  print_string "derived table";
-	  print_newline ();
-	  HopInfo.printelts hoptable'; *)
 	  !routes, hoptable'
 	end
 

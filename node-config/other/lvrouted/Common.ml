@@ -12,8 +12,10 @@ let timeout: float = 2.0 *. bcast_interval
 let alarm_timeout: int = 9
 (* Whether or not to compress the data that goes over the wire *)
 let compress_data = false
-(* *)
+(* Whether or not to really update the kernel's routing table *)
 let real_route_updates = false
+(* the netmask that's just narrow enough to be an interlink subnet.*)
+let interlink_netmask = 28
 
 (* Convenience functions *)
 

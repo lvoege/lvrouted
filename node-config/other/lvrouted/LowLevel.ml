@@ -31,6 +31,7 @@ external ether_aton: string -> string -> bool
 external ether_ntoa: string -> string -> bool
   = "caml_ether_ntoa"
 
+(* Wrapper around getifaddrs(3) *)
 external getifaddrs: unit -> (string *		(* iface name *)
 			      int *		(* iface flags *)
 			      Unix.inet_addr *	(* iface addr *)
@@ -51,5 +52,7 @@ external strstr: string -> string -> int
 external inet_addr_in_range: Unix.inet_addr -> bool
   = "inet_addr_in_range"
 
+(* Given an address and a netmask, return all the usable addresses in that
+   block *)
 external get_addrs_in_block: Unix.inet_addr -> int -> Unix.inet_addr array
   = "get_addrs_in_block"

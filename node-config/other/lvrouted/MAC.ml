@@ -5,7 +5,9 @@ type arptable = (Unix.inet_addr, string) Hashtbl.t
 
 module MacSet = Set.Make(String)
 
-(* Iface name -> arptable *)
+(* Keep one global hash from interface name to interface-specific arp table,
+   together with some information to be able to refresh it every now and
+   then.  *)
 let arptables = Hashtbl.create 8
 let arptables_last_update = ref (-1.0)
 let arptables_update_every = 60.0
@@ -22,6 +24,8 @@ let ether_ntoa s =
 	  raise (Failure "Invalid MAC address");
 	s'
 
+(* Return the arptable for the given interface. If it's time to update the
+   global arptable hash, do so. Dereference the arp hash. *)
 let arptable iface : arptable = 
 	let now = Unix.gettimeofday () in
 	if !arptables_last_update < now -. arptables_update_every then begin

@@ -5,7 +5,7 @@ type route = {
 	gw: Unix.inet_addr;
 }
 
-(* make an OrderedType around it *)
+(* Make struct with an OrderedType signature, to build a Set later on. *)
 module RouteType = struct
 	type t = route
 	(* compare first on the netmask, then on the address and finally on the gateway *)
@@ -21,10 +21,10 @@ module RouteType = struct
 		  res
 end
 
-(* and make a Set of routes *)
+(* And make a Set of routes *)
 module RouteSet = Set.Make(RouteType)
 
-(* constructor *)
+(* Constructor *)
 let make a m g = { addr = a; mask = m; gw = g }
 
 (* Does route a completely include b? *)
@@ -52,6 +52,18 @@ let show r =
 	Unix.string_of_inet_addr r.addr ^ "/" ^ string_of_int r.mask ^ " -> " ^
 	Unix.string_of_inet_addr r.gw
 
+(* Given a list of routes, try to clump together as many routes as possible.
+
+   Take the first route on the todo list:
+
+     If the netmask is 0, return the route as the only route. It'll be the
+     default route.
+    
+     Else expand the netmask by one bit. Check if it gobbles up any routes
+     to different gateways.
+       If so, move the unexpanded route to the done list and recurse
+       If not, remove all routes now covered by the newly expanded route from
+         the todo list and recurse. *)
 let aggregate routes =
 	let rec aggregate' todo done_ =
 		match todo with
@@ -76,10 +88,10 @@ let diff oldroutes newroutes =
 	RouteSet.elements (RouteSet.diff oldroutes newroutes),
 	RouteSet.elements (RouteSet.diff newroutes oldroutes)
 
+(* Don't use, call commit instead *)
 external routes_commit: route array -> int -> route array -> int -> int
   = "routes_commit"
 
 let commit deletes adds =
-	let _ = routes_commit (Array.of_list deletes) (List.length deletes)
-			      (Array.of_list adds) (List.length adds) in
-	()
+	ignore(routes_commit (Array.of_list deletes) (List.length deletes)
+			     (Array.of_list adds) (List.length adds))

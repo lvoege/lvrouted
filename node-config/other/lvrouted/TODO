@@ -1,0 +1,14 @@
+- Iface.t's arptable field expired niet.
+- debug route updates
+- misschien de verschillende keren dat er een extern proces gebruikt wordt
+  om dingen te doen (grep op Unix.open_process_in) herschrijven naar stukjes
+  C 
+- MAC.ml en Iface.ml integreren
+- profilen. op bv cetim3, een soekris met een hoop neighbors, neemt het nu
+  50% CPU, en dat is te veel.
+- een deel daarvan zal het functionele karakter van de code zijn.
+  List.filter gevolgd door een 
+- MAC.arptable geeft nu een hash van ip nummer naar mac adres, maar het eerste
+  wat alle call points doen met die hash is alle adressen samen in een
+  MAC.MacSet.t stoppen. herschrijf MAC.arptable om direct zo'n verzameling
+  terug te geven.

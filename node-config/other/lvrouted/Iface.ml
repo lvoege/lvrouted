@@ -37,6 +37,7 @@ let make n =
 	  associated = None;
 	  is_associated = None }
 
+(* Return a MAC.MacSet of addresses that are associated with the given interface *)
 let associated iface =
 	let c = Unix.open_process_in ("/usr/sbin/wicontrol -i " ^ iface.name ^ " -l") in
 	let re = Str.regexp "^\\([^ ]+\\) .*ASSOC.*" in
@@ -44,6 +45,8 @@ let associated iface =
 	ignore(Unix.close_process_in c);
 	List.fold_left (fun a e -> MAC.MacSet.add (MAC.ether_aton e.(1)) a) MAC.MacSet.empty l
 
+(* Update the information about associations on the given interface, if it's
+   been long enough since the last update. *)
 let update iface =
 	let now = Unix.gettimeofday () in
 	if (iface.itype = WIFI_MASTER && (Common.is_none iface.associated)) ||
@@ -55,20 +58,20 @@ let update iface =
 		iface.last_update <- now
 	end
 
+(* Is the given MAC address in the given interface's arp table? *)
 let in_arptable iface mac =
+	(* If the interface's table isn't there (hasn't been read, or expired)
+	   try and read it *)
 	if Common.is_none iface.arpentries then
 	  iface.arpentries <- Some
-	  	(Hashtbl.fold (fun a m s ->
-				MAC.MacSet.add m s)
+	  	(Hashtbl.fold (fun a m s -> MAC.MacSet.add m s)
 			      (MAC.arptable iface.name) MAC.MacSet.empty);
 	MAC.MacSet.mem mac (Common.from_some iface.arpentries)
 
+(* Is the given mac address reachable over the given interface? *)
 let is_reachable iface mac =
 	update iface;
-	if in_arptable iface mac then begin
+	(in_arptable iface mac) &&
 	  (iface.itype = WIRED ||
 	   (iface.itype = WIFI_MASTER && (MAC.MacSet.mem mac (Common.from_some iface.associated))) ||
 	   (iface.itype = WIFI_CLIENT && (Common.from_some iface.is_associated)))
-	end else begin
-		false;
-	end

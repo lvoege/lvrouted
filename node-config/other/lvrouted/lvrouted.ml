@@ -34,6 +34,7 @@ let alarm_handler _ =
 	(* re-trigger het alarm *)
 	let _ = Unix.alarm Common.alarm_timeout in
 
+	(* See if anything previously reachable now isn't *)
 	let someone_became_unreachable = ref false in
 	let new_unreachable = Hashtbl.create 4 in
 	List.iter (fun n ->
@@ -50,27 +51,25 @@ let alarm_handler _ =
 		end) !neighbors;
 	unreachable := new_unreachable;
 
+	let expired = Neighbor.nuke_old_hoptables !neighbors Common.timeout in
+
 	let now = Unix.gettimeofday () in
 	let its_time = (now -. !last_time) > bcast_interval in
 
-	Log.log Log.debug (string_of_float (now -. !last_time));
-	
-	if !someone_became_unreachable || its_time then begin
+	(* If there's enough reason, derive a new routing table and a new
+	   hop table and send it around. *)
+	if !someone_became_unreachable || expired || its_time then begin
 	  Log.log Log.debug "starting broadcast run";
 	  last_time := now;
 
-	  (* leidt uit de huidige informatie een routetabel en een hoptable af *)
-	  let newroutes, hoptable = Neighbor.derive_routes_and_hoptable (!direct)
-	  							     direct_hash
-	  							     (!neighbors) in
+	  let newroutes, hoptable =
+		Neighbor.derive_routes_and_hoptable (!direct)
+						    direct_hash
+						    (!neighbors) in
 
-	  (* stuur de hoptable naar alle neighbors. Neighbor.send zal het
-	     count-to-infinity probleem tegen gaan door te filteren, en heeft
-	     daarbij de route tabel nodig *)
-	  List.iter (Neighbor.send (!sockfd) newroutes hoptable) (!neighbors);
-
-	  (* aggregeer die tabel zoveel mogelijk *)
 	  let routes' = Route.aggregate newroutes in
+	  List.iter (Neighbor.send (!sockfd) routes' hoptable) (!neighbors);
+
 	  if Common.real_route_updates then begin
 		let deletes, adds = Route.diff !routes routes' in
 		Route.commit deletes adds
@@ -108,7 +107,7 @@ let read_config _ =
 	let interlinks =
 		List.filter (fun (_, _, _, n, _, _) ->
 			LowLevel.bits_in_inet_addr
-				(Common.from_some n) >= 28) routableaddrs in
+				(Common.from_some n) >= Common.interlink_netmask) routableaddrs in
 	let neighboraddrs = List.concat (
 		List.map (fun (iface, _, a, n, _, _) ->
 			let m = LowLevel.bits_in_inet_addr (Common.from_some n) in
@@ -117,10 +116,11 @@ let read_config _ =
 				compare a' a != 0) (Array.to_list addrs) in
 			List.map (fun a -> iface, a) addrs') interlinks) in
 	neighbors := List.map (fun (iface, a) -> 
+			let name = Unix.string_of_inet_addr a in
 			Log.log Log.debug ("neighbor " ^
-				Unix.string_of_inet_addr a ^ " on " ^ iface);
+				name ^ " on " ^ iface);
 			Hashtbl.replace ifaces iface (Iface.make iface);
-			Neighbor.make "" iface a) neighboraddrs;
+			Neighbor.make name iface a) neighboraddrs;
 	Log.log Log.debug ("numneighbors: " ^ string_of_int (List.length !neighbors));
 
 	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)

@@ -1,20 +1,33 @@
 This is a very simple UDP-based, shortest-path routing daemon.
 
-Each node has a configuration file that lists the directly accessible
-ranges and its neighbors. Example:
+All addresses on all interfaces are examined to see if they fall
+within some defined range. The subnets of all addresses are examined
+to see if they are narrow enough to be considered an interlink subnet.
+If so, all possible addresses on that subnet are designated as neighbor
+addresses and the daemon will try to link up to daemons on those
+addresses.
 
-direct 192.168.3.0/24
-neighbor foo 172.17.136.1 wi0
+The algorithm in this branch of the code is OSPF-like. A node gets sent
+packets from its neighbors listing the paths to the routable addresses they
+know about. From these, the node can derive a routing table by picking the
+shortest path for every routable address. Unlike OSPF, the complete path is
+sent instead of the hop count. The WirelessLeiden network is small enough to
+do this, and it makes count-to-infinity easily solvable.
 
-Directly accessible ranges are assumed to be infallible, with the reasoning
-that if your ethernet does fail, you have bigger problems than a suboptimal
-routing table.
+A couple of other assumptions about the WirelessLeiden network are in the
+code and would need to be adapted for other surroundings:
 
-Neighbors have a name, a peer address where it can be reached, and the
-interface that address belongs to. I could've written code to figure out
-which interface a neighbor is on at runtime, but that would've been a lot of
-trouble, unportable and generally not necessary as these configuration files
-are going to be script-generated anyway. 
+  - lowlevel_c.c, inet_addr_in_range() says whether or not an address is
+    routable. For WirelessLeiden, this is if it's in 172.16.0.0/12 but
+    not in 172.31.255.0/24. Re-implement as needed.
+  - Common.ml has a definition for the narrowest interlink netmask. This is
+    /28 in WirelessLeiden, with the vast majority of interlink subnets being
+    /30's. 
+
+Common.ml also contains some other settings like the port to use and some
+timeouts. There is also a compress_data flag. If set, the packets are bzip2ed
+before sending. If your network is big enough that the packets could become
+larger than 64KB, this'll help, but it hasn't been tested much.
 
 Lodewijk Voge
 lvoge@cs.vu.nl
