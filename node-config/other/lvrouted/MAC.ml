@@ -1,14 +1,16 @@
 (* MAC address handling *)
+open Common
+
 type t = string
 
 type arptable = (Unix.inet_addr, string) Hashtbl.t
 
 module Set = Set.Make(String)
 
-(* Keep one global hash from interface name to interface-specific arp table,
+(* Keep one global map from interface name to interface-specific arp table,
    together with some information to be able to refresh it every now and
    then.  *)
-let arptables = Hashtbl.create 8
+let arptables = ref StringMap.empty
 let arptables_last_update = ref (-1.0)
 let arptables_update_every = 60.0
 
@@ -34,17 +36,17 @@ let arptable iface : arptable =
 		let l = Common.snarf_channel_for_re c re 4 in
 		let h = Hashtbl.create (List.length l) in
 		List.iter (fun a ->
-			let h = try Hashtbl.find arptables a.(3)
+			let h = try StringMap.find a.(3) !arptables
 				with Not_found ->
 					let h' = Hashtbl.create 8 in
-					Hashtbl.add arptables a.(3) h';
+					arptables := StringMap.add a.(3) h' !arptables;
 					h' in
 			Hashtbl.add h (Unix.inet_addr_of_string a.(1))
 				      (ether_aton a.(2))) l;
 		ignore(Unix.close_process_in c);
 		arptables_last_update := now
 	end;
-	try Hashtbl.find arptables iface
+	try StringMap.find iface !arptables
 	with Not_found -> Hashtbl.create 1
 
 let show_arptable (h: arptable) =
