@@ -141,7 +141,7 @@ $(NAME).tex: $(SOURCES)
 #######
 
 clean::
-	rm -f *.cm[iox] *.o *~
+	rm -f *.mli *.cm[iox] *.o *~
 	rm -f $(GENERATED) parser.output
 	rm -f $(NAME).byte $(NAME).opt
 	rm -f *.aux *.log $(NAME).tex $(NAME).dvi $(NAME).ps
