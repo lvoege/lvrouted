@@ -78,7 +78,8 @@ external hexdump_string: string -> string
   = "hexdump_string"
 
 (* Send the given string with the given priority to the syslog. These
-   priorities are those as defined in Log.ml *)
+   priorities are those as defined in Log.ml, /not/ the standard values
+   from <syslog.h> ! *)
 external syslog: int -> string -> unit
   = "caml_syslog"
 
