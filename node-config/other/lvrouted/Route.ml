@@ -50,7 +50,7 @@ let show r =
 	Unix.string_of_inet_addr r.addr ^ "/" ^ string_of_int r.mask ^ " -> " ^
 	Unix.string_of_inet_addr r.gw
 
-(* given a list of routes, make a Set *)
+(* turn a list of routes into a set of routes *)
 let make_set = List.fold_left (fun a r -> Set.add r a) Set.empty
 
 let showroutes rs = 
@@ -87,7 +87,9 @@ let aggregate routes =
 						not (includes r' t)) rs in
 				  aggregate' (r'::rs') done_
 			end in
-	make_set (aggregate' (Set.elements routes) [])
+	List.fold_left (fun set r ->
+			Set.add { r with addr = LowLevel.mask_addr r.addr r.mask} set)
+		       Set.empty (aggregate' (Set.elements routes) [])
 
 (* Given a set of old routes and a set of new routes, produce a list
    of routes to delete, a list of routes to add and a list of routes
@@ -139,9 +141,7 @@ let commit dels adds chgs =
 	let res = lowlevel_commit (Set.elements dels)
 				  (Set.elements adds)
 				  (Set.elements chgs) in
-	let a = ref (Set.fold (fun r ->
-			let r' = { r with addr = LowLevel.mask_addr r.addr r.mask } in
-			Set.add r') adds Set.empty) in
+	let a = ref adds in
 	let d = ref dels in
 	let _ = Common.try_max_times 5 (fun i ->
 		Log.log Log.debug ("iteration " ^ string_of_int i);
