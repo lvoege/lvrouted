@@ -184,14 +184,15 @@
         If you first start the routing daemon and then correct the time, the
         following will happen. Unix timestamps are 32bit unsigned integers,
         while &ocaml; integers are 31bit signed. The current Unix timestamp is
-        a large negative &ocaml; integer. Clocks that cannot keep time are
-        usually initialized to 1980, which is a large positive &ocaml;
-        integer. If the daemon manages to get a packet out before the time
-        correction, its neighbors will remember that timestamp. After the 
-        time correction, packets will have the very large negative sequence
-        number and will be rejected. The node will be ignored by its neighbors
-        for over twenty years. You'd have to restart the daemon on all
-        neighbors to fix this.
+        large enough to wrap around into a a large
+        <emphasis>negative</emphasis> &ocaml; integer. Clocks that cannot keep
+        time are usually initialized to 1980, which is not large enough to
+        wrap around, so that is a large positive &ocaml; integer. If the
+        daemon manages to get a packet out before the time correction, its
+        neighbors will remember that timestamp. After the time correction,
+        packets will have the very large negative sequence number and will be
+        rejected. The node will be ignored by its neighbors for over twenty
+        years. You'd have to restart the daemon on all neighbors to fix this.
       </para>
     </warning>
   </section>
