@@ -100,9 +100,7 @@ let alarm_handler _ =
 	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
-	  let out = open_out (!Common.tmpdir ^ "lvrouted.mytree") in
-	  output_string out (Tree.show nodes);
-	  close_out out;
+	  Tree.dump_tree "lvrouted.mytree" nodes;
 
 	  (* If there's no wired neighbors, send the new tree to the (wireless)
 	     neighbors outright. If there are wired neighbors, send them the
@@ -115,8 +113,13 @@ let alarm_handler _ =
 	  else begin
 	  	let nodes' = Tree.promote_children !neighbors_wireless_ip nodes in
 	  	Neighbor.bcast !sockfd nodes' !neighbors_wired;
+
+		Tree.dump_tree "lvrouted.mytree-wired" nodes;
+
 		let nodes' = Tree.promote_children !neighbors_wired_ip nodes in
 	  	Neighbor.bcast !sockfd nodes' !neighbors_wireless;
+
+		Tree.dump_tree "lvrouted.mytree-wireless" nodes;
 	  end;
 
 	  if !Common.real_route_updates then begin
@@ -256,7 +259,8 @@ let dump_version _ =
 
 let dump_state _ =
 	let state = !neighbors, !neighbors_wireless, !neighbors_wired,
-		!neighbors_wired_ip, !ifaces, !direct, !directnets,
+		!neighbors_wired_ip, !neighbors_wireless_ip,
+		!ifaces, !direct, !directnets,
 		!unreachable, !MAC.arptables in
 	let out = open_out (!Common.tmpdir ^ "lvrouted.state") in
 	output_string out (Marshal.to_string state []);
@@ -264,12 +268,14 @@ let dump_state _ =
 
 let read_state s =
 	let neighbors', neighbors_wireless', neighbors_wired',
-		neighbors_wired_ip', ifaces', direct', directnets',
-		unreachable', arptables' = Marshal.from_string s 0 in
+		neighbors_wired_ip', neighbors_wireless_ip',
+		ifaces', direct', directnets', unreachable',
+		arptables' = Marshal.from_string s 0 in
 	neighbors := neighbors';
 	neighbors_wireless := neighbors_wireless';
 	neighbors_wired := neighbors_wired';
 	neighbors_wired_ip := neighbors_wired_ip';
+	neighbors_wireless_ip := neighbors_wireless_ip';
 	ifaces := ifaces';
 	direct := direct';
 	directnets := directnets';
