@@ -2,6 +2,7 @@
    sending to neighbors and the updating of the route table. *)
 open Common
 open Log
+open Neighbor
 
 (* First some globals. these are global because the signal handlers need to be
    able to use them *)
@@ -61,10 +62,22 @@ let alarm_handler _ =
 	  Log.log Log.debug "starting broadcast run";
 	  last_time := now;
 
+	  List.iter (fun n ->
+	  	let fname = "/tmp/lvrouted.tree-" ^ n.name in
+	  	if Common.is_some n.tree then begin
+			let out = open_out ("/tmp/lvrouted.tree-" ^ n.name) in
+			output_string out (Tree.show [Common.from_some n.tree]);
+			close_out out
+		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
+
 	  let newroutes, nodes =
 		Neighbor.derive_routes_and_hoptable !directips
 						    !neighbors in
 	  let nodes' = List.append nodes !direct in 
+
+	  let out = open_out ("/tmp/lvrouted.mytree") in
+	  output_string out (Tree.show nodes');
+	  close_out out;
 
 	  List.iter (Neighbor.send (!sockfd) newroutes nodes') (!neighbors);
 
@@ -73,9 +86,7 @@ let alarm_handler _ =
 		Route.commit deletes adds
 	  end else begin
 		let out = open_out "/tmp/lvrouted.routes" in
-		output_string out ("Route table:\n");
-		Route.Set.iter (fun r ->
-			output_string out ("\t" ^ Route.show r ^ "\n")) newroutes;
+		output_string out (Route.showroutes newroutes);
 		close_out out;
 	  end;
 	  routes := newroutes; 
@@ -139,9 +150,8 @@ let main =
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 
-(*
 	LowLevel.daemon false false;
-	Log.log Log.debug "daemonized"; *)
+	Log.log Log.debug "daemonized";
 
 	ignore(Unix.alarm 1);
 

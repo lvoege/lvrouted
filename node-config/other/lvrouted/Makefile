@@ -1,7 +1,7 @@
 REQUIRES  = unix str
-OCAMLC    = ocamlfind ocamlcp -p a -w p -g -linkpkg -package "$(REQUIRES)"
+OCAMLC    = ocamlfind ocamlc -w p -g -linkpkg -package "$(REQUIRES)"
 OCAMLC_I  = ocamlc -i
-OCAMLOPT  = ocamlfind ocamlopt -p -w p -linkpkg -package "$(REQUIRES)"
+OCAMLOPT  = ocamlfind ocamlopt -w p -linkpkg -package "$(REQUIRES)"
 OCAMLDEP  = ocamldep
 OCAMLFIND = ocamlfind
 OCAMLPROF = ocamlprof
@@ -17,10 +17,10 @@ all: depend lvrouted
 .SUFFIXES: .ml .mli .cmo .cmi .cmx
 
 clean:
-	rm -f *.cm[oix] *.mli *~
+	rm -f $(MLIS) $(BYTECODE) $(OBJCODE) $(SOURCES:.ml=.o) *~
 
 lvrouted.opt: $(OBJCODE) lowlevel_c.o
-	$(OCAMLOPT) -o $@ $(OBJCODE) -p lowlevel_c.o /usr/lib/libbz2.a
+	$(OCAMLOPT) -o $@ $(OBJCODE) lowlevel_c.o /usr/lib/libbz2.a
 
 lvrouted: $(MLIS) $(BYTECODE) lowlevel_c.o
 	$(OCAMLC) -o $@ -custom lowlevel_c.o $(BYTECODE) /usr/lib/libbz2.a

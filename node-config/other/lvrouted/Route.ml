@@ -54,6 +54,12 @@ let show r =
 	Unix.string_of_inet_addr r.addr ^ "/" ^ string_of_int r.mask ^ " -> " ^
 	Unix.string_of_inet_addr r.gw
 
+let showroutes rs = 
+	let l = List.fast_sort (fun a b -> compare a.addr b.addr)
+			       (Set.elements rs) in
+	List.fold_left (fun a r -> a ^ "\t" ^ show r ^ "\n")
+		       "Route table:\n" l
+
 (* Given a list of routes, try to clump together as many routes as possible.
 
    Take the first route on the todo list:

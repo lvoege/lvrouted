@@ -86,11 +86,7 @@ let derive_routes_and_hoptable directips ns =
 			             (fun n -> Common.from_some n.tree) ns in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
 			   string_of_int (List.length nodes));
-	print_string ("before Tree.merge: \n" ^ Tree.show nodes);
-	print_newline ();
 	let nodes', routemap = Tree.merge nodes directips in
-	print_string ("after Tree.merge: \n" ^ Tree.show nodes');
-	print_newline ();
 	let routeset = Common.IPMap.fold (fun addr gw set ->
 				     Route.Set.add (Route.make addr 32 gw) set)
 				  routemap Route.Set.empty in

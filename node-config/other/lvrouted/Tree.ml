@@ -20,7 +20,7 @@ let show l =
 	let rec show' indent l =
 		let i = String.make indent '\t' in
 		List.iter (fun n ->
-			s := !s ^ i ^ (Unix.string_of_inet_addr n.addr);
+			s := !s ^ i ^ (Unix.string_of_inet_addr n.addr) ^ "\n";
 			show' (indent + 1) n.nodes) l in
 	show' 0 l;
 	!s
@@ -52,7 +52,7 @@ let merge nodes directips =
 			else
 			  routes := IPMap.add node.addr gw !routes)
 		 (List.map (fun node -> node.addr, fake, node) nodes);
-(* TODO? directips er weer uit filteren? *)
+	IPSet.iter (fun a -> routes := IPMap.remove a !routes) directips;
 	fake.nodes, !routes
 
 (* Send the given list of nodes over the given file descriptor to the
@@ -61,9 +61,7 @@ let send (ts: node list) fd addr =
 	let s = Marshal.to_string ts [] in
 	let s' = if Common.compress_data then LowLevel.string_compress s
 		 else s in
-	try
-		let _ = Unix.sendto fd s' 0 (String.length s) [] (Unix.ADDR_INET (addr, Common.port)) in
-		()
+	try ignore(Unix.sendto fd s' 0 (String.length s) [] (Unix.ADDR_INET (addr, Common.port)))
 	with Unix.Unix_error (e, _, _) ->
 		prerr_string (Unix.error_message e);
 		prerr_newline ()
