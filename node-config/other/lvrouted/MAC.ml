@@ -5,6 +5,11 @@ type arptable = (Unix.inet_addr, string) Hashtbl.t
 
 module MacSet = Set.Make(String)
 
+(* Iface name -> arptable *)
+let arptables = Hashtbl.create 8
+let arptables_last_update = ref (-1.0)
+let arptables_update_every = 60.0
+
 let ether_aton s =
 	let s' = String.create 6 in
 	if not (LowLevel.ether_aton s s') then
@@ -18,16 +23,25 @@ let ether_ntoa s =
 	s'
 
 let arptable iface : arptable = 
-	let c = Unix.open_process_in ("/usr/sbin/arp -a -n") in
-	let re = Str.regexp "^[^ ]+ (\\([^)]+\\)) at \\([0-9a-f:]+\\) on \\([^ ]+\\) .*" in
-	let l = Common.snarf_channel_for_re c re 4 in
-	let h = Hashtbl.create (List.length l) in
-	List.iter (fun a ->
-		if a.(3) = iface then
-		  Hashtbl.add h (Unix.inet_addr_of_string a.(1))
-			        (ether_aton a.(2))) l;
-	ignore(Unix.close_process_in c);
-	h
+	let now = Unix.gettimeofday () in
+	if !arptables_last_update < now -. arptables_update_every then begin
+		let c = Unix.open_process_in ("/usr/sbin/arp -a -n") in
+		let re = Str.regexp "^[^ ]+ (\\([^)]+\\)) at \\([0-9a-f:]+\\) on \\([^ ]+\\) .*" in
+		let l = Common.snarf_channel_for_re c re 4 in
+		let h = Hashtbl.create (List.length l) in
+		List.iter (fun a ->
+			let h = try Hashtbl.find arptables a.(3)
+				with Not_found ->
+					let h' = Hashtbl.create 8 in
+					Hashtbl.add arptables a.(3) h';
+					h' in
+			Hashtbl.add h (Unix.inet_addr_of_string a.(1))
+				      (ether_aton a.(2))) l;
+		ignore(Unix.close_process_in c);
+		arptables_last_update := now
+	end;
+	try Hashtbl.find arptables iface
+	with Not_found -> Hashtbl.create 1
 
 let show_arptable (h: arptable) =
 	Hashtbl.fold (fun addr mac a ->

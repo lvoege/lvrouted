@@ -50,3 +50,6 @@ external strstr: string -> string -> int
    range we route? *)
 external inet_addr_in_range: Unix.inet_addr -> bool
   = "inet_addr_in_range"
+
+external get_addrs_in_block: Unix.inet_addr -> int -> Unix.inet_addr array
+  = "get_addrs_in_block"

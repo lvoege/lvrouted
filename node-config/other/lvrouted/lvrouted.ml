@@ -27,8 +27,6 @@ let routes = ref Route.RouteSet.empty
 (* Neighbor -> 1. An entry means that neighbor was unreachable last iteration *)
 (*let unreachable: (Neighbor.t, int) Hashtbl.t = Hashtbl.create 4*)
 let unreachable = ref (Hashtbl.create 4)
-(* Path to the config file *)
-let configfile = ref "/tmp/lvrouted.conf"
 
 let alarm_handler _ =
 	Log.log Log.debug "in alarm_handler";
@@ -39,6 +37,7 @@ let alarm_handler _ =
 	let someone_became_unreachable = ref false in
 	let new_unreachable = Hashtbl.create 4 in
 	List.iter (fun n ->
+		Log.log Log.debug ("looking at " ^ n.name);
 		let iface = Hashtbl.find ifaces n.iface in
 		if not (Neighbor.check_reachable n iface) then begin
 		  Hashtbl.add new_unreachable n 1;
@@ -53,6 +52,8 @@ let alarm_handler _ =
 
 	let now = Unix.gettimeofday () in
 	let its_time = (now -. !last_time) > bcast_interval in
+
+	Log.log Log.debug (string_of_float (now -. !last_time));
 	
 	if !someone_became_unreachable || its_time then begin
 	  Log.log Log.debug "starting broadcast run";
@@ -87,32 +88,50 @@ let alarm_handler _ =
 let abort_handler _ = ()
 
 let read_config _ =
+	(* block the alarm signal while we're meddling with globals *)
 	let block_signals = [ Sys.sigalrm ] in
 	let _ = Unix.sigprocmask Unix.SIG_BLOCK block_signals in
 
-	let localaddrs = List.map (fun (_, _, a, _, _, _) -> a)
-			          (Array.to_list (LowLevel.getifaddrs ())) in
-	let wleidenaddrs = List.filter LowLevel.inet_addr_in_range localaddrs in
-	direct := Array.of_list (List.map (fun a ->
+	(* Get all routable addresses that also have a netmask *)
+	let routableaddrs = List.filter (fun (_, _, a, n, _, _) ->
+			LowLevel.inet_addr_in_range a &&
+			Common.is_some n) (Array.to_list (LowLevel.getifaddrs())) in
+	(* add all routable addresses to the direct array *)
+	direct := Array.of_list (List.map (fun (_, _, a, _, _, _) ->
+			Log.log Log.debug ("direct " ^
+					Unix.string_of_inet_addr a);
 			Hashtbl.add direct_hash a 1;
-			HopInfo.make a) wleidenaddrs);
-	let n = Config.parse_file (open_in !configfile) in
-	neighbors := n;
-	Neighbor.extract_ifaces ifaces n;
+			HopInfo.make a) routableaddrs);
 
-	let _ = Unix.sigprocmask Unix.SIG_UNBLOCK block_signals in
-	()
+	(* interlinks can be recognised by routable addresses and a netmask
+	   geq 28 *)
+	let interlinks =
+		List.filter (fun (_, _, _, n, _, _) ->
+			LowLevel.bits_in_inet_addr
+				(Common.from_some n) >= 28) routableaddrs in
+	let neighboraddrs = List.concat (
+		List.map (fun (iface, _, a, n, _, _) ->
+			let m = LowLevel.bits_in_inet_addr (Common.from_some n) in
+			let addrs = LowLevel.get_addrs_in_block a m in
+			let addrs' = List.filter (fun a' ->
+				compare a' a != 0) (Array.to_list addrs) in
+			List.map (fun a -> iface, a) addrs') interlinks) in
+	neighbors := List.map (fun (iface, a) -> 
+			Log.log Log.debug ("neighbor " ^
+				Unix.string_of_inet_addr a ^ " on " ^ iface);
+			Hashtbl.replace ifaces iface (Iface.make iface);
+			Neighbor.make "" iface a) neighboraddrs;
+	Log.log Log.debug ("numneighbors: " ^ string_of_int (List.length !neighbors));
+
+	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
 let argopts = [
-	"-f", Arg.Set_string configfile, "Path to the config file";
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
 ]
 
 let main =
 	Arg.parse argopts (fun _ -> ()) "lvrouted";
 	read_config ();
-
-	Log.log Log.debug "Config file read";
 
 	let set_handler f = List.iter (fun i -> Sys.set_signal i (Sys.Signal_handle f)) in
 	set_handler alarm_handler [Sys.sigalrm];
@@ -124,7 +143,7 @@ let main =
 	LowLevel.daemon false false;
 	Log.log Log.debug "daemonized";
 
-	let _  = Unix.alarm 1 in
+	ignore(Unix.alarm 1);
 
 	sockfd := Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0;
 	Unix.setsockopt !sockfd Unix.SO_REUSEADDR true;

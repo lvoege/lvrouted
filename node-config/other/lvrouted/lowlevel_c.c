@@ -93,7 +93,7 @@ static inline in_addr_t get_addr(value addr) {
 	  fflush(stdout);
 	}
 	assert(string_length(addr) == 4);
-	return ((struct in_addr *)addr)->s_addr;
+	return ntohl(((struct in_addr *)addr)->s_addr);
 }
 
 static inline in_addr_t mask_addr_impl(in_addr_t addr, int mask) {
@@ -108,7 +108,7 @@ CAMLprim value mask_addr(value addr, value mask) {
 	CAMLlocal1(result);
 	in_addr_t res_addr;
 	
-	res_addr = htonl(mask_addr_impl(ntohl(get_addr(addr)),
+	res_addr = htonl(mask_addr_impl(get_addr(addr),
 			 Long_val(mask)));
 	result = alloc_string(4);
 	memcpy(String_val(result), &res_addr, 4);
@@ -385,9 +385,26 @@ CAMLprim value inet_addr_in_range(value addr) {
 	CAMLlocal1(result);
 	in_addr_t a;
 
-	memcpy(&a, String_val(addr), sizeof(in_addr_t));
-	a = ntohl(a);
+	a = get_addr(addr);
 	result = Val_bool(mask_addr_impl(a, 12) == 0xac100000 &&
 			  a < 0xac1fff00);
+	CAMLreturn(result);
+}
+
+CAMLprim value get_addrs_in_block(value addr, value mask) {
+	CAMLparam2(addr, mask);
+	CAMLlocal2(result, em);
+	in_addr_t a;
+	int i, numaddrs;
+
+	a = mask_addr_impl(get_addr(addr), Long_val(mask)) + 1;
+	numaddrs = (1 << (32 - Long_val(mask))) - 2;
+	result = alloc(numaddrs, 0);
+	for (i = 0; i < numaddrs; i++) {
+		em = alloc_string(sizeof(in_addr_t));
+		*(in_addr_t *)(String_val(em)) = htonl(a);
+		a++;
+		Store_field(result, i, em);
+	}
 	CAMLreturn(result);
 }

@@ -110,11 +110,6 @@ let derive_routes_and_hoptable direct direct_hash ns =
 	  !routes, hoptable'
 	end
 
-(* Fill the given hashtable with a mapping of interface name to Iface.t
-   as extracted from the given list of neighbors *)
-let extract_ifaces h ns =
-	List.iter (fun n -> Hashtbl.replace h n.iface (Iface.make n.iface)) ns
-
 let check_reachable n iface = 
 	if Common.is_none n.macaddr then begin
 		let arptable = MAC.arptable n.iface in
