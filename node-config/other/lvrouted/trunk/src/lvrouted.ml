@@ -45,6 +45,9 @@ let alarm_handler _ =
 	let block_signals = [ Sys.sigalrm ] in
 	ignore(Unix.sigprocmask Unix.SIG_BLOCK block_signals);
 
+	(* re-trigger the alarm *)
+	ignore(Unix.alarm !Common.alarm_timeout);
+
 	(* See what neighbors are unreachable. Per neighbor, fetch the
 	   corresponding Iface.t and see if it's reachable. *)
 	let new_unreachable = Neighbor.Set.filter (fun n ->
@@ -144,9 +147,7 @@ let alarm_handler _ =
 	  Log.log Log.debug "finished broadcast run";
 	end;
 
-	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals);
-	(* re-trigger the alarm *)
-	ignore(Unix.alarm !Common.alarm_timeout)
+	ignore(Unix.sigprocmask Unix.SIG_UNBLOCK block_signals)
 
 let abort_handler _ =
 	Log.log Log.warnings "Exiting. Sending neighbors empty trees...";
@@ -240,6 +241,14 @@ let dump_version _ =
 	List.iter (fun s -> output_string out (s ^ "\n")) version_info;
 	close_out out
 
+let dump_state _ =
+	let state = !neighbors, !neighbors_wireless, !neighbors_wired,
+		!neighbors_wired_ip, !ifaces, !direct, !directnets,
+		!unreachable in
+	let out = open_out (!Common.tmpdir ^ "lvrouted.state") in
+	output_string out (Marshal.to_string state []);
+	close_out out
+
 let argopts = [
 	"-a", Arg.Set_int Common.alarm_timeout, "Interval between checking for interesting things";
 	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
@@ -272,6 +281,7 @@ let _ =
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 	set_handler dump_version [Sys.sigusr1];
+	set_handler dump_state [Sys.sigusr2];
 	Log.log Log.info "Set signal handlers";
 
 	sockfd := Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0;
