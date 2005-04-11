@@ -33,7 +33,8 @@ let show l =
 		let i = String.make indent '\t' in
 		List.iter (fun e ->
 			let n = e.edge_node in
-			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ "\n";
+			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ 
+				" @ " ^ string_of_int e.edge_speed ^ "\n";
 			show' (indent + 1) n.edges) l in
 	show' 0 l;
 	!s
