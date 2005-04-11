@@ -585,7 +585,7 @@ CAMLprim value get_associated_stations(value iface) {
 
 	n = *(int *)(wir.wi_val);
 	result = alloc_tuple(n);
-	s = (struct wi_apinfo *)(wir.wi_val + sizeof(int));
+	s = (struct wi_apinfo *)((char *)wir.wi_val + sizeof(int));
 	for (i = 0; i < n; i++) {
 		mac = alloc_string(6);
 		memcpy(String_val(mac), s->bssid, ETHER_ADDR_LEN);
@@ -817,7 +817,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	CAMLlocal4(a, node, child, chain);
 	int i;
 
-	if (*pp >= limit - sizeof(int))
+	if (*pp > limit - sizeof(int))
 	  failwith("faulty packet");
 	i = ntohl(*(int *)(*pp));
 	*pp += sizeof(int);
@@ -849,13 +849,24 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	CAMLreturn(node);
 }
 
+/**
+ * Unpack the given string back into a tree of Tree.node structures. Copy the
+ * string to the C heap first, or the garbage collector may move it while
+ * we're working on it when one of the alloc_*() triggers a collection cycle.
+ */
 CAMLprim value string_to_tree(value s) {
 	CAMLparam1(s);
-	CAMLlocal2(res, a);
-	unsigned char *p;
+	CAMLlocal1(res);
+	int len;
+	unsigned char *buffer, *p;
 
-	p = String_val(s);
-	CAMLreturn(string_to_tree_rec(&p, p + string_length(s)));
+	len = string_length(s);
+	buffer = malloc(len);
+	memcpy(buffer, String_val(s), len);
+	p = buffer;
+	res = string_to_tree_rec(&p, p + len);
+	free(buffer);
+	CAMLreturn(res);
 }
 
 CAMLprim value open_rtsock(value unit) {

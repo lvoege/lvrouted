@@ -102,18 +102,22 @@ let handle_data ns s sockaddr =
 	let s = String.sub s 4 (len - 4) in
 	let s = if Common.compress_data then LowLevel.string_decompress s
 		else s in
-	let node = Tree.from_string s addr in
 
-	if Iface.itype (Common.from_some n.iface) = Iface.WIFI_MASTER then begin
-		(* Look for an edge to us in the new tree and copy the
-		   bandwidth field. This edge is at depth 2. *)
-		match Tree.find_edge_to_addr node 2 n.myaddr with
-		| None -> Log.log Log.debug ("Couldn't find myself!")
-		| Some edge -> n.bandwidth <- Tree.edge_bandwidth edge
-	end;
-	
-	let edge = Tree.make_edge n.bandwidth node in
-	n.tree <- Some edge;
+	Log.log Log.debug ("deserializing from " ^ addr_s);	
+	begin try
+		let node = Tree.from_string s addr in
+
+		if Iface.itype (Common.from_some n.iface) = Iface.WIFI_MASTER then begin
+			(* Look for an edge to us in the new tree and copy the
+			   bandwidth field. This edge is at depth 2. *)
+			match Tree.find_edge_to_addr node 2 n.myaddr with
+			| None -> Log.log Log.debug ("Couldn't find myself!")
+			| Some edge -> n.bandwidth <- Tree.edge_bandwidth edge
+		end;
+		
+		let edge = Tree.make_edge n.bandwidth node in
+		n.tree <- Some edge;
+	with _ -> raise InvalidPacket end;
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();
 	Log.log Log.debug (name n ^ "'s tree has been set")
