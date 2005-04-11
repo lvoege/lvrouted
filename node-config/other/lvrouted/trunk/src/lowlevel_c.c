@@ -792,7 +792,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	CAMLlocal4(a, node, child, chain);
 	int i;
 
-	if (*pp >= limit)
+	if (*pp > limit - sizeof(int))
 	  failwith("faulty packet");
 	i = ntohl(*(int *)(*pp));
 	*pp += sizeof(int);
@@ -824,6 +824,11 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	CAMLreturn(node);
 }
 
+/**
+ * Unpack the given string back into a tree of Tree.node structures. Copy the
+ * string to the C heap first, or the garbage collector may move it while
+ * we're working on it when one of the alloc_*() triggers a collection cycle.
+ */
 CAMLprim value string_to_tree(value s) {
 	CAMLparam1(s);
 	CAMLlocal1(res);
