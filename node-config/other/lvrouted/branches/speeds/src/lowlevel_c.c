@@ -968,7 +968,7 @@ CAMLprim value read_routemsg(value fd) {
 }
 
 static int ether_subtype_to_bandwidth(int i) {
-	switch (i) {
+	switch (IFM_SUBTYPE(i)) {
 		case IFM_10_T: return 10;
 		case IFM_10_2: return 10;
 		case IFM_10_5: return 10;
@@ -992,7 +992,7 @@ static int ether_subtype_to_bandwidth(int i) {
 }
 
 static int wifi_subtype_to_bandwidth(int i) {
-	switch (i) {
+	switch (IFM_SUBTYPE(i)) {
 		case IFM_IEEE80211_FH1: return 1;
 		case IFM_IEEE80211_FH2: return 2;
 		case IFM_IEEE80211_DS1: return 1;
@@ -1027,11 +1027,11 @@ CAMLprim value caml_ifstatus(value iname) {
 	switch (IFM_TYPE(i[1])) {
 		case IFM_ETHER:
 			res = alloc_small(1, 0);
-			Field(res, 0) = ether_subtype_to_bandwidth(i[1]);
+			Field(res, 0) = Val_int(ether_subtype_to_bandwidth(i[1]));
 			break;
 		case IFM_IEEE80211:
 			res = alloc_small(1, 1);
-			Field(res, 0) = wifi_subtype_to_bandwidth(i[1]);
+			Field(res, 0) = Val_int(wifi_subtype_to_bandwidth(i[1]));
 		default:
 			failwith("Unknown media type");
 	}
