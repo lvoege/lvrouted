@@ -143,7 +143,7 @@ let add_neighbors iface addr mask =
 	let addrs = List.filter ((<>) addr)
 				(LowLevel.get_addrs_in_block addr mask) in
 	List.iter (fun a ->
-		let n = Neighbor.make i a in
+		let n = Neighbor.make i a addr in
 		neighbors := Neighbor.Set.add n !neighbors) addrs
 
 let delete_neighbors addr mask = 

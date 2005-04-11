@@ -4,7 +4,7 @@
 open Common
 
 type edge = {
-	edge_speed: int;
+	edge_bandwidth: int;
 	edge_node: node;
 } and node = {
 	addr: Unix.inet_addr;
@@ -17,7 +17,7 @@ module IntQueue = PrioQueue.Make(struct
 end)
 
 (* Constructors *)
-let make_edge s n = { edge_speed = s; edge_node = n }
+let make_edge s n = { edge_bandwidth = s; edge_node = n }
 let make_node a edges = { addr = a; edges = edges }
 
 (* Accessors *)
@@ -25,6 +25,7 @@ let addr n = n.addr
 let addr_of_edge e = e.edge_node.addr
 let edges n = n.edges
 let nodes n = List.map (fun e -> e.edge_node) n.edges
+let edge_bandwidth edge = edge.edge_bandwidth
 
 (* Show the given list of edges *)
 let show l =
@@ -34,7 +35,7 @@ let show l =
 		List.iter (fun e ->
 			let n = e.edge_node in
 			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ 
-				" @ " ^ string_of_int e.edge_speed ^ "\n";
+				" @ " ^ string_of_int e.edge_bandwidth ^ "\n";
 			show' (indent + 1) n.edges) l in
 	show' 0 l;
 	!s
@@ -86,11 +87,11 @@ let merge edges directnets =
 			else begin
 				(* copy this node and hook it into the new tree *)
 				let newnode = make_node node.addr [] in
-				parent.edges <-  { edge_speed = mbps;
+				parent.edges <-  { edge_bandwidth = mbps;
 						   edge_node = newnode}::parent.edges;
 				(* push the children on the queue *)
 				let queue'' = List.fold_left (fun queue e ->
-					let mbps' = min mbps e.edge_speed in
+					let mbps' = min mbps e.edge_bandwidth in
 					let c = (e.edge_node, newnode, gw) in
 					IntQueue.insert queue mbps' c)
 						IntQueue.empty node.edges in
@@ -101,7 +102,7 @@ let merge edges directnets =
 		with IntQueue.Queue_is_empty -> routes in
 	let todo = List.fold_left (fun queue e ->
 		let c = e.edge_node, fake, e.edge_node.addr in
-		IntQueue.insert queue e.edge_speed c) IntQueue.empty edges in
+		IntQueue.insert queue e.edge_bandwidth c) IntQueue.empty edges in
 	let routes = traverse routes todo in
 	(* step 4 *)
 	let routes = IPMap.fold (fun a gw map ->
@@ -130,4 +131,15 @@ let from_string s from_addr : node =
 let dump_tree fname nodes =
 	let out = open_out (!Common.tmpdir ^ fname) in
 	output_string out (show nodes);
-	close_out out;
+	close_out out
+
+let find_edge_to_addr node maxdepth addr =
+	let rec traverse edge depth =
+		let node = edge.edge_node in
+		if node.addr = addr then Some edge
+		else if depth = maxdepth then None
+		else List.fold_left (fun a e -> match a with
+			| Some edge -> Some edge
+			| None -> traverse e (depth + 1)
+		) None node.edges in
+	traverse (make_edge (-1) node) 0

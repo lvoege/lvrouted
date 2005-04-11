@@ -4,6 +4,7 @@ type neighbor = {
 	iface: Iface.t option;
 	mutable bandwidth: int;
 	addr: Unix.inet_addr;		(* address to reach this neighbor on *)
+	myaddr: Unix.inet_addr;
 	mutable macaddr: MAC.t option;	(* MAC address, if known *)
 
 	mutable last_seen: float;	(* -1.0 if never seen, else unix
@@ -21,13 +22,14 @@ module Set = Set.Make(struct
 end)
 
 (* Constructors *)
-let make iface addr =
+let make iface addr myaddr =
 	let bandwidth = if Iface.itype iface = Iface.WIRED then
 				Iface.current_bandwidth iface
 			else -1 in
 	{ iface = Some iface; 
 	  bandwidth = bandwidth;
 	  addr = addr;
+	  myaddr = myaddr;
 	  last_seen = -1.0;
 	  macaddr = None;
 	  seqno = min_int;
@@ -39,6 +41,7 @@ let make_of_addr a =
 	{ iface = None;
 	  bandwidth = -1;
 	  addr = a;
+	  myaddr = a;
 	  last_seen = -1.0;
 	  macaddr = None;
 	  seqno = min_int;
@@ -67,7 +70,11 @@ let bcast fd nodes ns =
 
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Verify the signature, find the neighbor associated with the
-   address, verify the sequence number, parse the tree and mark the time. *)
+   address, verify the sequence number, parse the tree and mark the time.
+   
+   If we are a wifi master, we can't read the bandwidth to a neighbor
+   directly, but neighbors can. So in that case, assume what the neighbor read
+   as its bandwidth to us is accurate and simply copy it. *)
 let handle_data ns s sockaddr =
 	let addr = Common.get_addr_from_sockaddr sockaddr in
 	let addr_s = Unix.string_of_inet_addr addr in
@@ -96,6 +103,15 @@ let handle_data ns s sockaddr =
 	let s = if Common.compress_data then LowLevel.string_decompress s
 		else s in
 	let node = Tree.from_string s addr in
+
+	if Iface.itype (Common.from_some n.iface) = Iface.WIFI_MASTER then begin
+		(* Look for an edge to us in the new tree and copy the
+		   bandwidth field. This edge is at depth 2. *)
+		match Tree.find_edge_to_addr node 2 n.myaddr with
+		| None -> Log.log Log.debug ("Couldn't find myself!")
+		| Some edge -> n.bandwidth <- Tree.edge_bandwidth edge
+	end;
+	
 	let edge = Tree.make_edge n.bandwidth node in
 	n.tree <- Some edge;
 	n.seqno <- stamp;
