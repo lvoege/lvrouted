@@ -153,7 +153,9 @@ let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
 		Log.log Log.info ("New address " ^
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
-		direct := (Tree.make_edge (Tree.make_node addr []))::!direct;
+		let ludicrous_speed = 1000000 in
+		let node = Tree.make_node addr [] in
+		direct := (Tree.make_edge ludicrous_speed node)::!direct;
 		directnets := (addr, mask)::!directnets;
 		if mask >= Common.interlink_netmask then
 		  add_neighbors iface addr mask;
@@ -168,7 +170,7 @@ let handle_routemsg udpsockfd rtsockfd = function
 		if Common.addr_in_range addr then begin
 			Log.log Log.info ("Deleted address " ^
 				Unix.string_of_inet_addr addr ^ " on " ^ iface);
-			direct := List.filter (fun n -> Tree.addr n <> addr)
+			direct := List.filter (fun e -> Tree.addr_of_edge e <> addr)
 					      !direct;
 			directnets := List.filter (fun (a, _) -> a <> addr)
 						  !directnets;
@@ -196,7 +198,8 @@ let read_config _ =
 		let lines = snarf_lines_from_channel chan in
 		close_in chan;
 		let extraaddrs = List.map Unix.inet_addr_of_string lines in
-		direct := !direct@(List.map (fun a -> Tree.make a []) extraaddrs);
+		direct := !direct@(List.map (fun a ->
+			Tree.make_edge 10000000 (Tree.make_node a [])) extraaddrs);
 		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
 	with _ ->
 		Log.log Log.warnings ("Couldn't read the specified config file");
@@ -308,6 +311,7 @@ let _ =
 	let s = String.create 65536 in		(* buffer to read into *)
 	let readfds = [ udpsockfd; rtsockfd ] in
 	let last_periodic_check = ref 0.0 in
+	let stubmapper _ = 10 in
 	while true do try
 		(* Wait for interesting events *)
 		let fds, _, _ = Unix.select readfds [] []
@@ -319,7 +323,8 @@ let _ =
 			logfrom sockaddr;
 			Neighbor.handle_data !neighbors
 					     (String.sub s 0 len)
-					     sockaddr;
+					     sockaddr
+					     stubmapper;
 			Log.log Log.debug ("data handled");
 		end;
 		if List.mem rtsockfd fds then

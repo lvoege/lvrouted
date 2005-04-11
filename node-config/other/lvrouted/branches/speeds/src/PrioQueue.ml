@@ -1,4 +1,3 @@
-
 module type OrderedType = sig
 	type priority
 	val compare: priority -> priority ->int

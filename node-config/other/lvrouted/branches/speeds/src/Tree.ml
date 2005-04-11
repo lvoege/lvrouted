@@ -22,6 +22,7 @@ let make_node a edges = { addr = a; edges = edges }
 
 (* Accessors *)
 let addr n = n.addr
+let addr_of_edge e = e.edge_node.addr
 let edges n = n.edges
 let nodes n = List.map (fun e -> e.edge_node) n.edges
 
