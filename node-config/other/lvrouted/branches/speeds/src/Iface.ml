@@ -10,7 +10,6 @@ type ifacetype =
 type t = {
 	name: string;
 	itype: ifacetype;
-	speed: int;
 
 	(* when was the last arpentries and associated update? *)
 	mutable last_assoc_update: float;
@@ -25,11 +24,11 @@ type t = {
 
 (* Constructor *)
 let make n =
-	let iface_type name = 
+	let iface_type = 
 		(* This is pretty lame, but this is executed only once per
 		   interface at startup anyway, and it'd be a huge gob of
 		   code in lowlevel_c.c, so I'll leave it like this *)
-		let c = Unix.open_process_in ("/sbin/ifconfig " ^ name) in
+		let c = Unix.open_process_in ("/sbin/ifconfig " ^ n) in
 		let re = Str.regexp "^.*media: \\(.*\\)" in
 		let l = Common.snarf_channel_for_re c re 2 in
 		ignore(Unix.close_process_in c);
@@ -42,14 +41,15 @@ let make n =
 			else
 			  WIRED in
 	{ name = n;
-	  itype = iface_type n;
-	  speed = 100;
+	  itype = iface_type;
 	  last_assoc_update = -1.0;
 	  last_arp_update = -1.0;
 	  arpentries = None;
 	  associated = None;
 	  is_associated = None }
 
+(* Accessors *)
+let name i = i.name
 let itype i = i.itype
 
 (* Return a MAC.Set of addresses that are associated with the given interface *)

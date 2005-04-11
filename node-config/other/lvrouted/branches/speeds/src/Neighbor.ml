@@ -2,6 +2,7 @@
 
 type neighbor = {
 	iface: string;			(* "wi0", "ep0", etc *)
+	bandwidth: int;
 	addr: Unix.inet_addr;		(* address to reach this neighbor on *)
 	mutable macaddr: MAC.t option;	(* MAC address, if known *)
 
@@ -19,10 +20,22 @@ module Set = Set.Make(struct
 	let compare a b = compare a.addr b.addr
 end)
 
-(* constructor *)
+(* Constructors *)
 let make iface addr =
-	{ iface = iface;
+	{ iface = Iface.name iface;
+	  bandwidth = if Iface.itype iface = Iface.WIRED then 1000000 else -1;
 	  addr = addr;
+	  last_seen = -1.0;
+	  macaddr = None;
+	  seqno = min_int;
+	  tree = None }
+
+(* Given that the Set above only cares about the addr field, this constructor
+   sets up a struct just for use in Set operations. *)
+let make_of_addr a = 
+	{ iface = "";
+	  bandwidth = -1;
+	  addr = a;
 	  last_seen = -1.0;
 	  macaddr = None;
 	  seqno = min_int;
@@ -50,7 +63,7 @@ let bcast fd nodes ns =
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Verify the signature, find the neighbor associated with the
    address, verify the sequence number, parse the tree and mark the time. *)
-let handle_data ns s sockaddr speedmapper =
+let handle_data ns s sockaddr =
 	let addr = Common.get_addr_from_sockaddr sockaddr in
 	let addr_s = Unix.string_of_inet_addr addr in
 	let bailwhen c s =
@@ -78,7 +91,7 @@ let handle_data ns s sockaddr speedmapper =
 	let s = if Common.compress_data then LowLevel.string_decompress s
 		else s in
 	let node = Tree.from_string s addr in
-	let edge = Tree.make_edge (speedmapper n.iface) node in
+	let edge = Tree.make_edge n.bandwidth node in
 	n.tree <- Some edge;
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();

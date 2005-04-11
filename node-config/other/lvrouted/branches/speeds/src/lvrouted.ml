@@ -131,23 +131,23 @@ let abort_handler _ =
 (* For the given interface and netblock, add all possible neighbors to the
    global set *)
 let add_neighbors iface addr mask =
-	if not (StringMap.mem iface !ifaces) then begin
-		let i = Iface.make iface in
-		ifaces := StringMap.add iface i !ifaces
-	end;
+	let i = if not (StringMap.mem iface !ifaces) then begin
+			let i = Iface.make iface in
+			ifaces := StringMap.add iface i !ifaces;
+			i
+		end else StringMap.find iface !ifaces in
 	let addrs = List.filter ((<>) addr)
 				(LowLevel.get_addrs_in_block addr mask) in
 	List.iter (fun a ->
-		let n = Neighbor.make iface a in
+		let n = Neighbor.make i a in
 		neighbors := Neighbor.Set.add n !neighbors) addrs
 
-let delete_neighbors iface addr mask = 
+let delete_neighbors addr mask = 
 	let addrs = List.filter ((<>) addr)
 				(LowLevel.get_addrs_in_block addr mask) in
-	let to_delete = List.fold_left (fun s a ->
-		let n = Neighbor.make iface a in
-		Neighbor.Set.add n s) Neighbor.Set.empty addrs in
-	neighbors := Neighbor.Set.diff !neighbors to_delete
+	neighbors := List.fold_left (fun s a ->
+		let n = Neighbor.make_of_addr a in 
+		Neighbor.Set.remove n s) !neighbors addrs
 
 let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
@@ -155,7 +155,8 @@ let add_address iface addr mask =
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
 		let ludicrous_speed = 1000000 in
 		let node = Tree.make_node addr [] in
-		direct := (Tree.make_edge ludicrous_speed node)::!direct;
+		let edge = Tree.make_edge ludicrous_speed node in
+		direct := edge::!direct;
 		directnets := (addr, mask)::!directnets;
 		if mask >= Common.interlink_netmask then
 		  add_neighbors iface addr mask;
@@ -175,7 +176,7 @@ let handle_routemsg udpsockfd rtsockfd = function
 			directnets := List.filter (fun (a, _) -> a <> addr)
 						  !directnets;
 			if mask >= Common.interlink_netmask then
-			  delete_neighbors iface addr mask;
+			  delete_neighbors addr mask;
 			broadcast_run udpsockfd rtsockfd
 		end
 	| _ -> ()
@@ -311,7 +312,6 @@ let _ =
 	let s = String.create 65536 in		(* buffer to read into *)
 	let readfds = [ udpsockfd; rtsockfd ] in
 	let last_periodic_check = ref 0.0 in
-	let stubmapper _ = 10 in
 	while true do try
 		(* Wait for interesting events *)
 		let fds, _, _ = Unix.select readfds [] []
@@ -323,8 +323,7 @@ let _ =
 			logfrom sockaddr;
 			Neighbor.handle_data !neighbors
 					     (String.sub s 0 len)
-					     sockaddr
-					     stubmapper;
+					     sockaddr;
 			Log.log Log.debug ("data handled");
 		end;
 		if List.mem rtsockfd fds then
