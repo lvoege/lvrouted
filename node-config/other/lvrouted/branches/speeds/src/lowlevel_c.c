@@ -757,6 +757,16 @@ CAMLprim value caml_unpack_int(value s) {
 	CAMLreturn(Val_int(*(int *)(String_val(s))));
 }
 
+static int pack_bandwidth(int x) {
+	int i;	
+	int is[] = { 0, 1, 2, 5, 6, 9, 10, 11, 12, 18, 22, 24, 36, 48, 54,
+			72, 100, 1000, 10000, -1} ;
+	for (i = 0; is[i] != -1; i++)
+	  if (is[i] == x)
+	    return i;
+	failwith("Ouch, unknown bandwidth!");
+}
+
 /* Store a node into a buffer. It is enough to store the node contents
  * (the address in this case) plus the number of children and recurse.
  * Since the 172.16.0.0/12 range only uses 20 bits, the number of children
@@ -766,19 +776,23 @@ CAMLprim value caml_unpack_int(value s) {
  * propagate, so packing a node in 24 bits instead of 32 would probably
  * be pushing our luck.
  */
-static unsigned char *tree_to_string_rec(value node, unsigned char *buffer) {
+static unsigned char *tree_to_string_rec(int bandwidth,
+					 value node, unsigned char *buffer) {
 	CAMLparam1(node);
-	CAMLlocal1(t);
+	CAMLlocal2(t, edge);
 	unsigned char *buffer_tmp;
 	int i;
 
 	buffer_tmp = buffer + sizeof(int);
 	i = 0;
 	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
-		buffer_tmp = tree_to_string_rec(Field(t, 0), buffer_tmp);
+		edge = Field(t, 0);
+		buffer_tmp = tree_to_string_rec(Field(edge, 0), 
+						Field(edge, 1), buffer_tmp);
 		i++;
 	}
 	i <<= 20;
+	i |= pack_bandwidth(bandwidth) << 26;
 	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
 	*(int *)buffer = htonl(i);
 	CAMLreturn(buffer_tmp);
@@ -790,7 +804,7 @@ CAMLprim value tree_to_string(value node) {
 	unsigned char *buffer, *t;
 
 	buffer = malloc(65536);
-	t = tree_to_string_rec(node, buffer);
+	t = tree_to_string_rec(0, node, buffer);
 	result = alloc_string(t - buffer);
 	memcpy(String_val(result), buffer, t - buffer);
 	free(buffer);
