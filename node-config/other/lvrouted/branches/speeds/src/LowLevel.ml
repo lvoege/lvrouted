@@ -110,3 +110,11 @@ type routemsg =
  *)
 external read_routemsg: Unix.file_descr -> routemsg
   = "read_routemsg"
+
+type ifkind = 
+	| IFKIND_WIRED of int
+	| IFKIND_CLIENT of int
+	| IFKIND_MASTER
+
+external ifstatus: string -> ifkind
+  = "caml_ifstatus"

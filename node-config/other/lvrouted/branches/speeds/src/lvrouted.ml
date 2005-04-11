@@ -27,7 +27,7 @@ let check_reachable _ =
 	   corresponding Iface.t and see if it's reachable. *)
 	let new_unreachable = Neighbor.Set.filter (fun n ->
 		Log.log Log.debug ("looking at " ^ Neighbor.show n);
-		let iface = StringMap.find (Neighbor.iface n) !ifaces in
+		let iface = StringMap.find (Neighbor.iname n) !ifaces in
 		not (Neighbor.check_reachable n iface)) !neighbors in
 
 	let newly_unreachable = Neighbor.Set.diff new_unreachable !unreachable in
@@ -110,9 +110,13 @@ let broadcast_run udpsockfd rtsockfd =
 
 (* This function is called periodically from the select() loop. It decides
    whether or not to start a broadcast_run by checking for changes in
-   reachability, expired trees or if it's just time to do so. *)
+   reachability, expired trees or if it's just time to do so. It also
+   updates the bandwidth fields of those Neighbor's that are not on
+   WIFI_WIRED Iface's. *)
 let periodic_check udpsockfd rtsockfd =
 	Log.log Log.debug "in alarm_handler";
+
+	Neighbor.Set.iter update_bandwidth !neighbors;
 
 	let expired = Neighbor.nuke_old_trees !neighbors Common.timeout in
 

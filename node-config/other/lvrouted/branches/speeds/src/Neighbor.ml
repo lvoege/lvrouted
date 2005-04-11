@@ -1,8 +1,8 @@
 (* Neighbor type definition, management and utility functions *)
 
 type neighbor = {
-	iface: string;			(* "wi0", "ep0", etc *)
-	bandwidth: int;
+	iface: Iface.t option;
+	mutable bandwidth: int;
 	addr: Unix.inet_addr;		(* address to reach this neighbor on *)
 	mutable macaddr: MAC.t option;	(* MAC address, if known *)
 
@@ -22,8 +22,11 @@ end)
 
 (* Constructors *)
 let make iface addr =
-	{ iface = Iface.name iface;
-	  bandwidth = if Iface.itype iface = Iface.WIRED then 1000000 else -1;
+	let bandwidth = if Iface.itype iface = Iface.WIRED then
+				Iface.current_bandwidth iface
+			else -1 in
+	{ iface = Some iface; 
+	  bandwidth = bandwidth;
 	  addr = addr;
 	  last_seen = -1.0;
 	  macaddr = None;
@@ -33,7 +36,7 @@ let make iface addr =
 (* Given that the Set above only cares about the addr field, this constructor
    sets up a struct just for use in Set operations. *)
 let make_of_addr a = 
-	{ iface = "";
+	{ iface = None;
 	  bandwidth = -1;
 	  addr = a;
 	  last_seen = -1.0;
@@ -41,10 +44,12 @@ let make_of_addr a =
 	  seqno = min_int;
 	  tree = None }
 
-let iface n = n.iface
+let iface n = Common.from_some n.iface
+let iname n = Iface.name (Common.from_some n.iface)
 let name n = Unix.string_of_inet_addr n.addr
 
-let show n = Unix.string_of_inet_addr n.addr ^ " on " ^ n.iface ^ "\n"
+let show n = Unix.string_of_inet_addr n.addr ^ " on " ^
+	     iname n ^ "\n"
 
 (* Broadcast the given list of tree nodes to the given Set of neighbors over
    the given file descriptor. *)
@@ -100,8 +105,8 @@ let handle_data ns s sockaddr =
 (* Given a list of neighbors and interface i, invalidate the trees
    for all the neighbors on that interface *)
 let nuke_trees_for_iface ns i =
-	Log.log Log.debug ("nuking interface " ^ i);
-	Set.iter (fun n -> if n.iface = i then begin
+	Log.log Log.debug ("nuking interface " ^ Iface.name i);
+	Set.iter (fun n -> if Common.from_some n.iface = i then begin
 				n.tree <- None;
 				Log.log Log.debug ("neighbor " ^ name n ^ " canned")
 			    end) ns
@@ -139,7 +144,7 @@ let derive_routes_and_mytree directips ns =
    isn't, set the neighbor's tree to None. *)
 let check_reachable n iface = 
 	if Common.is_none n.macaddr then begin
-		let arptable = MAC.get_arptable n.iface in
+		let arptable = MAC.get_arptable (iname n) in
 		try  n.macaddr <- Some (Common.IPMap.find n.addr arptable)
 		with Not_found ->
 			Log.log Log.debug ("Cannot determine MAC address for " ^
@@ -153,3 +158,10 @@ let check_reachable n iface =
 		n.last_seen <- 0.0
 	end;
 	reachable
+
+let update_bandwidth n =
+	let i = iface n in
+	match Iface.itype i with
+	| Iface.WIRED -> ()
+	| Iface.WIFI_CLIENT -> n.bandwidth <- Iface.current_bandwidth i
+	| Iface.WIFI_MASTER -> ()

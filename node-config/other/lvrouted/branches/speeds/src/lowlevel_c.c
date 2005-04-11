@@ -107,33 +107,43 @@ CAMLprim value int_of_file_descr(value file_descr) {
 	return file_descr;
 }
 
-/* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
-static inline int iface_is_associated(const char *iface) {
-#ifndef HAVE_DEV_WI_IF_WAVELAN_IEEE_H
-	return 1;
-#else
-	struct ifreq ifr;
-	int sockfd;
-	struct wi_req wir;
+/* stuff ifm_status in ints[0] and ifm_active in ints[1] */
+static void ifstatus(const char *iface, int *ints) {
+	struct ifmediareq ifmr;
+	int *media_list, sockfd;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
 	  failwith("socket for get_associated_stations");
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
-	ifr.ifr_data = (caddr_t)&wir;
 
-	memset(&wir, 0, sizeof(wir));
-	wir.wi_len = WI_MAX_DATALEN;
-	wir.wi_type = WI_RID_CURRENT_SSID;
+	memset(&ifmr, 0, sizeof(ifmr));
+	strncpy(ifmr.ifm_name, iface, sizeof(ifmr.ifm_name));
 
-	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1) {
-		close(sockfd);
-		failwith("SIOCGWAVELAN");
-	}
+	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0)
+	  failwith("Interface doesn't support SIOC{G,S}IFMEDIA.");
+	if (ifmr.ifm_count == 0)
+	  failwith("huh, no media types?");
+
+	media_list = (int *)malloc(ifmr.ifm_count * sizeof(int));
+	if (media_list == NULL)
+	  failwith("malloc");
+	ifmr.ifm_ulist = media_list;
+
+	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0)
+	  failwith("SIOCGIFMEDIA");
+
 	close(sockfd);
-	return wir.wi_val[0];
-#endif
+
+	ints[0] = ifmr.ifm_status;
+	ints[1] = ifmr.ifm_active;
+}
+
+/* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
+static inline int iface_is_associated(const char *iface) {
+	int i[2];
+	ifstatus(iface, i);
+	return (i[0] & IFM_AVALID) &&
+	       (IFM_TYPE(i[1] != IFM_IEEE80211 || i[0] & IFM_ACTIVE));
 }
 
 CAMLprim value caml_iface_is_associated(value iface) {
@@ -929,6 +939,77 @@ CAMLprim value read_routemsg(value fd) {
 #else
 	res = Val_int(0);
 #endif
+	CAMLreturn(res);
+}
+
+static int ether_subtype_to_bandwidth(int i) {
+	switch (i) {
+		case IFM_10_T: return 10;
+		case IFM_10_2: return 10;
+		case IFM_10_5: return 10;
+		case IFM_100_TX: return 100;
+		case IFM_100_FX: return 100;
+		case IFM_100_T4: return 100;
+		case IFM_100_VG: return 100;
+		case IFM_100_T2: return 100;
+		case IFM_1000_SX: return 1000;
+		case IFM_10_STP: return 10;
+		case IFM_10_FL: return 10;
+		case IFM_1000_LX: return 1000;
+		case IFM_1000_CX: return 1000;
+		case IFM_1000_T: return 1000;
+		case IFM_HPNA_1: return 1;
+		case IFM_10GBASE_SR: return 10000;
+		case IFM_10GBASE_LR: return 10000;
+		default:
+			failwith("unknown ethernet subtype!");
+	}
+}
+
+static int wifi_subtype_to_bandwidth(int i) {
+	switch (i) {
+		case IFM_IEEE80211_FH1: return 1;
+		case IFM_IEEE80211_FH2: return 2;
+		case IFM_IEEE80211_DS1: return 1;
+		case IFM_IEEE80211_DS2: return 2;
+		case IFM_IEEE80211_DS5: return 5;
+		case IFM_IEEE80211_DS11: return 11;
+		case IFM_IEEE80211_DS22: return 22;
+		case IFM_IEEE80211_OFDM6: return 6;
+		case IFM_IEEE80211_OFDM9: return 9;
+		case IFM_IEEE80211_OFDM12: return 12;
+		case IFM_IEEE80211_OFDM18: return 18;
+		case IFM_IEEE80211_OFDM24: return 24;
+		case IFM_IEEE80211_OFDM36: return 36;
+		case IFM_IEEE80211_OFDM48: return 48;
+		case IFM_IEEE80211_OFDM54: return 54;
+		case IFM_IEEE80211_OFDM72: return 72;
+		case IFM_IEEE80211_DS354k: return 1;
+		case IFM_IEEE80211_DS512k: return 1;
+		default:
+			failwith("unknown wifi subtype!");
+	}
+}
+
+CAMLprim value caml_ifstatus(value iname) {
+	CAMLparam1(iname);
+	int i[2];
+	CAMLlocal1(res);
+
+	ifstatus(String_val(iname), i);
+	if ((i[0] & IFM_AVALID) == 0)
+	  failwith("Invalid interface");
+	switch (IFM_TYPE(i[1])) {
+		case IFM_ETHER:
+			res = alloc_small(1, 0);
+			Field(res, 0) = ether_subtype_to_bandwidth(i[1]);
+			break;
+		case IFM_IEEE80211:
+			res = alloc_small(1, 1);
+			Field(res, 0) = wifi_subtype_to_bandwidth(i[1]);
+		default:
+			failwith("Unknown media type");
+	}
 	CAMLreturn(res);
 }
 
