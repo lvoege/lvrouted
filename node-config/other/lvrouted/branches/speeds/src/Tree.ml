@@ -11,8 +11,8 @@ type edge = {
 	mutable edges: edge list;
 }
 
-module IntQueue = PrioQueue.Make(struct 
-	type priority = int
+module FloatQueue = PrioQueue.Make(struct 
+	type priority = float
 	let compare = compare
 end)
 
@@ -80,29 +80,30 @@ let merge edges directnets =
 	(* step 3 *)
 	let rec traverse routes queue =
 		try
-			let (mbps, (node, parent, gw), queue') =
-				IntQueue.extract queue in
+			let (_, (depth, edge, parent, gw, minbw), queue') =
+				FloatQueue.extract queue in
+			let node = edge.edge_node in 
 			if IPMap.mem node.addr routes then
 			  traverse routes queue' (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
 				let newnode = make_node node.addr [] in
-				parent.edges <-  { edge_bandwidth = mbps;
-						   edge_node = newnode}::parent.edges;
+				parent.edges <-  { edge with edge_node = newnode}::parent.edges;
 				(* push the children on the queue *)
 				let queue'' = List.fold_left (fun queue e ->
-					let mbps' = min mbps e.edge_bandwidth in
-					let c = (e.edge_node, newnode, gw) in
-					IntQueue.insert queue mbps' c)
-						IntQueue.empty node.edges in
+					let minbw' = min minbw e.edge_bandwidth in
+					let c = (depth + 1, e, newnode, gw, minbw') in
+					let prio = (float_of_int minbw') /. (float_of_int depth) in
+					FloatQueue.insert queue prio c)
+						FloatQueue.empty node.edges in
 				(* and continue traversing *)
 				traverse (IPMap.add node.addr gw routes)
 					 queue''
 			end
-		with IntQueue.Queue_is_empty -> routes in
+		with FloatQueue.Queue_is_empty -> routes in
 	let todo = List.fold_left (fun queue e ->
-		let c = e.edge_node, fake, e.edge_node.addr in
-		IntQueue.insert queue e.edge_bandwidth c) IntQueue.empty edges in
+		let c = 1, e, fake, e.edge_node.addr, e.edge_bandwidth in
+		FloatQueue.insert queue (float_of_int e.edge_bandwidth) c) FloatQueue.empty edges in
 	let routes = traverse routes todo in
 	(* step 4 *)
 	let routes = IPMap.fold (fun a gw map ->
