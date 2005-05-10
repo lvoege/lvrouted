@@ -39,12 +39,12 @@ let foreground = ref false
 let max_route_flush_tries = 10
 (* Log to syslog instead of /tmp/lvrouted.log *)
 let use_syslog = ref false
-(* What is the minimum (or widest) netmask Route.aggregate can produce? *)
-let min_mask = ref 24
-(* The IPv4 boundaries of the routable range. Min is inclusive, max is
-   exclusive. *)
-let min_routable = Unix.inet_addr_of_string "172.16.0.0"
-let max_routable = Unix.inet_addr_of_string "172.31.255.0"
+(* *)
+let ranges = List.map (fun (a, b, m) -> (Unix.inet_addr_of_string a,
+					  Unix.inet_addr_of_string b, m)) [
+	"172.16.0.0", "172.31.255.0", 24;
+	"10.12.0.0", "10.12.255.255", 16;
+]
 (* Use Tree.(de)serialize instead of the Marshal module. *)
 let own_marshaller = true
 (* Where to dump debug stuff and such *)
@@ -139,7 +139,21 @@ let try_max_times max f =
 		else t (i + 1) in
 	t 0
 
-let addr_in_range a = a >= min_routable && a < max_routable
+let find_range a =
+	List.filter (fun (min, max, _) -> a >= min && a < max) ranges
+
+let addr_in_range a =
+	let r = find_range a in
+	let l = List.length r in
+	assert (l <= 1);
+	l = 1
+
+let min_mask a =
+	let r = find_range a in
+	let l = List.length r in
+	assert (l = 1);
+	let (_, _, mask) = List.hd r in
+	mask
 
 let pack_string s =
 	let s = if compress_data then LowLevel.string_compress s
