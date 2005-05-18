@@ -755,7 +755,10 @@ CAMLprim value caml_unpack_int(value s) {
  * propagate, so packing a node in 24 bits instead of 32 would probably
  * be pushing our luck.
  */
-static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary) {
+static unsigned char *tree_to_string_rec(value node,
+					 unsigned char *buffer,
+					 unsigned char *boundary,
+					 int insignificant_bits) {
 	CAMLparam1(node);
 	CAMLlocal1(t);
 	int i, numchildren;
@@ -766,29 +769,35 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	numchildren = 0;
 	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1))
 	  numchildren++;
-	/* put the number of children in the upper twelve bits */
-	i  = numchildren << 20;
-	/* mask out the 20 relevant bits and or it in */
-	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
+	/* put the number of children in the upper insignificant bits */
+	i  = numchildren << insignificant_bits;
+	/* mask out the relevant bits and or it in */
+	i |= get_addr(Field(node, 0)) & ((1 << insignificant_bits) - 1);
 	/* that's all for this node. store it. */
 	*(int *)buffer = htonl(i);
 
 	/* and recurse into the children */
 	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
-		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
+		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary,
+					    insignificant_bits);
 		if (buffer == NULL)
 		  failwith("Ouch in tree_to_string_rec!");
 	}
 	CAMLreturn(buffer);
 }
 
-CAMLprim value tree_to_string(value node) {
-	CAMLparam1(node);
+CAMLprim value forest_to_string(value forest) {
+	CAMLparam1(forest);
 	CAMLlocal1(result);
 	unsigned char *buffer, *t;
 
-	buffer = malloc(65536);
-	t = tree_to_string_rec(node, buffer, buffer + 65536);
+	buffer = t = malloc(65536);
+	/* first the WirelessLeiden tree */
+	t = tree_to_string_rec(Field(forest, 0), t, buffer + 65536, 12);
+	/* then the zoetermeer tree */
+	forest = Field(forest, 1);
+	assert(forest != None_val);
+	t = tree_to_string_rec(Field(forest, 0), t, buffer + 65536, 16);
 	result = alloc_string(t - buffer);
 	memcpy(String_val(result), buffer, t - buffer);
 	free(buffer);
@@ -800,17 +809,20 @@ CAMLprim value tree_to_string(value node) {
  * created and filled.
  */
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
-					 unsigned char *limit) {
+					 unsigned char *limit,
+					 int insignificant_bits,
+					 in_addr_t address) {
 	CAMLparam0();
 	CAMLlocal4(a, node, child, chain);
-	int i;
+	int i, mask;
 
 	if (*pp > limit - sizeof(int))
 	  failwith("faulty packet");
 	i = ntohl(*(int *)(*pp));
 	*pp += sizeof(int);
 	a = alloc_string(4);
-	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
+	mask = (1 << insignificant_bits) - 1;
+	*(int *)(String_val(a)) = htonl(address + (i & mask));
 	node = alloc_small(2, 0);
 	Field(node, 0) = a;
 	Field(node, 1) = Val_int(0);
@@ -830,7 +842,8 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 		 */
 		Field(child, 0) = Val_unit;
 		Field(child, 1) = Val_int(0);
-		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
+		modify(&Field(child, 0), string_to_tree_rec(pp, limit,
+						insignificant_bits, address));
 		modify(&Field(chain, 1), child);
 		chain = child;
 	}
@@ -842,9 +855,9 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
  * string to the C heap first, or the garbage collector may move it while
  * we're working on it when one of the alloc_*() triggers a collection cycle.
  */
-CAMLprim value string_to_tree(value s) {
+CAMLprim value forest_from_string(value s) {
 	CAMLparam1(s);
-	CAMLlocal1(res);
+	CAMLlocal3(res, wleiden, zmeer);
 	int len;
 	unsigned char *buffer, *p;
 
@@ -852,8 +865,10 @@ CAMLprim value string_to_tree(value s) {
 	buffer = malloc(len);
 	memcpy(buffer, String_val(s), len);
 	p = buffer;
-	res = string_to_tree_rec(&p, p + len);
+	wleiden = string_to_tree_rec(&p, p + len, 12, 0xac100000);
+	zmeer = string_to_tree_rec(&p, p + len, 16, 0x0a0c0000);
 	free(buffer);
+	res = prepend_listelement(wleiden, prepend_listelement(zmeer, None_val));
 	CAMLreturn(res);
 }
 
