@@ -8,7 +8,7 @@ type neighbor = {
 	mutable last_seen: float;	(* -1.0 if never seen, else unix
 					   timestamp of last received packet *)
 	mutable seqno: int;		(* last seen sequence number *)
-	mutable tree: Tree.node option; (* the tree last received *)
+	mutable forest: Forest.t option; (* the tree last received *)
 }
 
 (* the exception handle_data will throw if given a faulty packet *)
@@ -26,7 +26,7 @@ let make iface addr =
 	  last_seen = -1.0;
 	  macaddr = None;
 	  seqno = min_int;
-	  tree = None }
+	  forest = None }
 
 let iface n = n.iface
 let name n = Unix.string_of_inet_addr n.addr
@@ -36,7 +36,7 @@ let show n = Unix.string_of_inet_addr n.addr ^ " on " ^ n.iface ^ "\n"
 (* Broadcast the given list of tree nodes to the given Set of neighbors over
    the given file descriptor. *)
 let bcast fd nodes ns =
-	let s = Tree.to_string nodes in
+	let s = Forest.to_string nodes in
 	let s = if Common.compress_data then LowLevel.string_compress s
 		else s in
 	Set.iter (fun n ->
@@ -79,7 +79,7 @@ let handle_data ns s sockaddr =
 		else s in
 	Log.log Log.debug ("deserializing from " ^ addr_s);	
 	begin try
-		n.tree <- Some (Tree.from_string s addr);
+		n.forest <- Some (Forest.from_string s addr);
 	with _ -> raise InvalidPacket end;
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();
@@ -90,7 +90,7 @@ let handle_data ns s sockaddr =
 let nuke_trees_for_iface ns i =
 	Log.log Log.debug ("nuking interface " ^ i);
 	Set.iter (fun n -> if n.iface = i then begin
-				n.tree <- None;
+				n.forest <- None;
 				Log.log Log.debug ("neighbor " ^ name n ^ " canned")
 			    end) ns
 
@@ -99,23 +99,21 @@ let nuke_trees_for_iface ns i =
 let nuke_old_trees ns numsecs =
 	let limit = (Unix.gettimeofday ()) -. numsecs in
 	let expired = Set.filter (fun n ->
-		n.last_seen < limit && Common.is_some n.tree) ns in
+		n.last_seen < limit && Common.is_some n.forest) ns in
 	Set.iter (fun n ->
 		Log.log Log.debug (name n ^ " expired");
-		n.tree <- None) expired;
+		n.forest <- None) expired;
 	not (Set.is_empty expired)
 
 (* From the given set of direct IPs and list of neighbors, derive a list of
    (unaggregated) routes and a merged tree. *)
 let derive_routes_and_mytree directips ns = 
-	(* Fetch all valid trees from the neighbors *)
-	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
-			             (fun n -> Common.from_some n.tree) 
-				     (Set.elements ns) in
-	Log.log Log.debug ("Number of eligible neighbors: " ^
-			   string_of_int (List.length nodes));
+	(* Fetch all valid forests from the neighbors and glue them together *)
+	let nodes = List.fold_left (fun a n -> match n.forest with
+			| None -> a
+			| Some f -> a@f) [] (Set.elements ns) in
 	(* Merge the trees into a new tree and an IPMap.t *)
-	let nodes', routemap = Tree.merge nodes directips in
+	let nodes', routemap = Forest.merge nodes directips in
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
 		Common.IPMap.fold (fun addr gw ->
@@ -137,7 +135,7 @@ let check_reachable n iface =
 			Iface.is_reachable iface (Common.from_some n.macaddr) in
 	if not reachable then begin
 		Log.log Log.debug ("Setting " ^ name n ^ "'s tree to None");
-		n.tree <- None;
+		n.forest <- None;
 		n.last_seen <- 0.0
 	end;
 	reachable

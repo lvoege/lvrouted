@@ -11,7 +11,7 @@ let neighbors = ref Neighbor.Set.empty
 (* A dictionary mapping from interface name ('ep0', 'sis1', etc) to Iface.t *)
 let ifaces = ref StringMap.empty
 (* A list of Tree.nodes's for every one of 'our' addresses. *)
-let direct : Tree.node list ref = ref []
+let direct : Forest.node list ref = ref []
 (* A list of address, netmask tuples of the same *)
 let directnets : (Unix.inet_addr * int) list ref = ref []
 (* last broadcast timestamp *)
@@ -60,9 +60,9 @@ let broadcast_run udpsockfd rtsockfd =
 	  Neighbor.Set.iter (fun n ->
 	  	let nname = Neighbor.name n in
 	  	let fname = !Common.tmpdir ^ "lvrouted.tree-" ^ nname in
-	  	if Common.is_some n.tree then begin
+	  	if Common.is_some n.forest then begin
 			let out = open_out (!Common.tmpdir ^ "lvrouted.tree-" ^ nname) in
-			output_string out (Tree.show [Common.from_some n.tree]);
+			output_string out (Forest.show (Common.from_some n.forest));
 			close_out out
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
 
@@ -72,7 +72,7 @@ let broadcast_run udpsockfd rtsockfd =
 	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
-	  Tree.dump_tree "lvrouted.mytree" nodes;
+	  Forest.dump_tree "lvrouted.mytree" nodes;
 
 	  Neighbor.bcast udpsockfd nodes !neighbors;
 
@@ -153,7 +153,7 @@ let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
 		Log.log Log.info ("New address " ^
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
-		direct := (Tree.make addr [])::!direct;
+		direct := (Forest.make addr [])::!direct;
 		directnets := (addr, mask)::!directnets;
 		if mask >= Common.interlink_netmask then
 		  add_neighbors iface addr mask;
@@ -168,7 +168,7 @@ let handle_routemsg udpsockfd rtsockfd = function
 		if Common.addr_in_range addr then begin
 			Log.log Log.info ("Deleted address " ^
 				Unix.string_of_inet_addr addr ^ " on " ^ iface);
-			direct := List.filter (fun n -> Tree.addr n <> addr)
+			direct := List.filter (fun n -> Forest.addr n <> addr)
 					      !direct;
 			directnets := List.filter (fun (a, _) -> a <> addr)
 						  !directnets;
@@ -196,7 +196,7 @@ let read_config _ =
 		let lines = snarf_lines_from_channel chan in
 		close_in chan;
 		let extraaddrs = List.map Unix.inet_addr_of_string lines in
-		direct := !direct@(List.map (fun a -> Tree.make a []) extraaddrs);
+		direct := !direct@(List.map (fun a -> Forest.make a []) extraaddrs);
 		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
 	with _ ->
 		Log.log Log.warnings ("Couldn't read the specified config file");
