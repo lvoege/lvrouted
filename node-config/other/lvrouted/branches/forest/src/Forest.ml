@@ -91,4 +91,4 @@ external from_string: string -> Unix.inet_addr -> t = "forest_from_string"
 let dump_tree fname nodes =
 	let out = open_out (!Common.tmpdir ^ fname) in
 	output_string out (show nodes);
-	close_out out;
+	close_out out

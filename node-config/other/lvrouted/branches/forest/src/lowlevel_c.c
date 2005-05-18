@@ -851,13 +851,13 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 }
 
 /**
- * Unpack the given string back into a tree of Tree.node structures. Copy the
- * string to the C heap first, or the garbage collector may move it while
- * we're working on it when one of the alloc_*() triggers a collection cycle.
+ * Unpack the given string back into a Forest.t structure. Copy the string to
+ * the C heap first, or the garbage collector may move it while we're working
+ * on it when one of the alloc_*() triggers a collection cycle.
  */
 CAMLprim value forest_from_string(value s) {
 	CAMLparam1(s);
-	CAMLlocal3(res, wleiden, zmeer);
+	CAMLlocal2(wleiden, zmeer);
 	int len;
 	unsigned char *buffer, *p;
 
@@ -865,11 +865,11 @@ CAMLprim value forest_from_string(value s) {
 	buffer = malloc(len);
 	memcpy(buffer, String_val(s), len);
 	p = buffer;
-	wleiden = string_to_tree_rec(&p, p + len, 12, 0xac100000);
-	zmeer = string_to_tree_rec(&p, p + len, 16, 0x0a0c0000);
+	wleiden = string_to_tree_rec(&p, buffer + len, 12, 0xac100000);
+	zmeer = string_to_tree_rec(&p, buffer + len, 16, 0x0a0c0000);
 	free(buffer);
-	res = prepend_listelement(wleiden, prepend_listelement(zmeer, None_val));
-	CAMLreturn(res);
+	CAMLreturn(prepend_listelement(wleiden,
+					prepend_listelement(zmeer, None_val)));
 }
 
 CAMLprim value open_rtsock(value unit) {
