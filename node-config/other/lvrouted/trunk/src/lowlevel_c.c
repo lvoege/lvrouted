@@ -117,7 +117,7 @@ static inline int iface_is_associated(const char *iface) {
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
-	  failwith("socket for get_associated_stations");
+	  failwith("socket for iface_is_associated");
 	memset(&ifr, 0, sizeof(ifr));
 	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
 	ifr.ifr_data = (caddr_t)&wir;
@@ -576,7 +576,7 @@ CAMLprim value get_associated_stations(value iface) {
 	result = alloc_tuple(n);
 	s = (struct wi_apinfo *)((char *)wir.wi_val + sizeof(int));
 	for (i = 0; i < n; i++) {
-		mac = alloc_string(6);
+		mac = alloc_string(ETHER_ADDR_LEN);
 		memcpy(String_val(mac), s->bssid, ETHER_ADDR_LEN);
 		s++;
 		Store_field(result, i, mac);
@@ -755,22 +755,31 @@ CAMLprim value caml_unpack_int(value s) {
  * propagate, so packing a node in 24 bits instead of 32 would probably
  * be pushing our luck.
  */
-static unsigned char *tree_to_string_rec(value node, unsigned char *buffer) {
+static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary) {
 	CAMLparam1(node);
 	CAMLlocal1(t);
-	unsigned char *buffer_tmp;
-	int i;
+	int i, numchildren;
 
-	buffer_tmp = buffer + sizeof(int);
-	i = 0;
-	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
-		buffer_tmp = tree_to_string_rec(Field(t, 0), buffer_tmp);
-		i++;
-	}
-	i <<= 20;
+	if (buffer >= boundary)
+	  return NULL;
+
+	numchildren = 0;
+	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1))
+	  numchildren++;
+	/* put the number of children in the upper twelve bits */
+	i  = numchildren << 20;
+	/* mask out the 20 relevant bits and or it in */
 	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
+	/* that's all for this node. store it. */
 	*(int *)buffer = htonl(i);
-	CAMLreturn(buffer_tmp);
+
+	/* and recurse into the children */
+	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
+		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
+		if (buffer == NULL)
+		  failwith("Ouch in tree_to_string_rec!");
+	}
+	CAMLreturn(buffer);
 }
 
 CAMLprim value tree_to_string(value node) {
@@ -779,13 +788,17 @@ CAMLprim value tree_to_string(value node) {
 	unsigned char *buffer, *t;
 
 	buffer = malloc(65536);
-	t = tree_to_string_rec(node, buffer);
+	t = tree_to_string_rec(node, buffer, buffer + 65536);
 	result = alloc_string(t - buffer);
 	memcpy(String_val(result), buffer, t - buffer);
 	free(buffer);
 	CAMLreturn(result);
 }
 
+/* This is the converse of tree_to_string_rec(). Unpack the packed-together number of children and
+ * node address. It reads slightly more difficult because there's high-level data structures to be
+ * created and filled.
+ */
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
