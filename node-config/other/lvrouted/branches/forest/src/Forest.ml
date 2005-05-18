@@ -3,7 +3,9 @@
    core of the whole routing scheme. *)
 open Common
 
-type node = {
+type t = tree list
+and tree = node
+and node = {
 	addr: Unix.inet_addr;
 	mutable nodes: node list;
 }
@@ -55,7 +57,7 @@ let show l =
    which will create a top node based on the address it received the
    packet from.
 *)
-let merge nodes directnets =
+let merge trees directnets =
 	(* step 1 *)
 	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
 				    IPMap.empty directnets in
@@ -74,7 +76,7 @@ let merge nodes directnets =
 				traverse (IPMap.add node.addr gw routes)
 					 (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
 			end in
-	let todo = List.map (fun node -> node, fake, node.addr) nodes in
+	let todo = List.map (fun node -> node, fake, node.addr) trees in
 	let routes = traverse routes todo in
 	(* step 4 *)
 	let routes = IPMap.fold (fun a gw map ->
@@ -83,22 +85,8 @@ let merge nodes directnets =
 			else IPMap.add a gw map) routes IPMap.empty in
 	fake.nodes, routes
 
-external serialize: node -> string = "tree_to_string"
-external deserialize: string -> node = "string_to_tree"
-
-let to_string (nodes: node list) =
-	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
-	if Common.own_marshaller then serialize fake 
-	else Marshal.to_string nodes []
-
-(* Read a list of nodes from the given string and return a new node. Node as
-   in tree node, not wireless network node. *)
-let from_string s from_addr : node =
-	if Common.own_marshaller then
-	  { (deserialize s) with addr = from_addr }
-	else
-	  (* This is the most dangerous bit in all of the code: *)
-	  { addr = from_addr; nodes = (Marshal.from_string s 0: node list) }
+external to_string: t -> string = "forest_to_string"
+external from_string: string -> Unix.inet_addr -> t = "forest_from_string"
 
 let dump_tree fname nodes =
 	let out = open_out (!Common.tmpdir ^ fname) in

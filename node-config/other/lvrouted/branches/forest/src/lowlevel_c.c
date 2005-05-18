@@ -706,8 +706,8 @@ CAMLprim value hexdump_string(value s) {
 
 	len = string_length(s);
 	result = alloc_string(2 * len);
-	sp = String_val(s);
-	rp = String_val(result);
+	sp = (unsigned char *)String_val(s);
+	rp = (unsigned char *)String_val(result);
 	for (i = 0; i < len; i++) {
 #define DIGIT(x) ((x) + ((x) < 10 ? '0' : 'a' - 10))
 		*rp++ = DIGIT(*sp >> 4);
