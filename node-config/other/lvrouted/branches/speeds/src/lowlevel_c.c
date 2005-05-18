@@ -569,7 +569,7 @@ CAMLprim value get_associated_stations(value iface) {
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
-	  failwith("socket for get_associated_stations");
+	  failwith("socket for iface_is_associated");
 	memset(&ifr, 0, sizeof(ifr));
 	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
 	ifr.ifr_data = (caddr_t)&wir;
@@ -587,7 +587,7 @@ CAMLprim value get_associated_stations(value iface) {
 	result = alloc_tuple(n);
 	s = (struct wi_apinfo *)((char *)wir.wi_val + sizeof(int));
 	for (i = 0; i < n; i++) {
-		mac = alloc_string(6);
+		mac = alloc_string(ETHER_ADDR_LEN);
 		memcpy(String_val(mac), s->bssid, ETHER_ADDR_LEN);
 		s++;
 		Store_field(result, i, mac);
@@ -757,14 +757,19 @@ CAMLprim value caml_unpack_int(value s) {
 	CAMLreturn(Val_int(*(int *)(String_val(s))));
 }
 
+static int bandwidths[] = { 0, 1, 2, 5, 6, 9, 10, 11, 12, 18, 22, 24, 36, 48, 54,
+			72, 100, 1000, 10000, -1} ;
+
 static int pack_bandwidth(int x) {
 	int i;	
-	int is[] = { 0, 1, 2, 5, 6, 9, 10, 11, 12, 18, 22, 24, 36, 48, 54,
-			72, 100, 1000, 10000, -1} ;
-	for (i = 0; is[i] != -1; i++)
-	  if (is[i] == x)
+	for (i = 0; bandwidths[i] != -1; i++)
+	  if (bandwidths[i] == x)
 	    return i;
 	failwith("Ouch, unknown bandwidth!");
+}
+
+static int unpack_bandwidth(int x) {
+	return bandwidths[x];
 }
 
 /* Store a node into a buffer. It is enough to store the node contents
@@ -814,7 +819,7 @@ CAMLprim value tree_to_string(value node) {
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
-	CAMLlocal4(a, node, child, chain);
+	CAMLlocal5(a, edge, node, child, chain);
 	int i;
 
 	if (*pp > limit - sizeof(int))
@@ -823,10 +828,13 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	*pp += sizeof(int);
 	a = alloc_string(4);
 	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
+	edge = alloc_small(2, 0);
+	Field(edge, 0)
 	node = alloc_small(2, 0);
 	Field(node, 0) = a;
 	Field(node, 1) = Val_int(0);
 
+	bandwidth = unpack_bandwidth(i >> 26);
 	/* new children get hooked on the second field of chain. by luck,
 	 * the list itself is in the second field of node, so chain can be
 	 * assigned to node. if the node struct changes so the list of
