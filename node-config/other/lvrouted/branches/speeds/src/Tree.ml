@@ -57,13 +57,14 @@ let show l =
       it was when route addition didn't work correctly.
 
    The traversal routine takes a routing table and a list of tuples to
-   process. Those tuples are of the form (node, parent, gateway address).
-   If the node isn't already in the routing table:
-     - a new node is produced and hooked under the parent
+   process. Those tuples are of the form
+   	(depth, edge, parent, gateway address, minimum bandwidth on path to root).
+   If the node on the edge isn't already in the routing table:
+     - a new edge to a new node is produced and hooked under the parent
      - the new node is inserted into the routing table
-     - the original node's children are appended to the list of tuples to
-       process, with the new node as the parent entry. the gateway argument
-       stays the same.
+     - the original node's children are pushed on the priority queue,
+       with the new node as the parent. The gateway argument stays the same,
+       the rest of the arguments are updated appropriately.
 
    Note that the resulting spanning tree is returned as the list of
    first-level nodes, because the top node is relevant only to the
