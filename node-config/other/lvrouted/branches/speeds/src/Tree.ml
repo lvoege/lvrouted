@@ -58,7 +58,8 @@ let show l =
 
    The traversal routine takes a routing table and a list of tuples to
    process. Those tuples are of the form
-   	(depth, edge, parent, gateway address, minimum bandwidth on path to root).
+   	(depth, edge, parent, gateway address, payload).
+
    If the node on the edge isn't already in the routing table:
      - a new edge to a new node is produced and hooked under the parent
      - the new node is inserted into the routing table
@@ -72,7 +73,7 @@ let show l =
    which will create a top node based on the address it received the
    packet from.
 *)
-let merge edges directnets =
+let merge edges directnets propagate priority =
 	(* step 1 *)
 	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
 				    IPMap.empty directnets in
@@ -81,7 +82,7 @@ let merge edges directnets =
 	(* step 3 *)
 	let rec traverse routes queue =
 		try
-			let (_, (depth, edge, parent, gw, minbw), queue') =
+			let (_, (depth, edge, parent, gw, payload), queue') =
 				FloatQueue.extract queue in
 			let node = edge.edge_node in 
 			if IPMap.mem node.addr routes then
@@ -92,14 +93,13 @@ let merge edges directnets =
 				parent.edges <-  { edge with edge_node = newnode}::parent.edges;
 				(* push the children on the queue *)
 				let queue'' = List.fold_left (fun queue e ->
-					let minbw' = min minbw e.edge_bandwidth in
-					let c = (depth + 1, e, newnode, gw, minbw') in
-					let prio = (float_of_int minbw') /. (float_of_int depth) in
+					let payload' = propagate payload e.edge_bandwidth in
+					let c = (depth + 1, e, newnode, gw, payload') in
+					let prio = priority payload' depth in
 					FloatQueue.insert queue prio c)
 						FloatQueue.empty node.edges in
 				(* and continue traversing *)
-				traverse (IPMap.add node.addr gw routes)
-					 queue''
+				traverse (IPMap.add node.addr gw routes) queue''
 			end
 		with FloatQueue.Queue_is_empty -> routes in
 	let todo = List.fold_left (fun queue e ->

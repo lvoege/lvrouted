@@ -152,7 +152,9 @@ let derive_routes_and_mytree directips ns =
 	Log.log Log.debug ("Number of eligible neighbors: " ^
 			   string_of_int (List.length edges));
 	(* Merge the trees into a new tree and an IPMap.t *)
-	let edges', routemap = Tree.merge edges directips in
+	let propagate old bandwidth = min old bandwidth in
+	let priority payload depth = (float_of_int payload) /. (float_of_int depth) in 
+	let edges', routemap = Tree.merge edges directips propagate priority in
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
 		Common.IPMap.fold (fun addr gw ->
