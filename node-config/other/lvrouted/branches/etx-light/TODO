@@ -1,9 +1,0 @@
-- 6-CURRENT's seems to have started pushing 802.11 events through the routing
-  socket. check if making LowLevel.read_routemsg propagate these up would be
-  useful.
-
-- I think ARP entry additions and expiries also come through the routing
-  socket. check, and decide whether to do something with it.
-
-- integrate MAC.ml and Iface.ml. They deal in mostly the same issues, ethernet
-  interfaces and their addresses.

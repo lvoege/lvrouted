@@ -1,3 +1,0 @@
-You need to have autoconf, ocaml and ocamlfind installed. Then just
-
-  $ autoconf && autoheader && ./configure && make
