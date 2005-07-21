@@ -107,6 +107,7 @@ CAMLprim value int_of_file_descr(value file_descr) {
 	return file_descr;
 }
 
+#ifdef __FreeBSD__
 /* stuff ifm_status in ints[0] and ifm_active in ints[1] */
 static void ifstatus(const char *iface, int *ints) {
 	struct ifmediareq ifmr;
@@ -137,13 +138,18 @@ static void ifstatus(const char *iface, int *ints) {
 	ints[0] = ifmr.ifm_status;
 	ints[1] = ifmr.ifm_active;
 }
+#endif
 
 /* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
 static inline int iface_is_associated(const char *iface) {
+#ifdef __FreeBSD__
 	int i[2];
 	ifstatus(iface, i);
 	return (i[0] & IFM_AVALID) &&
 	       (IFM_TYPE(i[1] != IFM_IEEE80211 || i[0] & IFM_ACTIVE));
+#else
+	assert(0);
+#endif
 }
 
 CAMLprim value caml_iface_is_associated(value iface) {
@@ -187,7 +193,8 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 CAMLprim value string_compress(value s) {
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code, buflen;
+	int code;
+	unsigned int buflen;
 	char *buffer;
 
 	buffer = 0;
@@ -219,7 +226,8 @@ CAMLprim value string_compress(value s) {
 CAMLprim value string_decompress(value s) {
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code, buflen;
+	int code;
+	unsigned int buflen;
 	char *buffer;
 
 	buffer = 0;
@@ -705,7 +713,9 @@ CAMLprim value sha_string(value string) {
 	CAMLlocal1(result);
 
 	result = alloc_string(SHA_DIGEST_LENGTH);
-	SHA1(String_val(string), string_length(string), String_val(result));
+	SHA1((unsigned char *)String_val(string),
+	     string_length(string),
+	     (unsigned char *)String_val(result));
 	CAMLreturn(result);
 }
 
@@ -717,8 +727,8 @@ CAMLprim value hexdump_string(value s) {
 
 	len = string_length(s);
 	result = alloc_string(2 * len);
-	sp = String_val(s);
-	rp = String_val(result);
+	sp = (unsigned char *)String_val(s);
+	rp = (unsigned char *)String_val(result);
 	for (i = 0; i < len; i++) {
 #define DIGIT(x) ((x) + ((x) < 10 ? '0' : 'a' - 10))
 		*rp++ = DIGIT(*sp >> 4);
@@ -820,7 +830,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
 	CAMLlocal5(a, edge, node, child, chain);
-	int i;
+	int i, bandwidth;
 
 	if (*pp > limit - sizeof(int))
 	  failwith("faulty packet");
@@ -829,7 +839,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	a = alloc_string(4);
 	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
 	edge = alloc_small(2, 0);
-	Field(edge, 0)
+	//Field(edge, 0)
 	node = alloc_small(2, 0);
 	Field(node, 0) = a;
 	Field(node, 1) = Val_int(0);
@@ -975,6 +985,7 @@ CAMLprim value read_routemsg(value fd) {
 	CAMLreturn(res);
 }
 
+#ifdef __FreeBSD__
 static int ether_subtype_to_bandwidth(int i) {
 	switch (IFM_SUBTYPE(i)) {
 		case IFM_10_T: return 10;
@@ -1023,8 +1034,10 @@ static int wifi_subtype_to_bandwidth(int i) {
 			failwith("unknown wifi subtype!");
 	}
 }
+#endif
 
 CAMLprim value caml_ifstatus(value iname) {
+#ifdef __FreeBSD__
 	CAMLparam1(iname);
 	int i[2];
 	CAMLlocal1(res);
@@ -1044,6 +1057,9 @@ CAMLprim value caml_ifstatus(value iname) {
 			failwith("Unknown media type");
 	}
 	CAMLreturn(res);
+#else
+	assert(0);
+#endif
 }
 
 /* from wicontrol.c: */
