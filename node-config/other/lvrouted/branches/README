@@ -1,0 +1,27 @@
+forest			: pass a list of trees instead of only one tree.
+			  the intent is to support multiple disjoint address
+			  spaces.
+
+ipv6			: IPv6 support. 
+
+new_interlink_scheme	: support for a proposed interlink scheme where an AP
+			  and its clients share a subnet, instead of the AP
+			  having one point-to-point /30 between it and the
+			  client. this scheme hasn't been implemented.
+
+			  TODO: deal with the fact that two clients are not
+			  directly connected even though they're in the same
+			  subnet. probably mangle the tree such that it is
+			  exactly the same as it is now, and deal with the 
+			  route stuff in the route applier or something.
+
+speeds			: deal with links of different speeds in the network.
+			  this branch generalizes the simple breadth-first
+			  traversal to a traversal according to a priority
+			  queue instead of a list of nodes to visit. the
+			  priority of a node is then the lowest link speed
+			  on the path from the root to that node.
+
+			  TODO: test. it compiles, it runs, it seems to do
+			  the right thing in isolation, but I don't know if
+			  it does anything useful in the
