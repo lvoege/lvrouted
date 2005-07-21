@@ -767,6 +767,10 @@ CAMLprim value caml_unpack_int(value s) {
 	CAMLreturn(Val_int(*(int *)(String_val(s))));
 }
 
+/*
+ * This is a list of all known bandwidths. A bandwidth is translated to its
+ * index in this list before ORring it into the packet data.
+ */
 static int bandwidths[] = { 0, 1, 2, 5, 6, 9, 10, 11, 12, 18, 22, 24, 36, 48, 54,
 			72, 100, 1000, 10000, -1} ;
 
@@ -826,11 +830,22 @@ CAMLprim value tree_to_string(value node) {
 	CAMLreturn(result);
 }
 
+/*
+ * Unpack the data at the given pointer-to-pointer into either an
+ * edge to a node or that node without the edge. Take care not to
+ * overrun the limit pointer.
+ *
+ * The need for the caller to pass in what it wants the result to be
+ * is purely practical. The unpacking of the top node and the non-top
+ * nodes differ only in that unpacking a non-top node will also
+ * produce an edge. Other than that, it's completely the same.
+ */
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
-					 unsigned char *limit) {
+					 unsigned char *limit,
+					 int return_edge_to_node) {
 	CAMLparam0();
 	CAMLlocal5(a, edge, node, child, chain);
-	int i, bandwidth;
+	int i;
 
 	if (*pp > limit - sizeof(int))
 	  failwith("faulty packet");
@@ -838,13 +853,16 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	*pp += sizeof(int);
 	a = alloc_string(4);
 	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
-	edge = alloc_small(2, 0);
-	//Field(edge, 0)
 	node = alloc_small(2, 0);
 	Field(node, 0) = a;
 	Field(node, 1) = Val_int(0);
 
-	bandwidth = unpack_bandwidth(i >> 26);
+	if (return_edge_to_node) {
+		edge = alloc_small(2, 0);
+		Field(edge, 0) = unpack_bandwidth(i >> 26);
+		Field(edge, 1) = node;
+	}
+
 	/* new children get hooked on the second field of chain. by luck,
 	 * the list itself is in the second field of node, so chain can be
 	 * assigned to node. if the node struct changes so the list of
@@ -860,11 +878,11 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 		 */
 		Field(child, 0) = Val_unit;
 		Field(child, 1) = Val_int(0);
-		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
+		modify(&Field(child, 0), string_to_tree_rec(pp, limit, 1));
 		modify(&Field(chain, 1), child);
 		chain = child;
 	}
-	CAMLreturn(node);
+	CAMLreturn(return_edge_to_node ? edge : node);
 }
 
 /**
@@ -882,7 +900,7 @@ CAMLprim value string_to_tree(value s) {
 	buffer = malloc(len);
 	memcpy(buffer, String_val(s), len);
 	p = buffer;
-	res = string_to_tree_rec(&p, p + len);
+	res = string_to_tree_rec(&p, p + len, 0);
 	free(buffer);
 	CAMLreturn(res);
 }
