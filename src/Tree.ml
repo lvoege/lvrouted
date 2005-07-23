@@ -106,7 +106,7 @@ let merge nodes		(* the list of nodes to merge *)
 					let c = (depth + 1, n, newnode, gw, payload') in
 					let prio = priority payload' depth in
 					FloatQueue.insert queue prio c)
-						FloatQueue.empty node.nodes in
+						queue' node.nodes in
 				(* and continue traversing *)
 				traverse (IPMap.add node.addr gw routes) queue''
 			end in
