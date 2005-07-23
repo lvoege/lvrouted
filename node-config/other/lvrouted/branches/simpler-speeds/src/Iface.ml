@@ -24,30 +24,20 @@ type t = {
 
 (* Constructor *)
 let make n =
-	let iface_type name = 
-		(* This is pretty lame, but this is executed only once per
-		   interface at startup anyway, and it'd be a huge gob of
-		   code in lowlevel_c.c, so I'll leave it like this *)
-		let c = Unix.open_process_in ("/sbin/ifconfig " ^ name) in
-		let re = Str.regexp "^.*media: \\(.*\\)" in
-		let l = Common.snarf_channel_for_re c re 2 in
-		ignore(Unix.close_process_in c);
-		if l = [] then WIRED else
-			let media = (List.hd l).(1) in
-			if LowLevel.strstr media "hostap" <> -1 then
-			  WIFI_MASTER
-			else if LowLevel.strstr media "Wireless" <> -1 then
-			  WIFI_CLIENT
-			else
-			  WIRED in
+	let itype = match LowLevel.ifstatus n with
+	  	| LowLevel.IFKIND_WIRED _ -> WIRED
+		| LowLevel.IFKIND_CLIENT _ -> WIFI_CLIENT
+		| LowLevel.IFKIND_MASTER -> WIFI_MASTER in
 	{ name = n;
-	  itype = iface_type n;
+	  itype = itype;
 	  last_assoc_update = -1.0;
 	  last_arp_update = -1.0;
 	  arpentries = None;
 	  associated = None;
 	  is_associated = None }
 
+(* Accessors *)
+let name i = i.name
 let itype i = i.itype
 
 (* Return a MAC.Set of addresses that are associated with the given interface *)
@@ -95,3 +85,12 @@ let is_reachable iface mac =
 	    WIRED -> true
 	  | WIFI_MASTER -> MAC.Set.mem mac (Common.from_some iface.associated)
 	  | WIFI_CLIENT -> Common.from_some iface.is_associated
+
+let current_bandwidth iface =
+	match (iface.itype, LowLevel.ifstatus iface.name) with
+	  | (WIRED, LowLevel.IFKIND_WIRED i)		-> i
+	  | (WIFI_CLIENT, LowLevel.IFKIND_CLIENT i)	-> i
+	  | (WIFI_MASTER, _) ->
+	  	raise (Failure "Cannot read bandwidth from an interface in master mode!")
+	  | (_, _) ->
+	  	raise (Failure "ifstatus gave an unexpected interface type!")
