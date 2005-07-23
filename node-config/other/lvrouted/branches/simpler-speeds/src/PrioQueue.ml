@@ -3,15 +3,6 @@ module type OrderedType = sig
 	val compare: priority -> priority ->int
 end
 
-module type S = sig
-	type priority
-	type 'a queue
-	val empty : 'a queue
-	val insert : 'a queue -> priority -> 'a -> 'a queue
-	exception Queue_is_empty
-	val extract : 'a queue -> priority * 'a * 'a queue
-end
-
 module Make(P: OrderedType) = struct
 	type priority = P.priority
 	type 'a queue =
@@ -22,7 +13,7 @@ module Make(P: OrderedType) = struct
 	let rec insert queue prio elt = match queue with
 		  Empty -> Node(prio, elt, Empty, Empty)
 		| Node(p, e, left, right) ->
-			if prio <= p then
+			if prio > p then
 				Node(prio, elt, insert right p e, left)
 			else
 				Node(p, e, insert right prio elt, left)
@@ -41,4 +32,8 @@ module Make(P: OrderedType) = struct
 		  Empty -> raise Queue_is_empty
 		| Node(prio, elt, _, _) as queue ->
 			(prio, elt, remove_top queue)
+	
+	let rec size = function
+		| Empty -> 0
+		| Node(_, _, left, right) -> 1 + (size left) + (size right)
 end
