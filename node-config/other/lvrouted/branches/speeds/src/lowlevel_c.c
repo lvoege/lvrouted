@@ -789,11 +789,16 @@ static int unpack_bandwidth(int x) {
 /* Store a node into a buffer. It is enough to store the node contents
  * (the address in this case) plus the number of children and recurse.
  * Since the 172.16.0.0/12 range only uses 20 bits, the number of children
- * can be packed into the 12 fixed bits.
+ * and the bandwidth to the node can be packed into the 12 fixed bits.
  * 
  * It is conceivable for our nodes to have more than 16 addresses to
  * propagate, so packing a node in 24 bits instead of 32 would probably
  * be pushing our luck.
+ *
+ * So, currently the on-the-wire format of a node is, from most
+ * significant to least significant, six bits encoding the bandwidth,
+ * six bits encoding the number of children the node has, and twenty
+ * bits encoding the IP address.
  */
 static unsigned char *tree_to_string_rec(int bandwidth,
 					 value node, unsigned char *buffer) {
