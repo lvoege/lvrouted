@@ -79,6 +79,24 @@ static inline value prepend_listelement(value e, value l) {
 	CAMLreturn(cell);
 }
 
+/*
+ * append element e after all the values in list l and return the new list.
+ * BEWARE: this does a linear scan of the list to find the end. use only on
+ * short lists!
+ */
+static inline value append_listelement(value e, value l) {
+	CAMLparam2(e, l);
+	CAMLlocal2(cell, p);
+	cell = alloc_small(2, 0);
+	Field(cell, 0) = e;
+	Field(cell, 1) = Val_int(0);
+	if (l != Val_int(0)) {
+		for (p = l; Field(p, 1) != Val_int(0); p = Field(p, 1)) ;
+		modify(&Field(p, 1), cell);
+	}
+	CAMLreturn(l == Val_int(0) ? cell : l);
+}
+
 /* how many bits set in int i? */
 static inline int bitcount(unsigned int i) {
 	int c;
@@ -872,8 +890,8 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 
 	children = Val_int(0);
 	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
-		children = prepend_listelement(string_to_tree_rec(pp, limit),
-					       children);
+		children = append_listelement(string_to_tree_rec(pp, limit),
+					      children);
 	}
 	modify(&Field(node, 2), children);
 	CAMLreturn(node);
