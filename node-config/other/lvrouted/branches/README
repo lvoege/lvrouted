@@ -1,8 +1,18 @@
 forest			: pass a list of trees instead of only one tree.
 			  the intent is to support multiple disjoint address
-			  spaces.
+			  spaces with one instance of the daemon.
 
-ipv6			: IPv6 support. 
+ipv6			: IPv6 support. this is a big TODO as of yet. choices
+			  to be made are whether or not to distinct trees
+			  or mandate that for every IPv4 address there is a
+			  corresponding IPv6 address and somehow stick them
+			  into one tree. also the packets are going to be
+			  bigger either way, which is another problem. 
+
+			  low priority. also, if anyone wants a stab at this
+			  and chooses the distinct-trees option, it might be
+			  better to create a new subbranch of 'forest' and
+			  cherrypick the lowlevel IPv6 bits from here.
 
 new_interlink_scheme	: support for a proposed interlink scheme where an AP
 			  and its clients share a subnet, instead of the AP
