@@ -1,8 +1,10 @@
 (* Neighbor type definition, management and utility functions *)
 
 type neighbor = {
-	iface: string;			(* "wi0", "ep0", etc *)
+	iface: Iface.t option;
+	mutable bandwidth: int;
 	addr: Unix.inet_addr;		(* address to reach this neighbor on *)
+	myaddr: Unix.inet_addr;
 	mutable macaddr: MAC.t option;	(* MAC address, if known *)
 
 	mutable last_seen: float;	(* -1.0 if never seen, else unix
@@ -19,19 +21,38 @@ module Set = Set.Make(struct
 	let compare a b = compare a.addr b.addr
 end)
 
-(* constructor *)
-let make iface addr =
-	{ iface = iface;
+(* Constructors *)
+let make iface addr myaddr =
+	let bandwidth = if Iface.itype iface = Iface.WIRED then
+				Iface.current_bandwidth iface
+			else -1 in
+	{ iface = Some iface; 
+	  bandwidth = bandwidth;
 	  addr = addr;
+	  myaddr = myaddr;
 	  last_seen = -1.0;
 	  macaddr = None;
 	  seqno = min_int;
 	  tree = None }
 
-let iface n = n.iface
+(* Given that the Set above only cares about the addr field, this constructor
+   sets up a struct just for use in Set operations. *)
+let make_of_addr a = 
+	{ iface = None;
+	  bandwidth = -1;
+	  addr = a;
+	  myaddr = a;
+	  last_seen = -1.0;
+	  macaddr = None;
+	  seqno = min_int;
+	  tree = None }
+
+let iface n = Common.from_some n.iface
+let iname n = Iface.name (Common.from_some n.iface)
 let name n = Unix.string_of_inet_addr n.addr
 
-let show n = Unix.string_of_inet_addr n.addr ^ " on " ^ n.iface ^ "\n"
+let show n = Unix.string_of_inet_addr n.addr ^ " on " ^
+	     iname n ^ "\n"
 
 (* Broadcast the given list of tree nodes to the given Set of neighbors over
    the given file descriptor. *)
@@ -49,7 +70,11 @@ let bcast fd nodes ns =
 
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Verify the signature, find the neighbor associated with the
-   address, verify the sequence number, parse the tree and mark the time. *)
+   address, verify the sequence number, parse the tree and mark the time.
+   
+   If we are a wifi master, we can't read the bandwidth to a neighbor
+   directly, but neighbors can. So in that case, assume what the neighbor read
+   as its bandwidth to us is accurate and simply copy it. *)
 let handle_data ns s sockaddr =
 	let addr = Common.get_addr_from_sockaddr sockaddr in
 	let addr_s = Unix.string_of_inet_addr addr in
@@ -77,9 +102,21 @@ let handle_data ns s sockaddr =
 	let s = String.sub s 4 (len - 4) in
 	let s = if Common.compress_data then LowLevel.string_decompress s
 		else s in
+
 	Log.log Log.debug ("deserializing from " ^ addr_s);	
 	begin try
-		n.tree <- Some (Tree.from_string s addr);
+		let node = Tree.from_string s addr n.bandwidth in
+
+		if Iface.itype (Common.from_some n.iface) = Iface.WIFI_MASTER then begin
+			(* Look for an edge to us in the new tree and copy the
+			   bandwidth field. This edge is at depth 2. *)
+			match Tree.find_parent node 2 n.myaddr with
+			| None -> Log.log Log.debug ("Couldn't find myself!")
+			| Some myself -> n.bandwidth <- Tree.bandwidth myself
+		end;
+
+		let node = Tree.node_with_bandwidth node n.bandwidth in
+		n.tree <- Some node;
 	with _ -> raise InvalidPacket end;
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();
@@ -88,8 +125,8 @@ let handle_data ns s sockaddr =
 (* Given a list of neighbors and interface i, invalidate the trees
    for all the neighbors on that interface *)
 let nuke_trees_for_iface ns i =
-	Log.log Log.debug ("nuking interface " ^ i);
-	Set.iter (fun n -> if n.iface = i then begin
+	Log.log Log.debug ("nuking interface " ^ Iface.name i);
+	Set.iter (fun n -> if Common.from_some n.iface = i then begin
 				n.tree <- None;
 				Log.log Log.debug ("neighbor " ^ name n ^ " canned")
 			    end) ns
@@ -109,25 +146,26 @@ let nuke_old_trees ns numsecs =
    (unaggregated) routes and a merged tree. *)
 let derive_routes_and_mytree directips ns = 
 	(* Fetch all valid trees from the neighbors *)
-	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
+	let edges = Common.filtermap (fun n -> Common.is_some n.tree)
 			             (fun n -> Common.from_some n.tree) 
 				     (Set.elements ns) in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
-			   string_of_int (List.length nodes));
+			   string_of_int (List.length edges));
 	(* Merge the trees into a new tree and an IPMap.t *)
-	let nodes', routemap = Tree.merge nodes directips in
+	let priority payload depth = (float_of_int payload) /. (float_of_int depth) in 
+	let edges', routemap = Tree.merge edges directips min priority in
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
 		Common.IPMap.fold (fun addr gw ->
 				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
-	Route.aggregate routeset, nodes'
+	Route.aggregate routeset, edges'
 
 (* Check if the given neighbor is reachable over the given Iface.t. If it
    isn't, set the neighbor's tree to None. *)
 let check_reachable n iface = 
 	if Common.is_none n.macaddr then begin
-		let arptable = MAC.get_arptable n.iface in
+		let arptable = MAC.get_arptable (iname n) in
 		try  n.macaddr <- Some (Common.IPMap.find n.addr arptable)
 		with Not_found ->
 			Log.log Log.debug ("Cannot determine MAC address for " ^
@@ -141,3 +179,10 @@ let check_reachable n iface =
 		n.last_seen <- 0.0
 	end;
 	reachable
+
+let update_bandwidth n =
+	let i = iface n in
+	match Iface.itype i with
+	| Iface.WIRED -> ()
+	| Iface.WIFI_CLIENT -> n.bandwidth <- Iface.current_bandwidth i
+	| Iface.WIFI_MASTER -> ()

@@ -44,13 +44,13 @@ OFLAGS = $(INCLUDES) $(LIBS)
 
 NAME=lvrouted
 
-all: $(OCAMLBEST) $(NAME).opt
+all: $(OCAMLBEST) $(NAME).opt test.opt
 
 # bytecode and native-code compilation
 ######################################
 
-SOURCES = Version.ml LowLevel.ml Common.ml Log.ml Route.ml MAC.ml Tree.ml \
-	Iface.ml Neighbor.ml $(NAME).ml
+SOURCES = Version.ml LowLevel.ml Common.ml Log.ml Route.ml MAC.ml PrioQueue.ml \
+	Tree.ml Iface.ml Neighbor.ml
 CMO = $(SOURCES:.ml=.cmo)
 CMX = $(SOURCES:.ml=.cmx)
 
@@ -59,11 +59,14 @@ GENERATED = Version.ml
 byte: $(NAME).byte
 opt: $(NAME).opt
 
-$(NAME).byte: $(CMO) lowlevel_c.o
-	$(OCAMLC) $(BFLAGS) -custom -o $@ $(CMO) lowlevel_c.o
+$(NAME).byte: $(CMO) lowlevel_c.o $(NAME).ml
+	$(OCAMLC) $(BFLAGS) -custom -o $@ $(CMO) $(NAME).cmo lowlevel_c.o
 
-$(NAME).opt: $(CMX) lowlevel_c.o
-	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) lowlevel_c.o
+$(NAME).opt: $(CMX) lowlevel_c.o $(NAME).ml
+	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) $(NAME).cmx lowlevel_c.o
+
+test.opt: test.ml $(CMX) lowlevel_c.o
+	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) test.ml lowlevel_c.o
 
 Version.ml:
 	../tools/version.sh

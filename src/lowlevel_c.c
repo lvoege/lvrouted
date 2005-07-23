@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
@@ -106,32 +107,48 @@ CAMLprim value int_of_file_descr(value file_descr) {
 	return file_descr;
 }
 
-/* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
-static inline int iface_is_associated(const char *iface) {
-#ifndef HAVE_DEV_WI_IF_WAVELAN_IEEE_H
-	return 1;
-#else
-	struct ifreq ifr;
-	int sockfd;
-	struct wi_req wir;
+#ifdef __FreeBSD__
+/* stuff ifm_status in ints[0] and ifm_active in ints[1] */
+static void ifstatus(const char *iface, int *ints) {
+	struct ifmediareq ifmr;
+	int *media_list, sockfd;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
-	  failwith("socket for iface_is_associated");
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
-	ifr.ifr_data = (caddr_t)&wir;
+	  failwith("socket for get_associated_stations");
 
-	memset(&wir, 0, sizeof(wir));
-	wir.wi_len = WI_MAX_DATALEN;
-	wir.wi_type = WI_RID_CURRENT_SSID;
+	memset(&ifmr, 0, sizeof(ifmr));
+	strncpy(ifmr.ifm_name, iface, sizeof(ifmr.ifm_name));
 
-	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1) {
-		close(sockfd);
-		failwith("SIOCGWAVELAN");
-	}
+	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0)
+	  failwith("Interface doesn't support SIOC{G,S}IFMEDIA.");
+	if (ifmr.ifm_count == 0)
+	  failwith("huh, no media types?");
+
+	media_list = (int *)malloc(ifmr.ifm_count * sizeof(int));
+	if (media_list == NULL)
+	  failwith("malloc");
+	ifmr.ifm_ulist = media_list;
+
+	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0)
+	  failwith("SIOCGIFMEDIA");
+
 	close(sockfd);
-	return wir.wi_val[0];
+
+	ints[0] = ifmr.ifm_status;
+	ints[1] = ifmr.ifm_active;
+}
+#endif
+
+/* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
+static inline int iface_is_associated(const char *iface) {
+#ifdef __FreeBSD__
+	int i[2];
+	ifstatus(iface, i);
+	return (i[0] & IFM_AVALID) &&
+	       (IFM_TYPE(i[1] != IFM_IEEE80211 || i[0] & IFM_ACTIVE));
+#else
+	assert(0);
 #endif
 }
 
@@ -176,7 +193,8 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 CAMLprim value string_compress(value s) {
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code, buflen;
+	int code;
+	unsigned int buflen;
 	char *buffer;
 
 	buffer = 0;
@@ -208,7 +226,8 @@ CAMLprim value string_compress(value s) {
 CAMLprim value string_decompress(value s) {
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code, buflen;
+	int code;
+	unsigned int buflen;
 	char *buffer;
 
 	buffer = 0;
@@ -558,7 +577,7 @@ CAMLprim value get_associated_stations(value iface) {
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
-	  failwith("socket for get_associated_stations");
+	  failwith("socket for iface_is_associated");
 	memset(&ifr, 0, sizeof(ifr));
 	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
 	ifr.ifr_data = (caddr_t)&wir;
@@ -694,7 +713,9 @@ CAMLprim value sha_string(value string) {
 	CAMLlocal1(result);
 
 	result = alloc_string(SHA_DIGEST_LENGTH);
-	SHA1(String_val(string), string_length(string), String_val(result));
+	SHA1((unsigned char *)String_val(string),
+	     string_length(string),
+	     (unsigned char *)String_val(result));
 	CAMLreturn(result);
 }
 
@@ -706,8 +727,8 @@ CAMLprim value hexdump_string(value s) {
 
 	len = string_length(s);
 	result = alloc_string(2 * len);
-	sp = String_val(s);
-	rp = String_val(result);
+	sp = (unsigned char *)String_val(s);
+	rp = (unsigned char *)String_val(result);
 	for (i = 0; i < len; i++) {
 #define DIGIT(x) ((x) + ((x) < 10 ? '0' : 'a' - 10))
 		*rp++ = DIGIT(*sp >> 4);
@@ -746,14 +767,38 @@ CAMLprim value caml_unpack_int(value s) {
 	CAMLreturn(Val_int(*(int *)(String_val(s))));
 }
 
+/*
+ * This is a list of all known bandwidths. A bandwidth is translated to its
+ * index in this list before ORring it into the packet data.
+ */
+static int bandwidths[] = { 0, 1, 2, 5, 6, 9, 10, 11, 12, 18, 22, 24, 36, 48, 54,
+			72, 100, 1000, 10000, -1} ;
+
+static int pack_bandwidth(int x) {
+	int i;	
+	for (i = 0; bandwidths[i] != -1; i++)
+	  if (bandwidths[i] == x)
+	    return i;
+	failwith("Ouch, unknown bandwidth!");
+}
+
+static int unpack_bandwidth(int x) {
+	return bandwidths[x];
+}
+
 /* Store a node into a buffer. It is enough to store the node contents
  * (the address in this case) plus the number of children and recurse.
  * Since the 172.16.0.0/12 range only uses 20 bits, the number of children
- * can be packed into the 12 fixed bits.
+ * and the bandwidth to the node can be packed into the 12 fixed bits.
  * 
  * It is conceivable for our nodes to have more than 16 addresses to
  * propagate, so packing a node in 24 bits instead of 32 would probably
  * be pushing our luck.
+ *
+ * So, currently the on-the-wire format of a node is, from most
+ * significant to least significant, six bits encoding the bandwidth,
+ * six bits encoding the number of children the node has, and twenty
+ * bits encoding the IP address.
  */
 static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary) {
 	CAMLparam1(node);
@@ -764,17 +809,20 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	  return NULL;
 
 	numchildren = 0;
-	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1))
+	for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1))
 	  numchildren++;
-	/* put the number of children in the upper twelve bits */
-	i  = numchildren << 20;
+	/* stick the bandwidth in the upper six bits */
+	i = pack_bandwidth(Long_val(Field(node, 1))) << 26;
+	/* put the number of children in the lower six of the upper twelve bits */
+	i |= numchildren << 20;
 	/* mask out the 20 relevant bits and or it in */
 	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
 	/* that's all for this node. store it. */
 	*(int *)buffer = htonl(i);
+	buffer += sizeof(int);
 
 	/* and recurse into the children */
-	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
+	for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1)) {
 		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
 		if (buffer == NULL)
 		  failwith("Ouch in tree_to_string_rec!");
@@ -795,14 +843,20 @@ CAMLprim value tree_to_string(value node) {
 	CAMLreturn(result);
 }
 
-/* This is the converse of tree_to_string_rec(). Unpack the packed-together number of children and
- * node address. It reads slightly more difficult because there's high-level data structures to be
- * created and filled.
+/*
+ * Unpack the data at the given pointer-to-pointer into either an
+ * edge to a node or that node without the edge. Take care not to
+ * overrun the limit pointer.
+ *
+ * The need for the caller to pass in what it wants the result to be
+ * is purely practical. The unpacking of the top node and the non-top
+ * nodes differ only in that unpacking a non-top node will also
+ * produce an edge. Other than that, it's completely the same.
  */
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
-	CAMLlocal4(a, node, child, chain);
+	CAMLlocal3(a, node, children);
 	int i;
 
 	if (*pp > limit - sizeof(int))
@@ -811,29 +865,17 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	*pp += sizeof(int);
 	a = alloc_string(4);
 	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
-	node = alloc_small(2, 0);
+	node = alloc_small(3, 0);
 	Field(node, 0) = a;
-	Field(node, 1) = Val_int(0);
+	Field(node, 1) = Val_int(unpack_bandwidth(i >> 26));
+	Field(node, 2) = Val_int(0);
 
-	/* new children get hooked on the second field of chain. by luck,
-	 * the list itself is in the second field of node, so chain can be
-	 * assigned to node. if the node struct changes so the list of
-	 * children is no longer the second field, this must be changed */
-	chain = node;
-	for (i >>= 20; i > 0; i--) {
-		child = alloc_small(2, 0);
-		/*
-		 * The rules say alloc_small()ed stuff needs to be initialized
-		 * before the next allocation or the GC may crash. Put a bogus
-		 * value in field 0 and modify() it below after the recursive
-		 * call comes back.
-		 */
-		Field(child, 0) = Val_unit;
-		Field(child, 1) = Val_int(0);
-		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
-		modify(&Field(chain, 1), child);
-		chain = child;
+	children = Val_int(0);
+	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
+		children = prepend_listelement(string_to_tree_rec(pp, limit),
+					       children);
 	}
+	modify(&Field(node, 2), children);
 	CAMLreturn(node);
 }
 
@@ -953,6 +995,84 @@ CAMLprim value read_routemsg(value fd) {
 	res = Val_int(0);
 #endif
 	CAMLreturn(res);
+}
+
+#ifdef __FreeBSD__
+static int ether_subtype_to_bandwidth(int i) {
+	switch (IFM_SUBTYPE(i)) {
+		case IFM_10_T: return 10;
+		case IFM_10_2: return 10;
+		case IFM_10_5: return 10;
+		case IFM_100_TX: return 100;
+		case IFM_100_FX: return 100;
+		case IFM_100_T4: return 100;
+		case IFM_100_VG: return 100;
+		case IFM_100_T2: return 100;
+		case IFM_1000_SX: return 1000;
+		case IFM_10_STP: return 10;
+		case IFM_10_FL: return 10;
+		case IFM_1000_LX: return 1000;
+		case IFM_1000_CX: return 1000;
+		case IFM_1000_T: return 1000;
+		case IFM_HPNA_1: return 1;
+		case IFM_10GBASE_SR: return 10000;
+		case IFM_10GBASE_LR: return 10000;
+		default:
+			failwith("unknown ethernet subtype!");
+	}
+}
+
+static int wifi_subtype_to_bandwidth(int i) {
+	switch (IFM_SUBTYPE(i)) {
+		case IFM_IEEE80211_FH1: return 1;
+		case IFM_IEEE80211_FH2: return 2;
+		case IFM_IEEE80211_DS1: return 1;
+		case IFM_IEEE80211_DS2: return 2;
+		case IFM_IEEE80211_DS5: return 5;
+		case IFM_IEEE80211_DS11: return 11;
+		case IFM_IEEE80211_DS22: return 22;
+		case IFM_IEEE80211_OFDM6: return 6;
+		case IFM_IEEE80211_OFDM9: return 9;
+		case IFM_IEEE80211_OFDM12: return 12;
+		case IFM_IEEE80211_OFDM18: return 18;
+		case IFM_IEEE80211_OFDM24: return 24;
+		case IFM_IEEE80211_OFDM36: return 36;
+		case IFM_IEEE80211_OFDM48: return 48;
+		case IFM_IEEE80211_OFDM54: return 54;
+		case IFM_IEEE80211_OFDM72: return 72;
+		case IFM_IEEE80211_DS354k: return 1;
+		case IFM_IEEE80211_DS512k: return 1;
+		default:
+			failwith("unknown wifi subtype!");
+	}
+}
+#endif
+
+CAMLprim value caml_ifstatus(value iname) {
+#ifdef __FreeBSD__
+	CAMLparam1(iname);
+	int i[2];
+	CAMLlocal1(res);
+
+	ifstatus(String_val(iname), i);
+	if ((i[0] & IFM_AVALID) == 0)
+	  failwith("Invalid interface");
+	switch (IFM_TYPE(i[1])) {
+		case IFM_ETHER:
+			res = alloc_small(1, 0);
+			Field(res, 0) = Val_int(ether_subtype_to_bandwidth(i[1]));
+			break;
+		case IFM_IEEE80211:
+			res = alloc_small(1, 1);
+			Field(res, 0) = Val_int(wifi_subtype_to_bandwidth(i[1]));
+			break;
+		default:
+			failwith("Unknown media type");
+	}
+	CAMLreturn(res);
+#else
+	assert(0);
+#endif
 }
 
 /* from wicontrol.c: */

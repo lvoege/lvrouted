@@ -27,7 +27,7 @@ let check_reachable _ =
 	   corresponding Iface.t and see if it's reachable. *)
 	let new_unreachable = Neighbor.Set.filter (fun n ->
 		Log.log Log.debug ("looking at " ^ Neighbor.show n);
-		let iface = StringMap.find (Neighbor.iface n) !ifaces in
+		let iface = StringMap.find (Neighbor.iname n) !ifaces in
 		not (Neighbor.check_reachable n iface)) !neighbors in
 
 	let newly_unreachable = Neighbor.Set.diff new_unreachable !unreachable in
@@ -110,9 +110,13 @@ let broadcast_run udpsockfd rtsockfd =
 
 (* This function is called periodically from the select() loop. It decides
    whether or not to start a broadcast_run by checking for changes in
-   reachability, expired trees or if it's just time to do so. *)
+   reachability, expired trees or if it's just time to do so. It also
+   updates the bandwidth fields of those Neighbor's that are not on
+   WIFI_WIRED Iface's. *)
 let periodic_check udpsockfd rtsockfd =
 	Log.log Log.debug "in alarm_handler";
+
+	Neighbor.Set.iter update_bandwidth !neighbors;
 
 	let expired = Neighbor.nuke_old_trees !neighbors Common.timeout in
 
@@ -131,29 +135,30 @@ let abort_handler _ =
 (* For the given interface and netblock, add all possible neighbors to the
    global set *)
 let add_neighbors iface addr mask =
-	if not (StringMap.mem iface !ifaces) then begin
-		let i = Iface.make iface in
-		ifaces := StringMap.add iface i !ifaces
-	end;
+	let i = if not (StringMap.mem iface !ifaces) then begin
+			let i = Iface.make iface in
+			ifaces := StringMap.add iface i !ifaces;
+			i
+		end else StringMap.find iface !ifaces in
 	let addrs = List.filter ((<>) addr)
 				(LowLevel.get_addrs_in_block addr mask) in
 	List.iter (fun a ->
-		let n = Neighbor.make iface a in
+		let n = Neighbor.make i a addr in
 		neighbors := Neighbor.Set.add n !neighbors) addrs
 
-let delete_neighbors iface addr mask = 
+let delete_neighbors addr mask = 
 	let addrs = List.filter ((<>) addr)
 				(LowLevel.get_addrs_in_block addr mask) in
-	let to_delete = List.fold_left (fun s a ->
-		let n = Neighbor.make iface a in
-		Neighbor.Set.add n s) Neighbor.Set.empty addrs in
-	neighbors := Neighbor.Set.diff !neighbors to_delete
+	neighbors := List.fold_left (fun s a ->
+		let n = Neighbor.make_of_addr a in 
+		Neighbor.Set.remove n s) !neighbors addrs
 
 let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
 		Log.log Log.info ("New address " ^
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
-		direct := (Tree.make addr [])::!direct;
+		let node = Tree.make_direct addr in
+		direct := node::!direct;
 		directnets := (addr, mask)::!directnets;
 		if mask >= Common.interlink_netmask then
 		  add_neighbors iface addr mask;
@@ -173,7 +178,7 @@ let handle_routemsg udpsockfd rtsockfd = function
 			directnets := List.filter (fun (a, _) -> a <> addr)
 						  !directnets;
 			if mask >= Common.interlink_netmask then
-			  delete_neighbors iface addr mask;
+			  delete_neighbors addr mask;
 			broadcast_run udpsockfd rtsockfd
 		end
 	| _ -> ()
@@ -196,7 +201,8 @@ let read_config _ =
 		let lines = snarf_lines_from_channel chan in
 		close_in chan;
 		let extraaddrs = List.map Unix.inet_addr_of_string lines in
-		direct := !direct@(List.map (fun a -> Tree.make a []) extraaddrs);
+		direct := !direct@(List.map (fun a ->
+			(Tree.make a Common.infinite_bandwidth [])) extraaddrs);
 		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
 	with _ ->
 		Log.log Log.warnings ("Couldn't read the specified config file");

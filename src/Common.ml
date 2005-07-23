@@ -51,6 +51,9 @@ let own_marshaller = true
 let tmpdir = ref "/tmp/"
 (* An optional configuration file with extra addresses *)
 let configfile = ref "/usr/local/etc/lvrouted.conf"
+(* the entry in the bandwidth table in lowlevel_c.c that can be used as
+   infinity. if we ever do 10Gbps links, update this value :) *) 
+let infinite_bandwidth = 10000
 
 (* Types *)
 
