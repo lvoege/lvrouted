@@ -5,7 +5,9 @@ open Common
 
 type node = {
 	addr: Unix.inet_addr;
-	bandwidth: int;
+	bandwidth: int;	(* The bandwidth from this node's parent to this
+			   node, and presumably vice-versa, in megabits per
+			   second *)
 	mutable nodes: node list;
 }
 
@@ -72,7 +74,16 @@ let show l =
    which will create a top node based on the address it received the
    packet from.
 *)
-let merge nodes directnets propagate priority =
+let merge nodes		(* the list of nodes to merge *)
+	  directnets	(* the list of directly attached nodes *)
+	  propagate 	(* 'a -> node -> 'a: has to produce a new payload
+	  		   given the old payload and a node. this is used to
+			   propagate the payload through the tree *)
+	  priority	(* 'a -> int -> float: has to produce the priority
+	  			from the given payload at the given depth *)
+	  init_payload	(* node -> 'a: given a top-level node, give the
+	  			initial payload *)
+	  =
 	(* step 1 *)
 	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
 				    IPMap.empty directnets in
@@ -91,7 +102,7 @@ let merge nodes directnets propagate priority =
 				parent.nodes <- newnode::parent.nodes;
 				(* push the children on the queue *)
 				let queue'' = List.fold_left (fun queue n ->
-					let payload' = propagate payload n.bandwidth in
+					let payload' = propagate payload n in
 					let c = (depth + 1, n, newnode, gw, payload') in
 					let prio = priority payload' depth in
 					FloatQueue.insert queue prio c)
@@ -101,8 +112,9 @@ let merge nodes directnets propagate priority =
 			end in
 	(* todo, n.bandwith hieronder vervangen door een init_priority functie *)
 	let todo = List.fold_left (fun queue n ->
-	       let c = 1, n, fake, n.addr, n.bandwidth in
-	       FloatQueue.insert queue (float_of_int n.bandwidth) c)
+		let payload = init_payload n in
+		let c = 1, n, fake, n.addr, payload in
+		FloatQueue.insert queue (priority payload 0) c)
 			FloatQueue.empty nodes in
 	let routes = traverse routes todo in
 	(* step 4 *)

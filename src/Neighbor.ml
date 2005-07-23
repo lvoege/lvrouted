@@ -146,20 +146,25 @@ let nuke_old_trees ns numsecs =
    (unaggregated) routes and a merged tree. *)
 let derive_routes_and_mytree directips ns = 
 	(* Fetch all valid trees from the neighbors *)
-	let edges = Common.filtermap (fun n -> Common.is_some n.tree)
+	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
 			             (fun n -> Common.from_some n.tree) 
 				     (Set.elements ns) in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
-			   string_of_int (List.length edges));
+			   string_of_int (List.length nodes));
 	(* Merge the trees into a new tree and an IPMap.t *)
-	let priority payload depth = (float_of_int payload) /. (float_of_int depth) in 
-	let edges', routemap = Tree.merge edges directips min priority in
+	let propagate payload n = min payload (Tree.bandwidth n) in
+	let priority payload depth = (float_of_int payload) /. (float_of_int (depth + 1)) in 
+	let nodes', routemap = Tree.merge nodes
+					  directips
+					  propagate
+					  priority
+					  Tree.bandwidth in
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
 		Common.IPMap.fold (fun addr gw ->
 				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
-	Route.aggregate routeset, edges'
+	Route.aggregate routeset, nodes'
 
 (* Check if the given neighbor is reachable over the given Iface.t. If it
    isn't, set the neighbor's tree to None. *)
