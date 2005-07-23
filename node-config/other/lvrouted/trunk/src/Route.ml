@@ -74,7 +74,7 @@ let aggregate routes =
 	let rec aggregate' todo done_ = match todo with
 		  []	-> done_
 		| r::rs	->
-			if r.mask = Common.min_mask r.addr then
+			if r.mask = !Common.min_mask then
 			  aggregate' rs (r::done_)
 			else if r.addr = r.gw && r.mask = 32 then
 			  aggregate' rs done_
