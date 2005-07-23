@@ -1,0 +1,20 @@
+You need to have autoconf, ocaml and ocamlfind installed. Beware that ocaml
+versions prior to 3.08-CVS have a small memory leak that will slowly but
+surely grow the process. For us, a 64MB soekris machine with twelve neighbors
+would last about two weeks before memory got tight. Either arrange to restart
+the daemon before then, or use a later version of the ocaml compiler.
+
+Then just:
+
+  $ autoconf && autoheader && ./configure && make
+
+or the specific versions your system provides. so for the FreeBSD machine I'm
+writing this on it would be:
+
+  $ autoconf259 && autoheader259 && ./configure && make
+
+and then ignore any errors in docs/ like complaints about a missing dot
+binary.
+
+Lodewijk Voge 
+lodewijk@wirelessleiden.nl / lvoge@cs.vu.nl
