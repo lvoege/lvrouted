@@ -806,7 +806,7 @@ static unsigned char *tree_to_string_rec(int bandwidth,
 	i = 0;
 	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
 		edge = Field(t, 0);
-		buffer_tmp = tree_to_string_rec(Field(edge, 0), 
+		buffer_tmp = tree_to_string_rec(Long_val(Field(edge, 0)), 
 						Field(edge, 1), buffer_tmp);
 		i++;
 	}
@@ -859,7 +859,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 
 	if (return_edge_to_node) {
 		edge = alloc_small(2, 0);
-		Field(edge, 0) = unpack_bandwidth(i >> 26);
+		Field(edge, 0) = Val_int(unpack_bandwidth(i >> 26));
 		Field(edge, 1) = node;
 	}
 
@@ -868,7 +868,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	 * assigned to node. if the node struct changes so the list of
 	 * children is no longer the second field, this must be changed */
 	chain = node;
-	for (i >>= 20; i > 0; i--) {
+	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
 		child = alloc_small(2, 0);
 		/*
 		 * The rules say alloc_small()ed stuff needs to be initialized
