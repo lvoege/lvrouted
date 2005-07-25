@@ -90,12 +90,13 @@ let merge nodes		(* the list of nodes to merge *)
 	(* step 2.*)
 	let fake = make_direct Unix.inet_addr_any in
 	(* step 3 *)
-	let rec traverse routes queue =
-		if queue = FloatQueue.empty then routes
+	let routes = IPHash.create 512 in
+	let rec traverse queue =
+		if queue = FloatQueue.empty then ()
 		else	let (_, (depth, node, parent, gw, payload), queue') =
 					FloatQueue.extract queue in
-			if IPMap.mem node.addr routes then
-			  traverse routes queue' (* ignore this node *)
+			if IPHash.mem routes node.addr then
+			  traverse queue' (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
 				let newnode = { node with nodes = [] } in
@@ -108,7 +109,8 @@ let merge nodes		(* the list of nodes to merge *)
 					FloatQueue.insert queue prio c)
 						queue' node.nodes in
 				(* and continue traversing *)
-				traverse (IPMap.add node.addr gw routes) queue''
+				IPHash.add routes node.addr gw;
+				traverse queue''
 			end in
 	(* todo, n.bandwith hieronder vervangen door een init_priority functie *)
 	let todo = List.fold_left (fun queue n ->
@@ -116,12 +118,12 @@ let merge nodes		(* the list of nodes to merge *)
 		let c = 1, n, fake, n.addr, payload in
 		FloatQueue.insert queue (priority payload 0) c)
 			FloatQueue.empty nodes in
-	let routes = traverse routes todo in
+	traverse todo;
 	(* step 4 *)
-	let routes = IPMap.fold (fun a gw map ->
-			if List.exists (fun (a', n) ->
-				Route.includes_impl a' n a 32) directnets then map
-			else IPMap.add a gw map) routes IPMap.empty in
+	IPHash.iter (fun a gw ->
+		if List.exists (fun (a', n) ->
+			Route.includes_impl a' n a 32) directnets then
+		  IPHash.remove routes a) routes;
 	fake.nodes, routes
 
 external serialize: node -> string = "tree_to_string"

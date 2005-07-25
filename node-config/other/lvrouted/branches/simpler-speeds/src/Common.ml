@@ -62,9 +62,12 @@ module IPStruct = struct
 	type t = Unix.inet_addr
 	let compare = LowLevel.compare_ipv4_addrs
 	(*let compare = compare*)
+	let equal a b = LowLevel.compare_ipv4_addrs a b = 0
+	let hash = Hashtbl.hash
 end
 module IPSet = Set.Make(IPStruct)
 module IPMap = Map.Make(IPStruct)
+module IPHash = Hashtbl.Make(IPStruct)
 
 (* Convenience functions *)
 
