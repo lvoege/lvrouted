@@ -1049,6 +1049,17 @@ static int wifi_subtype_to_bandwidth(int i) {
 		case IFM_IEEE80211_DS5: return 5;
 		case IFM_IEEE80211_DS11: return 11;
 		case IFM_IEEE80211_DS22: return 22;
+#if __FreeBSD_version 501000
+		case IFM_IEEE80211_ODFM6: return 6;
+		case IFM_IEEE80211_ODFM9: return 9;
+		case IFM_IEEE80211_ODFM12: return 12;
+		case IFM_IEEE80211_ODFM18: return 18;
+		case IFM_IEEE80211_ODFM24: return 24;
+		case IFM_IEEE80211_ODFM36: return 36;
+		case IFM_IEEE80211_ODFM48: return 48;
+		case IFM_IEEE80211_ODFM54: return 54;
+		case IFM_IEEE80211_ODFM72: return 72;
+#else	
 		case IFM_IEEE80211_OFDM6: return 6;
 		case IFM_IEEE80211_OFDM9: return 9;
 		case IFM_IEEE80211_OFDM12: return 12;
@@ -1058,6 +1069,7 @@ static int wifi_subtype_to_bandwidth(int i) {
 		case IFM_IEEE80211_OFDM48: return 48;
 		case IFM_IEEE80211_OFDM54: return 54;
 		case IFM_IEEE80211_OFDM72: return 72;
+#endif
 		case IFM_IEEE80211_DS354k: return 1;
 		case IFM_IEEE80211_DS512k: return 1;
 		default:
