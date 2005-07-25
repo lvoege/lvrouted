@@ -795,9 +795,13 @@ CAMLprim value tree_to_string(value node) {
 	CAMLreturn(result);
 }
 
-/* This is the converse of tree_to_string_rec(). Unpack the packed-together number of children and
- * node address. It reads slightly more difficult because there's high-level data structures to be
- * created and filled.
+/* This is the converse of tree_to_string_rec(). Unpack the packed-together
+ * number of children and node address. It reads slightly more difficult
+ * because there's high-level data structures to be created and filled.
+ *
+ * NOTE: the upper six bits are reserved and not relevant to this branch of
+ * the code. They are explicitly ignored here in order not to trip up if
+ * there's anything there.
  */
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
@@ -820,7 +824,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	 * assigned to node. if the node struct changes so the list of
 	 * children is no longer the second field, this must be changed */
 	chain = node;
-	for (i >>= 20; i > 0; i--) {
+	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
 		child = alloc_small(2, 0);
 		/*
 		 * The rules say alloc_small()ed stuff needs to be initialized
