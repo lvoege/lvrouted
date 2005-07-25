@@ -33,7 +33,7 @@ let includes_impl a m1 b m2 =
 let includes a b =
 	includes_impl a.addr a.mask b.addr b.mask
 
-(* Does the given addr fall in the given route *)
+(* Does the given addr fall in the given route? *)
 let matches route addr =
 	LowLevel.mask_addr route.addr route.mask =
 	LowLevel.mask_addr addr route.mask
