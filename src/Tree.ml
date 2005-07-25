@@ -57,30 +57,30 @@ let show l =
 *)
 let merge nodes directnets =
 	(* step 1 *)
-	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
-				    IPMap.empty directnets in
+	let routes = IPHash.create 512 in
+	List.iter (fun (a, _) -> IPHash.add routes a a) directnets;
 	(* step 2 *)
 	let fake = make Unix.inet_addr_any [] in
 	(* step 3 *)
-	let rec traverse routes = function
-		  []			-> routes	(* all done *)
+	let rec traverse = function
+		  []			-> ()	(* all done *)
 		| (node,parent,gw)::xs	-> 
-			if IPMap.mem node.addr routes then
-			  traverse routes xs (* ignore this node *)
+			if IPHash.mem routes node.addr then
+			  traverse xs (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
 				let newnode = make node.addr [] in
 				parent.nodes <- newnode::parent.nodes;
-				traverse (IPMap.add node.addr gw routes)
-					 (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
+				IPHash.add routes node.addr gw;
+				traverse (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
 			end in
 	let todo = List.map (fun node -> node, fake, node.addr) nodes in
-	let routes = traverse routes todo in
+	traverse todo;
 	(* step 4 *)
-	let routes = IPMap.fold (fun a gw map ->
-			if List.exists (fun (a', n) ->
-				Route.includes_impl a' n a 32) directnets then map
-			else IPMap.add a gw map) routes IPMap.empty in
+	IPHash.iter (fun a gw ->
+		if List.exists (fun (a', n) ->
+			Route.includes_impl a' n a 32) directnets then
+		  IPHash.remove routes a) routes;
 	fake.nodes, routes
 
 external serialize: node -> string = "tree_to_string"

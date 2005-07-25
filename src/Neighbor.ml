@@ -121,7 +121,7 @@ let derive_routes_and_mytree directips ns =
 	let nodes', routemap = Tree.merge nodes directips in
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
-		Common.IPMap.fold (fun addr gw ->
+		Common.IPHash.fold (fun addr gw ->
 				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
 	Route.aggregate routeset, nodes'
