@@ -262,6 +262,8 @@ let argopts = [
 let _ =
 	Log.log Log.info "Starting up";
 
+	Gc.set { (Gc.get ()) with Gc.space_overhead = 200 };
+
 	let tenmb = 10 * 1024 * 1024 in
 	if LowLevel.set_limits tenmb tenmb then
 	  Log.log Log.info "Limits set"
