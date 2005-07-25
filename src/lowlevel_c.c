@@ -888,6 +888,7 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	  failwith("Unknown interface in read_routemsg");
 	p = (char *)(ifa + 1);
 	okay_to_add = 1;
+	masklen = -1;
 	for (i = 1; i && okay_to_add; i <<= 1) {
 		if (ifa->ifam_addrs & i) {
 			sin = (struct sockaddr_in *)p;
@@ -910,7 +911,7 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 			p += ROUNDUP(sin->sin_len);
 		}
 	}
-	if (okay_to_add) {
+	if (okay_to_add && masklen != -1) {
 		res = alloc_small(3, tag);
 		Field(res, 0) = copy_string(ifnam);
 		Field(res, 1) = addr;
