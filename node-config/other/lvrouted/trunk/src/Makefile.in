@@ -62,8 +62,12 @@ opt: $(NAME).opt
 $(NAME).byte: $(CMO) lowlevel_c.o
 	$(OCAMLC) $(BFLAGS) -custom -o $@ $(CMO) lowlevel_c.o
 
-$(NAME).opt: $(CMX) lowlevel_c.o
+$(NAME).opt: $(CMX) lowlevel_c.c
+	$(CC) -O2 -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
 	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) lowlevel_c.o
+$(NAME).prof: $(SOURCES) lowlevel_c.c
+	$(CC) -O2 -p -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
+	$(OCAMLOPT) $(OFLAGS) -o $@ -p $(SOURCES) lowlevel_c.o
 
 Version.ml:
 	../tools/version.sh
