@@ -113,3 +113,7 @@ external read_routemsg: Unix.file_descr -> routemsg
 
 external compare_ipv4_addrs: Unix.inet_addr -> Unix.inet_addr -> int
   = "compare_ipv4_addrs"
+
+external route_includes_impl: Unix.inet_addr -> int -> Unix.inet_addr -> int -> bool
+	= "route_includes_impl"
+
