@@ -773,6 +773,7 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
 	/* that's all for this node. store it. */
 	*(int *)buffer = htonl(i);
+	buffer += sizeof(int);
 
 	/* and recurse into the children */
 	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
