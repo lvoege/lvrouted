@@ -118,3 +118,6 @@ type ifkind =
 
 external ifstatus: string -> ifkind
   = "caml_ifstatus"
+
+external compare_ipv4_addrs: Unix.inet_addr -> Unix.inet_addr -> int
+  = "compare_ipv4_addrs"
