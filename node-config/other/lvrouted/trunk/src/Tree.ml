@@ -79,7 +79,7 @@ let merge nodes directnets =
 	(* step 4 *)
 	IPHash.iter (fun a gw ->
 		if List.exists (fun (a', n) ->
-			Route.includes_impl a' n a 32) directnets then
+			LowLevel.route_includes_impl a' n a 32) directnets then
 		  IPHash.remove routes a) routes;
 	fake.nodes, routes
 

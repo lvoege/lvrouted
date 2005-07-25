@@ -976,6 +976,21 @@ CAMLprim value compare_ipv4_addrs(value a, value b) {
 	CAMLreturn(res);
 }
 
+CAMLprim value route_includes_impl(value a, value m1, value b, value m2) {
+	CAMLparam4(a, m1, b, m2);
+	CAMLlocal1(res);
+	int _m1, _m2;
+	_m1 = Long_val(m1);
+	_m2 = Long_val(m2);
+	if (m1 <= m2) {
+		in_addr_t _a, _b;
+		_a = get_addr(a) & bitmask(_m1);
+		_b = get_addr(b) & bitmask(_m1);
+		res = Val_bool(_a == _b);
+	} else res = Val_bool(0);
+	CAMLreturn(res);
+}
+
 /* from wicontrol.c: */
 /*
  * Copyright (c) 1997, 1998, 1999
