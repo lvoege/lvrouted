@@ -1033,8 +1033,10 @@ static int ether_subtype_to_bandwidth(int i) {
 		case IFM_1000_CX: return 1000;
 		case IFM_1000_T: return 1000;
 		case IFM_HPNA_1: return 1;
+#if __FreeBSD_version > 503000
 		case IFM_10GBASE_SR: return 10000;
 		case IFM_10GBASE_LR: return 10000;
+#endif
 		default:
 			failwith("unknown ethernet subtype!");
 	}
@@ -1049,7 +1051,7 @@ static int wifi_subtype_to_bandwidth(int i) {
 		case IFM_IEEE80211_DS5: return 5;
 		case IFM_IEEE80211_DS11: return 11;
 		case IFM_IEEE80211_DS22: return 22;
-#if __FreeBSD_version 501000
+#if __FreeBSD_version < 501000
 		case IFM_IEEE80211_ODFM6: return 6;
 		case IFM_IEEE80211_ODFM9: return 9;
 		case IFM_IEEE80211_ODFM12: return 12;
@@ -1070,8 +1072,10 @@ static int wifi_subtype_to_bandwidth(int i) {
 		case IFM_IEEE80211_OFDM54: return 54;
 		case IFM_IEEE80211_OFDM72: return 72;
 #endif
+#if __FreeBSD_version > 503000
 		case IFM_IEEE80211_DS354k: return 1;
 		case IFM_IEEE80211_DS512k: return 1;
+#endif
 		default:
 			failwith("unknown wifi subtype!");
 	}
