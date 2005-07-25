@@ -110,3 +110,6 @@ type routemsg =
  *)
 external read_routemsg: Unix.file_descr -> routemsg
   = "read_routemsg"
+
+external compare_ipv4_addrs: Unix.inet_addr -> Unix.inet_addr -> int
+  = "compare_ipv4_addrs"

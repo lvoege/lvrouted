@@ -57,7 +57,8 @@ let configfile = ref "/usr/local/etc/lvrouted.conf"
 module StringMap = Map.Make(String)
 module IPStruct = struct
 	type t = Unix.inet_addr
-	let compare = compare
+	let compare = LowLevel.compare_ipv4_addrs
+	(*let compare = compare*)
 end
 module IPSet = Set.Make(IPStruct)
 module IPMap = Map.Make(IPStruct)
