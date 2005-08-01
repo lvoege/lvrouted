@@ -12,7 +12,7 @@ type node = {
 }
 
 module FloatQueue = PrioQueue.Make(struct
-	type priority = float
+	type t = float
 	let compare = compare
 end)
 
