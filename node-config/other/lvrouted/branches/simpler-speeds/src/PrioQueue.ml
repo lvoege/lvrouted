@@ -1,10 +1,5 @@
-module type OrderedType = sig
-	type priority
-	val compare: priority -> priority ->int
-end
-
-module Make(P: OrderedType) = struct
-	type priority = P.priority
+module Make(P: Set.OrderedType) = struct
+	type priority = P.t
 	type 'a queue =
 		Empty
 	      | Node of priority * 'a * 'a queue * 'a queue

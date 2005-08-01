@@ -56,7 +56,9 @@ external strstr: string -> string -> int
   = "caml_strstr"
 
 (* Given an address and a netmask, return all the usable addresses in that
-   block. So 172.16.0.1/30 will return 172.16.0.1 and 172.16.0.2. *)
+   block. So 172.16.0.1/30 will return 172.16.0.1 and 172.16.0.2. It's the
+   caller's responsibility to make sure this is called with sensible inputs,
+   the routine will happily fill a list with all addresses in a /1. *)
 external get_addrs_in_block: Unix.inet_addr -> int -> Unix.inet_addr list
   = "get_addrs_in_block"
 
@@ -93,6 +95,7 @@ external pack_int: int -> string
 external unpack_int: string -> int
   = "caml_unpack_int"
 
+(* open the routing socket *)
 external open_rtsock: unit -> Unix.file_descr
   = "open_rtsock"
 
