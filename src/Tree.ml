@@ -117,7 +117,6 @@ let merge nodes		(* the list of nodes to merge *)
 		let c = 1, n, fake, n.addr, payload in
 		FloatQueue.insert queue (priority payload 0) c)
 			FloatQueue.empty nodes in
-	let todo = List.map (fun node -> node, fake, node.addr) nodes in
 	traverse todo;
 	(* step 4 *)
 	IPHash.iter (fun a gw ->
