@@ -965,10 +965,10 @@ CAMLprim value read_routemsg(value fd) {
 CAMLprim value compare_ipv4_addrs(value a, value b) {
 	CAMLparam2(a, b);
 	CAMLlocal1(res);
-	unsigned int a1, b1;
+	in_addr_t a1, b1;
 
-	a1 = *(unsigned int *)(String_val(a));
-	b1 = *(unsigned int *)(String_val(b));
+	a1 = get_addr(a);
+	b1 = get_addr(b);
 	if (a1 < b1)
 	  res = Val_int(-1);
 	else if (a1 > b1)
