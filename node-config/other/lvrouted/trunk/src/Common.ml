@@ -4,7 +4,8 @@
    exception if the signature turns out wrong *)
 exception InvalidSignature
 
-(*s Constants *)
+(*s Constants and tunables. Everything that is a ref here is settable
+    through some commandline option. *)
 
 (* The port to listen on *)
 let port = ref 12345
@@ -55,10 +56,12 @@ let configfile = ref "/usr/local/etc/lvrouted.conf"
 (* Types *)
 
 module StringMap = Map.Make(String)
+(* Define a struct that can be passed to the functorized Set, Map en Hashtbl modules *)
 module IPStruct = struct
+	(* the OrderedType signature *)
 	type t = Unix.inet_addr
 	let compare = LowLevel.compare_ipv4_addrs
-	(*let compare = compare*)
+	(* the HashedType signature *)
 	let equal a b = LowLevel.compare_ipv4_addrs a b = 0
 	let hash = Hashtbl.hash
 end

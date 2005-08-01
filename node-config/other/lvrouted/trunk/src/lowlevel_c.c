@@ -110,7 +110,7 @@ CAMLprim value int_of_file_descr(value file_descr) {
 /* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
 static inline int iface_is_associated(const char *iface) {
 #ifndef HAVE_DEV_WI_IF_WAVELAN_IEEE_H
-	return 1;
+	assert(0);
 #else
 	struct ifreq ifr;
 	int sockfd;
@@ -238,6 +238,13 @@ CAMLprim value string_decompress(value s) {
 }
 
 #ifdef HAVE_RTMSG
+/*
+ * I had assumed that the fact that route updates are done through
+ * messages over a socket in FreeBSD, that meant you could put
+ * multiple updates in one message. That's why this routine is
+ * the way it is, but it later turned out you're assumed to only
+ * be write()ing one message at a time.
+ */
 static int routemsg_add(unsigned char *buffer, int type,
 			value dest, value masklen, value gw) {
 	struct rt_msghdr *msghdr;
@@ -290,8 +297,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 }
 #endif
 
-CAMLprim value routes_commit(value rtsock,
-			value deletes, value adds, value changes) {
+CAMLprim value routes_commit(value rtsock, value deletes, value adds, value changes) {
 	CAMLparam4(rtsock, deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
 	CAMLlocal1(v);
@@ -361,10 +367,7 @@ CAMLprim value routes_commit(value rtsock,
 	Store_field(result, 1, adderrs);
 	Store_field(result, 2, cherrs);
 #else
-	result = alloc_tuple(3);
-	Store_field(result, 0, alloc_tuple(0));
-	Store_field(result, 1, alloc_tuple(0));
-	Store_field(result, 2, alloc_tuple(0));
+	assert(0);
 #endif
 	CAMLreturn(result);
 }
@@ -498,13 +501,13 @@ CAMLprim value get_arp_entries(value unit) {
 	mib[3] = AF_INET;
 	mib[4] = NET_RT_FLAGS;
 	mib[5] = RTF_LLINFO;
-	if (sysctl(mib, 6, NULL, &needed, 0, 0) < 0)
+	if (sysctl(mib, sizeof(mib), NULL, &needed, 0, 0) < 0)
 	  failwith("fetch of arp table size");
 	if (needed) {
 		buf = malloc(needed);
 		if (buf == 0)
 		  failwith("malloc");
-		if (sysctl(mib, 6, buf, &needed, 0, 0) < 0) {
+		if (sysctl(mib, sizeof(mib), buf, &needed, 0, 0) < 0) {
 			free(buf);
 			failwith("fetch of arp table");
 		}
@@ -538,6 +541,8 @@ CAMLprim value get_arp_entries(value unit) {
 		}
 		free(buf);
 	}
+#else
+	assert(0);
 #endif
 
 	CAMLreturn(result);
@@ -550,9 +555,10 @@ CAMLprim value get_associated_stations(value iface) {
 	struct ifreq ifr;
 	int sockfd, i;
 #else
-	result = alloc_tuple(0);
+	assert(0);
 #endif
 #if defined(HAVE_NET80211_IEEE80211_H)
+	/* FreeBSD 5.4 */
 	int n;
 	struct wi_req wir;
 	struct wi_apinfo *s;
@@ -584,6 +590,7 @@ CAMLprim value get_associated_stations(value iface) {
 	}
 	close(sockfd);
 #elif defined(HAVE_NET_IF_IEEE80211_H)
+	/* FreeBSD 5.0 */
 	struct hostap_getall    reqall;
 	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
 
@@ -957,7 +964,7 @@ CAMLprim value read_routemsg(value fd) {
 	}
 	free(buffer);
 #else
-	res = Val_int(0);
+	assert(0);
 #endif
 	CAMLreturn(res);
 }

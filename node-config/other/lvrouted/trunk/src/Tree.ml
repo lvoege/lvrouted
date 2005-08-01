@@ -72,6 +72,7 @@ let merge nodes directnets =
 				let newnode = make node.addr [] in
 				parent.nodes <- newnode::parent.nodes;
 				IPHash.add routes node.addr gw;
+				(* and continue traversing, after appending the children of this node to the todo list *)
 				traverse (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
 			end in
 	let todo = List.map (fun node -> node, fake, node.addr) nodes in
@@ -103,4 +104,4 @@ let from_string s from_addr : node =
 let dump_tree fname nodes =
 	let out = open_out (!Common.tmpdir ^ fname) in
 	output_string out (show nodes);
-	close_out out;
+	close_out out
