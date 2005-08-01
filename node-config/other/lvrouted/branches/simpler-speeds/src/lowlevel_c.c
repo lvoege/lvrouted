@@ -942,6 +942,7 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	  failwith("Unknown interface in read_routemsg");
 	p = (char *)(ifa + 1);
 	okay_to_add = 1;
+	masklen = -1;
 	for (i = 1; i && okay_to_add; i <<= 1) {
 		if (ifa->ifam_addrs & i) {
 			sin = (struct sockaddr_in *)p;
@@ -964,7 +965,7 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 			p += ROUNDUP(sin->sin_len);
 		}
 	}
-	if (okay_to_add) {
+	if (okay_to_add && masklen != -1) {
 		res = alloc_small(3, tag);
 		Field(res, 0) = copy_string(ifnam);
 		Field(res, 1) = addr;
@@ -1112,15 +1113,30 @@ CAMLprim value caml_ifstatus(value iname) {
 CAMLprim value compare_ipv4_addrs(value a, value b) {
 	CAMLparam2(a, b);
 	CAMLlocal1(res);
-	unsigned int a1, b1;
+	in_addr_t a1, b1;
 
-	a1 = *(unsigned int *)(String_val(a));
-	b1 = *(unsigned int *)(String_val(b));
+	a1 = get_addr(a);
+	b1 = get_addr(b);
 	if (a1 < b1)
 	  res = Val_int(-1);
 	else if (a1 > b1)
 	  res = Val_int(1);
 	else res = Val_int(0);
+	CAMLreturn(res);
+}
+
+CAMLprim value route_includes_impl(value a, value m1, value b, value m2) {
+	CAMLparam4(a, m1, b, m2);
+	CAMLlocal1(res);
+	int _m1, _m2;
+	_m1 = Long_val(m1);
+	_m2 = Long_val(m2);
+	if (m1 <= m2) {
+		in_addr_t _a, _b;
+		_a = get_addr(a) & bitmask(_m1);
+		_b = get_addr(b) & bitmask(_m1);
+		res = Val_bool(_a == _b);
+	} else res = Val_bool(0);
 	CAMLreturn(res);
 }
 

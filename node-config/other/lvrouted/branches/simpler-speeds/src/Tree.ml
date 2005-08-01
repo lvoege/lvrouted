@@ -85,8 +85,8 @@ let merge nodes		(* the list of nodes to merge *)
 	  			initial payload *)
 	  =
 	(* step 1 *)
-	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
-				    IPMap.empty directnets in
+	let routes = IPHash.create 512 in
+	List.iter (fun (a, _) -> IPHash.add routes a a) directnets;
 	(* step 2.*)
 	let fake = make_direct Unix.inet_addr_any in
 	(* step 3 *)
@@ -112,17 +112,17 @@ let merge nodes		(* the list of nodes to merge *)
 				IPHash.add routes node.addr gw;
 				traverse queue''
 			end in
-	(* todo, n.bandwith hieronder vervangen door een init_priority functie *)
 	let todo = List.fold_left (fun queue n ->
 		let payload = init_payload n in
 		let c = 1, n, fake, n.addr, payload in
 		FloatQueue.insert queue (priority payload 0) c)
 			FloatQueue.empty nodes in
+	let todo = List.map (fun node -> node, fake, node.addr) nodes in
 	traverse todo;
 	(* step 4 *)
 	IPHash.iter (fun a gw ->
 		if List.exists (fun (a', n) ->
-			Route.includes_impl a' n a 32) directnets then
+			LowLevel.route_includes_impl a' n a 32) directnets then
 		  IPHash.remove routes a) routes;
 	fake.nodes, routes
 
