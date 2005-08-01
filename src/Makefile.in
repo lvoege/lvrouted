@@ -65,6 +65,10 @@ $(NAME).byte: $(CMO) lowlevel_c.o $(NAME).ml
 $(NAME).opt: $(CMX) lowlevel_c.o $(NAME).ml
 	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) $(NAME).ml lowlevel_c.o
 
+$(NAME).prof: $(SOURCES) lowlevel_c.c
+	$(CC) -O2 -p -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
+	$(OCAMLOPT) $(OFLAGS) -o $@ -p $(SOURCES) lowlevel_c.o
+
 test.opt: test.ml $(CMX) lowlevel_c.o
 	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) test.ml lowlevel_c.o
 

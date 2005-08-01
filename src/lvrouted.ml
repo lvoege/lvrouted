@@ -20,6 +20,7 @@ let last_time = ref 0.0
 let unreachable = ref Neighbor.Set.empty
 (* Resume from saved state on startup instead of a new, clean state *)
 let resume = ref false
+let quit = ref false
 
 (* See if any previously reachable neighbors became reachable or vice-versa *)
 let check_reachable _ =
@@ -130,7 +131,7 @@ let periodic_check udpsockfd rtsockfd =
 
 let abort_handler _ =
 	Log.log Log.info "Exiting.";
-	exit 0
+	quit := true
 
 (* For the given interface and netblock, add all possible neighbors to the
    global set *)
@@ -267,6 +268,8 @@ let argopts = [
 let _ =
 	Log.log Log.info "Starting up";
 
+	Gc.set { (Gc.get ()) with Gc.space_overhead = 200 };
+
 	let tenmb = 10 * 1024 * 1024 in
 	if LowLevel.set_limits tenmb tenmb then
 	  Log.log Log.info "Limits set"
@@ -314,7 +317,7 @@ let _ =
 	let s = String.create 65536 in		(* buffer to read into *)
 	let readfds = [ udpsockfd; rtsockfd ] in
 	let last_periodic_check = ref 0.0 in
-	while true do try
+	while not !quit do try
 		(* Wait for interesting events *)
 		let fds, _, _ = Unix.select readfds [] []
 					!Common.alarm_timeout in
