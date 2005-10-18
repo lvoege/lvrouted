@@ -501,13 +501,13 @@ CAMLprim value get_arp_entries(value unit) {
 	mib[3] = AF_INET;
 	mib[4] = NET_RT_FLAGS;
 	mib[5] = RTF_LLINFO;
-	if (sysctl(mib, sizeof(mib), NULL, &needed, 0, 0) < 0)
+	if (sysctl(mib, 6, NULL, &needed, 0, 0) < 0)
 	  failwith("fetch of arp table size");
 	if (needed) {
 		buf = malloc(needed);
 		if (buf == 0)
 		  failwith("malloc");
-		if (sysctl(mib, sizeof(mib), buf, &needed, 0, 0) < 0) {
+		if (sysctl(mib, 6, buf, &needed, 0, 0) < 0) {
 			free(buf);
 			failwith("fetch of arp table");
 		}
