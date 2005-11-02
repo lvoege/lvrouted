@@ -164,7 +164,7 @@ static inline int iface_is_associated(const char *iface) {
 	int i[2];
 	ifstatus(iface, i);
 	return (i[0] & IFM_AVALID) &&
-	       (IFM_TYPE(i[1] != IFM_IEEE80211 || i[0] & IFM_ACTIVE));
+	       ((IFM_TYPE(i[1]) != IFM_IEEE80211 || i[0] & IFM_ACTIVE));
 #else
 	assert(0);
 #endif
@@ -1078,6 +1078,7 @@ static int wifi_subtype_to_bandwidth(int i) {
 		case IFM_IEEE80211_DS512k: return 1;
 #endif
 		default:
+			return 6;
 			failwith("unknown wifi subtype!");
 	}
 }
