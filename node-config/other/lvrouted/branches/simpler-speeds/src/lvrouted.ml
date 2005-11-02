@@ -155,7 +155,7 @@ let delete_neighbors addr mask =
 		Neighbor.Set.remove n s) !neighbors addrs
 
 let add_address iface addr mask =
-	if Common.addr_in_range addr then begin
+	if Common.addr_in_range addr && mask <= 30 then begin
 		Log.log Log.info ("New address " ^
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
 		let node = Tree.make_direct addr in
