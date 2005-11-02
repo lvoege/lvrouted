@@ -143,7 +143,7 @@ static void ifstatus(const char *iface, int *ints) {
 	if (ifmr.ifm_count == 0)
 	  failwith("huh, no media types?");
 
-	media_list = (int *)malloc(ifmr.ifm_count * sizeof(int));
+	media_list = malloc(ifmr.ifm_count * sizeof(int));
 	if (media_list == NULL)
 	  failwith("malloc");
 	ifmr.ifm_ulist = media_list;
@@ -152,6 +152,7 @@ static void ifstatus(const char *iface, int *ints) {
 	  failwith("SIOCGIFMEDIA");
 
 	close(sockfd);
+	free(media_list);
 
 	ints[0] = ifmr.ifm_status;
 	ints[1] = ifmr.ifm_active;
