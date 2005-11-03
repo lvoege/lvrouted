@@ -876,14 +876,14 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
 	CAMLlocal3(a, node, children);
-	int i;
+	unsigned int i;
 
 	if (*pp > limit - sizeof(int))
 	  failwith("faulty packet");
-	i = ntohl(*(int *)(*pp));
-	*pp += sizeof(int);
+	i = ntohl(*(unsigned int *)(*pp));
+	*pp += sizeof(unsigned int);
 	a = alloc_string(4);
-	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
+	*(unsigned int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
 	node = alloc_small(3, 0);
 	Field(node, 0) = a;
 	Field(node, 1) = Val_int(unpack_bandwidth(i >> 26));
