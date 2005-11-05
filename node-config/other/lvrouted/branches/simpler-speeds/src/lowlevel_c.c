@@ -875,7 +875,7 @@ CAMLprim value tree_to_string(value node) {
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
-	CAMLlocal3(a, node, children);
+	CAMLlocal5(a, node, children, cell, t);
 	unsigned int i;
 
 	if (*pp > limit - sizeof(int))
@@ -889,12 +889,19 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	Field(node, 1) = Val_int(unpack_bandwidth(i >> 26));
 	Field(node, 2) = Val_int(0);
 
-	children = Val_int(0);
 	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
-		children = append_listelement(string_to_tree_rec(pp, limit),
-					      children);
+		cell = alloc_small(2, 0);
+		Field(cell, 0) = Val_unit;
+		Field(cell, 1) = Val_int(0);
+		modify(&Field(cell, 0), string_to_tree_rec(pp, limit));
+		if (Field(node, 2) == Val_int(0))
+		  modify(&Field(node, 2), cell);
+		else {
+			for (t = Field(node, 2); Field(t, 1) != Val_int(0); t = Field(t, 1))
+			  /* nothing */;
+			modify(&Field(t, 1), cell);
+		}
 	}
-	modify(&Field(node, 2), children);
 	CAMLreturn(node);
 }
 
