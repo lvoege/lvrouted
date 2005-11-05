@@ -466,7 +466,7 @@ CAMLprim value caml_getifaddrs(value unit) {
 			a = ((struct sockaddr_in *)ifp->x)->sin_addr.s_addr; \
 			memcpy(String_val(addr), &a, sizeof(in_addr_t)); \
 			option = alloc_small(1, Some_tag); \
-			Store_field(option, 0, addr); \
+			Field(option, 0) = addr; \
 		} else option = None_val; \
 		Store_field(tuple, idx, option);
 		STORE_OPTIONAL_ADDR(ifa_netmask, 3);
@@ -968,9 +968,18 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	}
 	if (okay_to_add && masklen != -1) {
 		res = alloc_small(3, tag);
-		Field(res, 0) = copy_string(ifnam);
+		/*
+		 * first initialize the fields with stuff that cannot trigger
+		 * a GC cycle:
+		 */
+		Field(res, 0) = Val_int(0);
 		Field(res, 1) = addr;
 		Field(res, 2) = Val_int(masklen);
+		/*
+		 * then update with the data, where copy_string() may trigger
+		 * a GC cycle:
+		 */
+		modify(&Field(res, 0), copy_string(ifnam));
 	} else res = Val_int(0);
 	CAMLreturn(res);
 }
