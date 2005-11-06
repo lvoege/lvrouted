@@ -135,17 +135,22 @@ let abort_handler _ =
 
 (* For the given interface and netblock, add all possible neighbors to the
    global set *)
-let add_neighbors iface addr mask =
-	let i = if not (StringMap.mem iface !ifaces) then begin
-			let i = Iface.make iface in
-			ifaces := StringMap.add iface i !ifaces;
-			i
-		end else StringMap.find iface !ifaces in
-	let addrs = List.filter ((<>) addr)
-				(LowLevel.get_addrs_in_block addr mask) in
-	List.iter (fun a ->
-		let n = Neighbor.make i a addr in
-		neighbors := Neighbor.Set.add n !neighbors) addrs
+let add_neighbors iface addr mask = try
+		let i = if not (StringMap.mem iface !ifaces) then begin
+				let i = Iface.make iface in
+				ifaces := StringMap.add iface i !ifaces;
+				i
+			end else StringMap.find iface !ifaces in
+		let addrs = List.filter ((<>) addr)
+					(LowLevel.get_addrs_in_block addr mask) in
+		List.iter (fun a ->
+			let n = Neighbor.make i a addr in
+			neighbors := Neighbor.Set.add n !neighbors) addrs
+	with Failure s ->
+		Log.log Log.warnings ("Could not add address " ^
+			Unix.string_of_inet_addr addr ^
+			" because interface " ^ iface ^
+			" could not be read. The error was: '" ^ s ^ "'")
 
 let delete_neighbors addr mask = 
 	let addrs = List.filter ((<>) addr)
