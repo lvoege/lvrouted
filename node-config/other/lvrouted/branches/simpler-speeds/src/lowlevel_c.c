@@ -68,7 +68,7 @@
 
 /* prepend element e before list l and return the new list. the empty
    list is to be passed as Val_int(0) */
-static inline value prepend_listelement(value e, value l) {
+static inline value CAMLprim prepend_listelement(value e, value l) {
 	CAMLparam2(e, l);
 	CAMLlocal1(cell);
 
@@ -77,24 +77,6 @@ static inline value prepend_listelement(value e, value l) {
 	Field(cell, 1) = l;
 
 	CAMLreturn(cell);
-}
-
-/*
- * append element e after all the values in list l and return the new list.
- * BEWARE: this does a linear scan of the list to find the end. use only on
- * short lists!
- */
-static inline value append_listelement(value e, value l) {
-	CAMLparam2(e, l);
-	CAMLlocal2(cell, p);
-	cell = alloc_small(2, 0);
-	Field(cell, 0) = e;
-	Field(cell, 1) = Val_int(0);
-	if (l != Val_int(0)) {
-		for (p = l; Field(p, 1) != Val_int(0); p = Field(p, 1)) ;
-		modify(&Field(p, 1), cell);
-	}
-	CAMLreturn(l == Val_int(0) ? cell : l);
 }
 
 /* how many bits set in int i? */
