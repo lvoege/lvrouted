@@ -41,18 +41,29 @@ let show l =
 	show' 0 l;
 	!s
 
-(* Given a list of spanning trees received from neighbors and a set of our
-   own addresses, return the spanning tree for this node, plus a routing
-   table.
+(* Given:
+	- a list of spanning trees received from neighbors
+	- a set of our own addresses
+	- a function that can propagate a payload through the tree.
+	  it will get the payload of the parent node plus the child node and
+	  has to return the payload for that child node.
+	- a function that returns a priority for a given payload at a given
+	  depth
+	- a function that can tell the payload for the top nodes.
+
+   Return: the spanning tree for this node, plus a routing table.
    
    1. Initialize a routing table with routes to our own addresses.
-   2. Make a new node to hang the new, merged and pruned tree under
-   3. Traverse the tree according to a priority queue ordered according to
-      the slowest link on the path.
-   breadth-first.  For every node, check if
-      there is a route already. If so, produce no new node. If not,
-      add a route and create a new node and prepend it to the parent's
-      list of children.
+   2. Make a new node to hang the new, merged and pruned tree under.
+   3. Create an empty priority queue.
+   3. Initialize the payloads for the top nodes, calculate their priorities
+      and insert them into the priority queue.
+   4. Traverse the tree according to the priority queue. For every node,
+      check if there is a route already. If so, produce no new node. If not,
+      add a route, create a new node and prepend it to the parent's
+      list of children. Propagate the payload to the children, derive
+      priorities for them and add them to the priority queue. Repeat until
+      the queue is empty.
    4. Filter out routes that are included in a route from the
       list of directly attached routes. This may not be necessary anymore, but
       it was when route addition didn't work correctly.
@@ -112,6 +123,7 @@ let merge nodes		(* the list of nodes to merge *)
 				IPHash.add routes node.addr gw;
 				traverse queue''
 			end in
+	(* step 3: initialize the priority queue *)
 	let todo = List.fold_left (fun queue n ->
 		let payload = init_payload n in
 		let c = 1, n, fake, n.addr, payload in
