@@ -41,6 +41,8 @@ let show l =
 	show' 0 l;
 	!s
 
+(* Given a list of nodes, put all addresses in those nodes and their
+   descendants into an IPSet.t *)
 let rec enumerate ns =
 	List.fold_left (fun set n ->
 		let set' = IPSet.add n.addr set in
@@ -111,38 +113,32 @@ let merge nodes		(* the list of nodes to merge *)
 		if queue = FloatQueue.empty then ()
 		else	let (_, t, queue') = FloatQueue.extract queue in
 			let depth, node, parent, gw, payload = t in
-			let queue'' = try
+			let gw, depth, parent, payload, newnode = try
 				(* this'll break to the Not_found handler
 				   below if we haven't come across this
 				   address before *)
 				let t' = IPHash.find routes node.addr in
 				(* so if we're here the address has been seen
-				   before. Push the children onto the queue
-				   with the priority of the node as previously
-				   put in the routing table, to protect
-				   against the degenerate case of that we have
-				   addresses here the previous subtree did not
-				   have *)
+				   before. fetch the necessary information
+				   from the routing table and let that
+				   determine how to proceed instead of what
+				   we got from the priority queue *)
 				let (gw, (depth, _, parent, _, payload), newnode) = t' in
-				List.fold_left (fun queue n ->
-					let payload' = propagate payload n in
-					let c = (depth + 1, n, newnode, gw, payload') in
-					let prio = priority payload' depth in
-					FloatQueue.insert queue prio c)
-						queue' node.nodes
+				gw, depth, parent, payload, newnode
 			with Not_found -> begin
 				(* copy this node and hook it into the new tree *)
 				let newnode = { node with nodes = [] } in
 				parent.nodes <- newnode::parent.nodes;
 				(* record the route *)
 				IPHash.add routes node.addr (gw, t, newnode);
-				List.fold_left (fun queue n ->
+				gw, depth, parent, payload, newnode
+			end in
+			let queue'' = List.fold_left (fun queue n ->
 					let payload' = propagate payload n in
 					let c = (depth + 1, n, newnode, gw, payload') in
 					let prio = priority payload' depth in
 					FloatQueue.insert queue prio c)
-						queue' node.nodes
-			end in
+						queue' node.nodes in
 			traverse queue'' in
 	(* step 3: initialize the priority queue *)
 	let todo = List.fold_left (fun queue n ->
