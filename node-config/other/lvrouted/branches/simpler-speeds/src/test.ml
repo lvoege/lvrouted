@@ -20,13 +20,15 @@ let _ =
 		print_newline ();
 *)
 		result in
-	let priority a depth =
-		let res = (float_of_int a) /. (float_of_int (depth + 1)) in
-(*
-		print_string ("priority = " ^ string_of_float res);
+	let priority payload depth =
+		print_string ("payload: " ^ string_of_int payload);
 		print_newline ();
-*)
-		res in
+		print_string ("depth: " ^ string_of_int depth);
+		print_newline ();
+		(* payload is an integer with the minimum Mbps on the path to
+		   the node we're asked to give a priority for *)
+		let f = if payload > 22 then 54.0 else 11.0 in
+		f /. (float_of_int (depth + 1)) in 
 	let init_payload n =
 		let result = (Tree.bandwidth n) in
 (*
