@@ -153,7 +153,11 @@ let derive_routes_and_mytree directips ns =
 			   string_of_int (List.length nodes));
 	(* Merge the trees into a new tree and an IPMap.t *)
 	let propagate payload n = min payload (Tree.bandwidth n) in
-	let priority payload depth = (float_of_int payload) /. (float_of_int (depth + 1)) in 
+	let priority payload depth =
+		(* payload is an integer with the minimum Mbps on the path to
+		   the node we're asked to give a priority for *)
+		let f = if payload > 22 then 54.0 else 11.0 in
+		f /. (float_of_int (depth + 1)) in 
 	let nodes', routemap = Tree.merge nodes
 					  directips
 					  propagate
