@@ -14,11 +14,9 @@ type route = {
 module Set = Set.Make(struct
 	type t = route
 	(* compare first on the address and then on the netmask *)
-	let compare a b = 
-		let r = compare a.addr b.addr in
-		if r = 0 then
-		  compare a.mask b.mask
-		else r
+	let compare a b = match compare a.addr b.addr with
+		| 0 -> compare a.mask b.mask
+		| r -> r
 end)
 
 (* Constructor *)

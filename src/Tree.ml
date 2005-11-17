@@ -41,6 +41,11 @@ let show l =
 	show' 0 l;
 	!s
 
+let rec enumerate ns =
+	List.fold_left (fun set n ->
+		let set' = IPSet.add n.addr set in
+		IPSet.union set' (enumerate n.nodes)) IPSet.empty ns
+
 (* Given:
 	- a list of spanning trees received from neighbors
 	- a set of our own addresses
@@ -119,8 +124,9 @@ let merge nodes		(* the list of nodes to merge *)
 					let prio = priority payload' depth in
 					FloatQueue.insert queue prio c)
 						queue' node.nodes in
-				(* and continue traversing *)
+				(* record the route *)
 				IPHash.add routes node.addr gw;
+				(* and continue traversing *)
 				traverse queue''
 			end in
 	(* step 3: initialize the priority queue *)
@@ -135,6 +141,12 @@ let merge nodes		(* the list of nodes to merge *)
 		if List.exists (fun (a', n) ->
 			LowLevel.route_includes_impl a' n a 32) directnets then
 		  IPHash.remove routes a) routes;
+	(* check that we didn't lose any addresses in the merge *)
+	(*
+	assert (IPSet.subset (enumerate nodes)
+			     (enumerate fake.nodes));
+			     *)
+
 	fake.nodes, routes
 
 external serialize: node -> string = "tree_to_string"
