@@ -109,26 +109,41 @@ let merge nodes		(* the list of nodes to merge *)
 	let routes = IPHash.create 512 in
 	let rec traverse queue =
 		if queue = FloatQueue.empty then ()
-		else	let (_, (depth, node, parent, gw, payload), queue') =
-					FloatQueue.extract queue in
-			if IPHash.mem routes node.addr then
-			  traverse queue' (* ignore this node *)
-			else begin
-				(* copy this node and hook it into the new tree *)
-				let newnode = { node with nodes = [] } in
-				parent.nodes <- newnode::parent.nodes;
-				(* push the children on the queue *)
-				let queue'' = List.fold_left (fun queue n ->
+		else	let (_, t, queue') = FloatQueue.extract queue in
+			let depth, node, parent, gw, payload = t in
+			let queue'' = try
+				(* this'll break to the Not_found handler
+				   below if we haven't come across this
+				   address before *)
+				let t' = IPHash.find routes node.addr in
+				(* so if we're here the address has been seen
+				   before. Push the children onto the queue
+				   with the priority of the node as previously
+				   put in the routing table, to protect
+				   against the degenerate case of that we have
+				   addresses here the previous subtree did not
+				   have *)
+				let (gw, (depth, _, parent, _, payload), newnode) = t' in
+				List.fold_left (fun queue n ->
 					let payload' = propagate payload n in
 					let c = (depth + 1, n, newnode, gw, payload') in
 					let prio = priority payload' depth in
 					FloatQueue.insert queue prio c)
-						queue' node.nodes in
+						queue' node.nodes
+			with Not_found -> begin
+				(* copy this node and hook it into the new tree *)
+				let newnode = { node with nodes = [] } in
+				parent.nodes <- newnode::parent.nodes;
 				(* record the route *)
-				IPHash.add routes node.addr gw;
-				(* and continue traversing *)
-				traverse queue''
+				IPHash.add routes node.addr (gw, t, newnode);
+				List.fold_left (fun queue n ->
+					let payload' = propagate payload n in
+					let c = (depth + 1, n, newnode, gw, payload') in
+					let prio = priority payload' depth in
+					FloatQueue.insert queue prio c)
+						queue' node.nodes
 			end in
+			traverse queue'' in
 	(* step 3: initialize the priority queue *)
 	let todo = List.fold_left (fun queue n ->
 		let payload = init_payload n in
@@ -137,15 +152,13 @@ let merge nodes		(* the list of nodes to merge *)
 			FloatQueue.empty nodes in
 	traverse todo;
 	(* step 4 *)
-	IPHash.iter (fun a gw ->
+	IPHash.iter (fun a (gw, _, _) ->
 		if List.exists (fun (a', n) ->
 			LowLevel.route_includes_impl a' n a 32) directnets then
 		  IPHash.remove routes a) routes;
 	(* check that we didn't lose any addresses in the merge *)
-	(*
 	assert (IPSet.subset (enumerate nodes)
 			     (enumerate fake.nodes));
-			     *)
 
 	fake.nodes, routes
 
