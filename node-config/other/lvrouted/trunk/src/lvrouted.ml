@@ -291,6 +291,7 @@ let _ =
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
 	set_handler dump_version [Sys.sigusr1];
 	set_handler dump_state [Sys.sigusr2];
+	set_handler (fun _ -> Log.loglevel := Log.debug) [Sys.sigchld];
 	Log.log Log.info "Set signal handlers";
 
 	(* Read the configuration from the system, or restart from a saved
