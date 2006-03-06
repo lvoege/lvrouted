@@ -1,6 +1,30 @@
+ACTIVE BRANCHES: 
+
+simpler-speeds		: deal with links of different speeds in the network.
+			  this branch generalizes the simple breadth-first
+			  traversal to a traversal according to a priority
+			  queue instead of a list of nodes to visit. the
+			  priority of a node is then the lowest link speed
+			  on the path from the root to that node.
+
+			  TODO: debug. it seems to do kindof the same thing
+			  in that the links are propagated correctly, but
+			  something in the algorithm makes nodes receive
+			  pruned subtrees that should not have been pruned for
+			  those nodes, so destinations in the network get
+			  lost. a better diagnosis is needed, and then a
+			  solution worked out, if one is possible. it may very
+			  well be that there is something fundamentally wrong
+			  with the approach.
+
+DORMANT BRANCHES (as in, not likely to make trunk in the foreseeable future):
+
 forest			: pass a list of trees instead of only one tree.
 			  the intent is to support multiple disjoint address
 			  spaces with one instance of the daemon.
+
+			  dormant because the initiative that spawned it seems
+			  dormant itself. 
 
 ipv6			: IPv6 support. this is a big TODO as of yet. choices
 			  to be made are whether or not to distinct trees
@@ -9,15 +33,19 @@ ipv6			: IPv6 support. this is a big TODO as of yet. choices
 			  into one tree. also the packets are going to be
 			  bigger either way, which is another problem. 
 
-			  low priority. also, if anyone wants a stab at this
+			  also, if anyone wants a stab at this
 			  and chooses the distinct-trees option, it might be
 			  better to create a new subbranch of 'forest' and
 			  cherrypick the lowlevel IPv6 bits from here.
 
+OBSOLETE BRANCHES (as in deleted because not likely to make trunk ever.
+	ofcourse this being an svn repository you can always resurrect them
+	if need be, which is why the revision it's been deleted is listed):
+
 new_interlink_scheme	: support for a proposed interlink scheme where an AP
 			  and its clients share a subnet, instead of the AP
 			  having one point-to-point /30 between it and the
-			  client. this scheme hasn't been implemented.
+			  client.
 
 			  TODO: deal with the fact that two clients are not
 			  directly connected even though they're in the same
@@ -25,13 +53,9 @@ new_interlink_scheme	: support for a proposed interlink scheme where an AP
 			  exactly the same as it is now, and deal with the 
 			  route stuff in the route applier or something.
 
-speeds			: deal with links of different speeds in the network.
-			  this branch generalizes the simple breadth-first
-			  traversal to a traversal according to a priority
-			  queue instead of a list of nodes to visit. the
-			  priority of a node is then the lowest link speed
-			  on the path from the root to that node.
+			  deleted as of rev 5190, because this scheme has
+			  never been implemented.
 
-			  TODO: test. it compiles, it runs, it seems to do
-			  the right thing in isolation, but I don't know if
-			  it does anything useful in the
+speeds			: succeeded by simpler-speeds, because that's, well, 
+			  simpler and does the same thing. this is basically
+			  an older idea with the same goal. deleted in r5190.
