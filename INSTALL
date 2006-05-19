@@ -18,3 +18,10 @@ binary.
 
 Lodewijk Voge 
 lodewijk@wirelessleiden.nl / lvoege@gmail.com
+
+FreeBSD ports needed:
+-lang/ocaml
+-devel/ocaml-findlib
+-devel/autoconf259
+-devel/autoheader259
+
