@@ -6,29 +6,29 @@ module Make(P: Set.OrderedType) = struct
 
 	let empty = Empty
 	let rec insert queue prio elt = match queue with
-		  Empty -> Node(prio, elt, Empty, Empty)
-		| Node(p, e, left, right) ->
+		  Empty -> Node (prio, elt, Empty, Empty)
+		| Node (p, e, left, right) ->
 			if prio > p then
-				Node(prio, elt, insert right p e, left)
+				Node (prio, elt, insert right p e, left)
 			else
-				Node(p, e, insert right prio elt, left)
+				Node (p, e, insert right prio elt, left)
 	exception Queue_is_empty
 	let rec remove_top = function
 		  Empty -> raise Queue_is_empty
-		| Node(prio, elt, left, Empty) -> left
-		| Node(prio, elt, Empty, right) -> right
-		| Node(prio, elt, (Node(lprio, lelt, _, _) as left),
-		                  (Node(rprio, relt, _, _) as right)) ->
+		| Node (prio, elt, left, Empty) -> left
+		| Node (prio, elt, Empty, right) -> right
+		| Node (prio, elt, (Node (lprio, lelt, _, _) as left),
+		                  (Node (rprio, relt, _, _) as right)) ->
 			if lprio <= rprio then
-				Node(lprio, lelt, remove_top left, right)
+				Node (lprio, lelt, remove_top left, right)
 			else
-				Node(rprio, relt, left, remove_top right)
+				Node (rprio, relt, left, remove_top right)
 	let extract = function
 		  Empty -> raise Queue_is_empty
-		| Node(prio, elt, _, _) as queue ->
+		| Node (prio, elt, _, _) as queue ->
 			(prio, elt, remove_top queue)
 	
 	let rec size = function
 		| Empty -> 0
-		| Node(_, _, left, right) -> 1 + (size left) + (size right)
+		| Node (_, _, left, right) -> 1 + (size left) + (size right)
 end

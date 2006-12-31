@@ -11,17 +11,18 @@ let logfile = ref stderr
 (* Log the given message with the given loglevel. If the current loglevel is
    higher or equal to the given level, the message is printed to the log. *)
 let log level msg =
-	if !loglevel >= level then
+	if !loglevel >= level then begin
 	  if !Common.use_syslog then
 	    LowLevel.syslog level msg
 	  else try
 		if !logfile = stderr then
 		  logfile := open_out "/tmp/lvrouted.log";
 		output_string !logfile
-			(string_of_int (int_of_float (Unix.time ())) ^ ": " ^
+			(string_of_int (int_of_float (Unix.time ())) ^ "[" ^ string_of_int level ^ "]: " ^
 			 msg ^ "\n");
 		flush !logfile
 	  with _ -> ()
+	end
 
 
 (* Given a loglevel and a function, if the current loglevel is higher or

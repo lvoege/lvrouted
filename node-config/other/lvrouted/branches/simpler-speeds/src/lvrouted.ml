@@ -173,8 +173,11 @@ let add_address iface addr mask =
 
 let handle_routemsg udpsockfd rtsockfd = function
 	  LowLevel.RTM_NEWADDR (iface, addr, mask) ->
-	  	if add_address iface addr mask then
+	  	if add_address iface addr mask then begin
+			Log.log Log.info ("Added address " ^
+				Unix.string_of_inet_addr addr ^ " on " ^ iface);
 		  broadcast_run udpsockfd rtsockfd
+		end
 	| LowLevel.RTM_DELADDR (iface, addr, mask) ->
 		if Common.addr_in_range addr then begin
 			Log.log Log.info ("Deleted address " ^
@@ -324,8 +327,9 @@ let _ =
 	let last_periodic_check = ref 0.0 in
 	while not !quit do try
 		(* Wait for interesting events *)
-		let fds, _, _ = Unix.select readfds [] []
-					!Common.alarm_timeout in
+		let fds, _, _ =
+			try Unix.select readfds [] [] !Common.alarm_timeout
+			with Unix.Unix_error (Unix.EINTR, _, _) -> [], [], [] in
 		if List.mem udpsockfd fds then begin
 			(* A packet came in on the UDP socket *)
 			let len, sockaddr = Unix.recvfrom udpsockfd s 0

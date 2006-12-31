@@ -117,7 +117,10 @@ let handle_data ns s sockaddr =
 
 		let node = Tree.node_with_bandwidth node n.bandwidth in
 		n.tree <- Some node;
-	with _ -> raise InvalidPacket end;
+	with Failure f ->
+		Log.log Log.debug ("failed: " ^ f);	
+		raise InvalidPacket
+	end;
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();
 	Log.log Log.debug (name n ^ "'s tree has been set")
