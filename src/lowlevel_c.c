@@ -257,6 +257,13 @@ CAMLprim value string_decompress(value s) {
 }
 
 #ifdef HAVE_RTMSG
+/*
+ * I had assumed that the fact that route updates are done through
+ * messages over a socket in FreeBSD, that meant you could put
+ * multiple updates in one message. That's why this routine is
+ * the way it is, but it later turned out you're assumed to only
+ * be write()ing one message at a time.
+ */
 static int routemsg_add(unsigned char *buffer, int type,
 			value dest, value masklen, value gw) {
 	struct rt_msghdr *msghdr;
@@ -309,8 +316,7 @@ static int routemsg_add(unsigned char *buffer, int type,
 }
 #endif
 
-CAMLprim value routes_commit(value rtsock,
-			value deletes, value adds, value changes) {
+CAMLprim value routes_commit(value rtsock, value deletes, value adds, value changes) {
 	CAMLparam4(rtsock, deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
 	CAMLlocal1(v);
@@ -380,10 +386,7 @@ CAMLprim value routes_commit(value rtsock,
 	Store_field(result, 1, adderrs);
 	Store_field(result, 2, cherrs);
 #else
-	result = alloc_tuple(3);
-	Store_field(result, 0, alloc_tuple(0));
-	Store_field(result, 1, alloc_tuple(0));
-	Store_field(result, 2, alloc_tuple(0));
+	assert(0);
 #endif
 	CAMLreturn(result);
 }
@@ -557,6 +560,8 @@ CAMLprim value get_arp_entries(value unit) {
 		}
 		free(buf);
 	}
+#else
+	assert(0);
 #endif
 
 	CAMLreturn(result);
@@ -569,9 +574,10 @@ CAMLprim value get_associated_stations(value iface) {
 	struct ifreq ifr;
 	int sockfd, i;
 #else
-	result = alloc_tuple(0);
+	assert(0);
 #endif
 #if defined(HAVE_NET80211_IEEE80211_H)
+	/* FreeBSD 5.4 */
 	int n;
 	struct wi_req wir;
 	struct wi_apinfo *s;
@@ -603,6 +609,7 @@ CAMLprim value get_associated_stations(value iface) {
 	}
 	close(sockfd);
 #elif defined(HAVE_NET_IF_IEEE80211_H)
+	/* FreeBSD 5.0 */
 	struct hostap_getall    reqall;
 	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
 
@@ -801,34 +808,34 @@ static int unpack_bandwidth(int x) {
  * six bits encoding the number of children the node has, and twenty
  * bits encoding the IP address.
  */
-static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary) {
+static CAMLprim value tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary, unsigned char **outbuffer) {
 	CAMLparam1(node);
 	CAMLlocal1(t);
 	int i, numchildren;
 
-	if (buffer >= boundary)
-	  return NULL;
+	if (buffer < boundary) {
+		numchildren = 0;
+		for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1))
+		  numchildren++;
+		/* stick the bandwidth in the upper six bits */
+		i = pack_bandwidth(Long_val(Field(node, 1))) << 26;
+		/* put the number of children in next six bits */
+		i |= numchildren << 20;
+		/* mask out the 20 relevant bits and or it in */
+		i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
+		/* that's all for this node. store it. */
+		*(int *)buffer = htonl(i);
+		buffer += sizeof(int);
 
-	numchildren = 0;
-	for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1))
-	  numchildren++;
-	/* stick the bandwidth in the upper six bits */
-	i = pack_bandwidth(Long_val(Field(node, 1))) << 26;
-	/* put the number of children in the lower six of the upper twelve bits */
-	i |= numchildren << 20;
-	/* mask out the 20 relevant bits and or it in */
-	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
-	/* that's all for this node. store it. */
-	*(int *)buffer = htonl(i);
-	buffer += sizeof(int);
-
-	/* and recurse into the children */
-	for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1)) {
-		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
-		if (buffer == NULL)
-		  failwith("Ouch in tree_to_string_rec!");
+		/* and recurse into the children */
+		for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
+			tree_to_string_rec(Field(t, 0), buffer, boundary, &buffer);
+			if (buffer == NULL)
+			  failwith("Ouch in tree_to_string_rec!");
+		}
 	}
-	CAMLreturn(buffer);
+	*outbuffer = buffer;
+	CAMLreturn(Val_unit);
 }
 
 CAMLprim value tree_to_string(value node) {
@@ -837,7 +844,7 @@ CAMLprim value tree_to_string(value node) {
 	unsigned char *buffer, *t;
 
 	buffer = malloc(65536);
-	t = tree_to_string_rec(node, buffer, buffer + 65536);
+	tree_to_string_rec(node, buffer, buffer + 65536, &t);
 	result = alloc_string(t - buffer);
 	memcpy(String_val(result), buffer, t - buffer);
 	free(buffer);
@@ -845,19 +852,18 @@ CAMLprim value tree_to_string(value node) {
 }
 
 /*
- * Unpack the data at the given pointer-to-pointer into either an
- * edge to a node or that node without the edge. Take care not to
- * overrun the limit pointer.
+ * This is the converse of tree_to_string_rec(). Unpack the packed-together
+ * number of children and node address. It reads slightly more difficult
+ * because there's high-level data structures to be created and filled.
  *
- * The need for the caller to pass in what it wants the result to be
- * is purely practical. The unpacking of the top node and the non-top
- * nodes differ only in that unpacking a non-top node will also
- * produce an edge. Other than that, it's completely the same.
+ * NOTE: the upper six bits are reserved and not relevant to this branch of
+ * the code. They are explicitly ignored here in order not to trip up if
+ * there's anything there.
  */
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
-	CAMLlocal5(a, node, children, cell, t);
+	CAMLlocal5(a, node, child, chain, t);
 	unsigned int i;
 
 	if (*pp > limit - sizeof(int))
@@ -871,18 +877,24 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	Field(node, 1) = Val_int(unpack_bandwidth(i >> 26));
 	Field(node, 2) = Val_int(0);
 
+	/* new children get hooked on the second field of chain. by luck,
+	 * the list itself is in the second field of node, so chain can be
+	 * assigned to node. if the node struct changes so the list of
+	 * children is no longer the second field, this must be changed */
+	chain = node;
 	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
-		cell = alloc_small(2, 0);
-		Field(cell, 0) = Val_unit;
-		Field(cell, 1) = Val_int(0);
-		modify(&Field(cell, 0), string_to_tree_rec(pp, limit));
-		if (Field(node, 2) == Val_int(0))
-		  modify(&Field(node, 2), cell);
-		else {
-			for (t = Field(node, 2); Field(t, 1) != Val_int(0); t = Field(t, 1))
-			  /* nothing */;
-			modify(&Field(t, 1), cell);
-		}
+		child = alloc_small(2, 0);
+		/*
+		 * The rules say alloc_small()ed stuff needs to be initialized
+		 * before the next allocation or the GC may crash. Put a bogus
+		 * value in field 0 and modify() it below after the recursive
+		 * call comes back.
+		 */
+		Field(child, 0) = Val_unit;
+		Field(child, 1) = Val_int(0);
+		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
+		modify(&Field(chain, 1), child);
+		chain = child;
 	}
 	CAMLreturn(node);
 }
@@ -1010,7 +1022,7 @@ CAMLprim value read_routemsg(value fd) {
 	}
 	free(buffer);
 #else
-	res = Val_int(0);
+	assert(0);
 #endif
 	CAMLreturn(res);
 }
@@ -1034,8 +1046,8 @@ static int ether_subtype_to_bandwidth(int i) {
 		case IFM_1000_T: return 1000;
 		case IFM_HPNA_1: return 1;
 #if __FreeBSD_version > 503000
-		case IFM_10GBASE_SR: return 10000;
-		case IFM_10GBASE_LR: return 10000;
+		case IFM_10G_SR: return 10000;
+		case IFM_10G_LR: return 10000;
 #endif
 		default:
 			failwith("unknown ethernet subtype!");

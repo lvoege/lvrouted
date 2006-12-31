@@ -105,7 +105,7 @@ let merge nodes		(* the list of nodes to merge *)
 	(* step 1 *)
 	let routes = IPHash.create 512 in
 	List.iter (fun (a, _) -> IPHash.add routes a a) directnets;
-	(* step 2.*)
+	(* step 2 *)
 	let fake = make_direct Unix.inet_addr_any in
 	(* step 3 *)
 	let routes = IPHash.create 512 in
@@ -148,14 +148,10 @@ let merge nodes		(* the list of nodes to merge *)
 			FloatQueue.empty nodes in
 	traverse todo;
 	(* step 4 *)
-	IPHash.iter (fun a (gw, _, _) ->
+	IPHash.iter (fun a _ ->
 		if List.exists (fun (a', n) ->
 			LowLevel.route_includes_impl a' n a 32) directnets then
 		  IPHash.remove routes a) routes;
-	(* check that we didn't lose any addresses in the merge *)
-	assert (IPSet.subset (enumerate nodes)
-			     (enumerate fake.nodes));
-
 	fake.nodes, routes
 
 external serialize: node -> string = "tree_to_string"
