@@ -59,15 +59,12 @@ GENERATED = Version.ml
 byte: $(NAME).byte
 opt: $(NAME).opt
 
-$(NAME).byte: $(CMO) lowlevel_c.o $(NAME).ml
+$(NAME).byte: $(CMO) lowlevel_c.o $(NAME).cmo
 	$(OCAMLC) $(BFLAGS) -custom -o $@ $(CMO) $(NAME).cmo lowlevel_c.o
 
-$(NAME).opt: $(CMX) lowlevel_c.c
+$(NAME).opt: $(CMX) lowlevel_c.c $(NAME).cmx
 	$(CC) -O2 -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
-	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) lowlevel_c.o
-$(NAME).prof: $(SOURCES) lowlevel_c.c
-	$(CC) -O2 -p -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
-	$(OCAMLOPT) $(OFLAGS) -o $@ -p $(SOURCES) lowlevel_c.o
+	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) $(NAME).cmx lowlevel_c.o
 
 $(NAME).prof: $(SOURCES) lowlevel_c.c
 	$(CC) -O2 -p -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
