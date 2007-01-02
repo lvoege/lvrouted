@@ -815,7 +815,7 @@ static CAMLprim value tree_to_string_rec(value node, unsigned char *buffer, unsi
 
 	if (buffer < boundary) {
 		numchildren = 0;
-		for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1))
+		for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1))
 		  numchildren++;
 		/* stick the bandwidth in the upper six bits */
 		i = pack_bandwidth(Long_val(Field(node, 1))) << 26;
@@ -828,7 +828,7 @@ static CAMLprim value tree_to_string_rec(value node, unsigned char *buffer, unsi
 		buffer += sizeof(int);
 
 		/* and recurse into the children */
-		for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
+		for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1)) {
 			tree_to_string_rec(Field(t, 0), buffer, boundary, &buffer);
 			if (buffer == NULL)
 			  failwith("Ouch in tree_to_string_rec!");
@@ -893,7 +893,10 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 		Field(child, 0) = Val_unit;
 		Field(child, 1) = Val_int(0);
 		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
-		modify(&Field(chain, 1), child);
+		if (chain == node)
+		  modify(&Field(node, 2), child);
+		else
+		  modify(&Field(chain, 1), child);
 		chain = child;
 	}
 	CAMLreturn(node);
