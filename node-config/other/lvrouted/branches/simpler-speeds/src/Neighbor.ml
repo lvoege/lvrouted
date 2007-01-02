@@ -152,8 +152,9 @@ let derive_routes_and_mytree directips ns =
 	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
 			             (fun n -> Common.from_some n.tree) 
 				     (Set.elements ns) in
-	Log.log Log.debug ("Number of eligible neighbors: " ^
-			   string_of_int (List.length nodes));
+	let message = List.fold_left (fun s a ->
+			s ^ " " ^ (Unix.string_of_inet_addr (Tree.addr a))) "" nodes in
+	Log.log Log.debug ("Available neighbors:" ^ message);
 	(* Merge the trees into a new tree and an IPMap.t *)
 	let propagate payload n = min payload (Tree.bandwidth n) in
 	let priority payload depth =
@@ -168,7 +169,7 @@ let derive_routes_and_mytree directips ns =
 					  Tree.bandwidth in
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
-		Common.IPHash.fold (fun addr (gw, _, _) ->
+		Common.IPHash.fold (fun addr gw ->
 				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
 	Route.aggregate routeset, nodes'

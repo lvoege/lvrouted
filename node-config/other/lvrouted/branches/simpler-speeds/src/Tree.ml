@@ -119,20 +119,26 @@ let merge nodes		(* the list of nodes to merge *)
 	let routes = IPHash.create 512 in
 	let rec traverse queue =
 		if queue = FloatQueue.empty then ()
-		else	let (_, t, queue') = FloatQueue.extract queue in
-			let depth, node, parent, gw, payload = t in
-			(* copy this node and hook it into the new tree *)
-			let newnode = { node with nodes = [] } in
-			parent.nodes <- newnode::parent.nodes;
-			(* record the route *)
-			IPHash.add routes node.addr (gw, t, newnode);
-			let queue'' = List.fold_left (fun queue n ->
+		else	let (_, (depth, node, parent, gw, payload), queue') =
+					FloatQueue.extract queue in
+			if IPHash.mem routes node.addr then
+			  traverse queue' (* ignore this node *)
+			else begin
+				(* copy this node and hook it into the new tree *)
+				let newnode = { node with nodes = [] } in
+				parent.nodes <- newnode::parent.nodes;
+				(* push the children on the queue *)
+				let queue'' = List.fold_left (fun queue n ->
 					let payload' = propagate payload n in
 					let c = (depth + 1, n, newnode, gw, payload') in
 					let prio = priority payload' (depth + 1) in
 					FloatQueue.insert queue prio c)
 						queue' node.nodes in
-			traverse queue'' in
+				(* record the route *)
+				IPHash.add routes node.addr gw;
+				(* and continue traversing *)
+				traverse queue''
+			end in
 	(* step 3: initialize the priority queue *)
 	let todo = List.fold_left (fun queue n ->
 		let payload = init_payload n in
