@@ -48,6 +48,14 @@ let rec enumerate ns =
 		let set' = IPSet.add n.addr set in
 		IPSet.union set' (enumerate n.nodes)) IPSet.empty ns
 
+(*
+let print_stuff depth node parent gw payload priority =
+	let s = Unix.string_of_inet_addr (addr node) ^ ", depth=" ^
+	string_of_int depth ^ ", parent=" ^ Unix.string_of_inet_addr (addr parent) ^
+	", priority=" ^ (string_of_float (priority payload depth)) in
+	s
+*)
+
 (* Given:
 	- a list of spanning trees received from neighbors
 	- a set of our own addresses
@@ -113,30 +121,15 @@ let merge nodes		(* the list of nodes to merge *)
 		if queue = FloatQueue.empty then ()
 		else	let (_, t, queue') = FloatQueue.extract queue in
 			let depth, node, parent, gw, payload = t in
-			let gw, depth, parent, payload, newnode = try
-				(* this'll break to the Not_found handler
-				   below if we haven't come across this
-				   address before *)
-				let t' = IPHash.find routes node.addr in
-				(* so if we're here the address has been seen
-				   before. fetch the necessary information
-				   from the routing table and let that
-				   determine how to proceed instead of what
-				   we got from the priority queue *)
-				let (gw, (depth, _, parent, _, payload), newnode) = t' in
-				gw, depth, parent, payload, newnode
-			with Not_found -> begin
-				(* copy this node and hook it into the new tree *)
-				let newnode = { node with nodes = [] } in
-				parent.nodes <- newnode::parent.nodes;
-				(* record the route *)
-				IPHash.add routes node.addr (gw, t, newnode);
-				gw, depth, parent, payload, newnode
-			end in
+			(* copy this node and hook it into the new tree *)
+			let newnode = { node with nodes = [] } in
+			parent.nodes <- newnode::parent.nodes;
+			(* record the route *)
+			IPHash.add routes node.addr (gw, t, newnode);
 			let queue'' = List.fold_left (fun queue n ->
 					let payload' = propagate payload n in
 					let c = (depth + 1, n, newnode, gw, payload') in
-					let prio = priority payload' depth in
+					let prio = priority payload' (depth + 1) in
 					FloatQueue.insert queue prio c)
 						queue' node.nodes in
 			traverse queue'' in
@@ -144,7 +137,7 @@ let merge nodes		(* the list of nodes to merge *)
 	let todo = List.fold_left (fun queue n ->
 		let payload = init_payload n in
 		let c = 1, n, fake, n.addr, payload in
-		FloatQueue.insert queue (priority payload 0) c)
+		FloatQueue.insert queue (priority payload 1) c)
 			FloatQueue.empty nodes in
 	traverse todo;
 	(* step 4 *)
