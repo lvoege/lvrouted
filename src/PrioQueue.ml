@@ -19,7 +19,7 @@ module Make(P: Set.OrderedType) = struct
 		| Node (prio, elt, Empty, right) -> right
 		| Node (prio, elt, (Node (lprio, lelt, _, _) as left),
 		                  (Node (rprio, relt, _, _) as right)) ->
-			if lprio <= rprio then
+			if lprio > rprio then
 				Node (lprio, lelt, remove_top left, right)
 			else
 				Node (rprio, relt, left, remove_top right)
