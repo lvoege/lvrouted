@@ -161,24 +161,23 @@ let derive_routes_and_mytree directips ns =
 	Log.log Log.debug ("Available neighbors:" ^ message);
 	(* Merge the trees into a new tree and an IPMap.t *)
 	let propagate payload n =
-		(* If the payload is -1, then somewhere along the path from
-		   this node to the root there has been a link with bandwidth
-		   1 or 2. This means a very crappy link, so we want to avoid
-		   this route if at all possible. Propagate the negative
-		   score. *)
-		if payload = -1 then -1
-		else match Tree.bandwidth n with
-			| 1	-> -1
-			| 2	-> -1
-			| bw	-> payload + bw in
+		let score, depth = payload in
+		if score = -1 then (-1, depth)	(* path with bad link *)
+		else let bw = Tree.bandwidth n in
+		     if bw == 1 || bw == 2 then (-1, depth) (* bad link *)
+		     else if bw > 54 then payload (* "free" jump! *)
+		     else (score + bw, depth + 1) in
 	let priority payload depth =
-		(float_of_int payload) /. (float_of_int (depth + 1)) in 
+		let score, depth' = payload in
+		if score == -1 then -1.0
+		else (float_of_int score) /. (float_of_int depth') in
+	let init_payload n = (Tree.bandwidth n, 1) in
 	Log.log Log.debug ("Merging");
 	let nodes', routemap = Tree.merge nodes
 					  directips
 					  propagate
 					  priority
-					  Tree.bandwidth in
+					  init_payload in
 	Log.log Log.debug ("Merged");
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
