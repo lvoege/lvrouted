@@ -5,7 +5,7 @@ import re
 import string
 import sys
 
-linere = re.compile("^(\t*)([0-9.]+)$")
+linere = re.compile("^(\t*)([0-9.]+) @ ([0-9]+)$")
 
 def do_line(line):
 	match = linere.match(line)
@@ -14,26 +14,27 @@ def do_line(line):
 	else:
 		numtabs = 0
 	addr = match.group(2)
-	return addr, numtabs
+	bandwidth = int(match.group(3))
+	return addr, bandwidth, numtabs
 
 def do_node(lines):
-	addr, numtabs = do_line(lines[0][:-1])
+	addr, bw, numtabs = do_line(lines[0][:-1])
 	children = []
 	lines = lines[1:]
 
 	if lines != []:
-		n_numtabs = do_line(lines[0][:-1])[1]
+		n_numtabs = do_line(lines[0][:-1])[2]
 		while lines != [] and n_numtabs > numtabs:
 			child, lines = do_node(lines)
 			children.append(child)
 			if lines != []:
-				n_numtabs = do_line(lines[0][:-1])[1]
-	node = addr, children
+				n_numtabs = do_line(lines[0][:-1])[2]
+	node = addr, bw, children
 	return node, lines
 
 def serialize(node):
-	return "(Tree.make (Unix.inet_addr_of_string \"%s\") [%s])" % \
-			(node[0], "; ".join(map(lambda n: serialize(n), node[1])))
+	return "(Tree.make (Unix.inet_addr_of_string \"%s\") %d [%s])" % \
+			(node[0], node[1], "; ".join(map(lambda n: serialize(n), node[2])))
 
 node, lines = do_node(open(sys.argv[1]).readlines())
 print serialize(node)
