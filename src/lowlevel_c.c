@@ -1101,27 +1101,35 @@ static int wifi_subtype_to_bandwidth(int i) {
 CAMLprim value caml_ifstatus(value iname) {
 #ifdef __FreeBSD__
 	CAMLparam1(iname);
-	int i[2];
 	CAMLlocal1(res);
+	int i[2];
+	const char *name;
 
-	ifstatus(String_val(iname), i);
-	if ((i[0] & IFM_AVALID) == 0)
-	  failwith("Invalid interface");
-	switch (IFM_TYPE(i[1])) {
-		case IFM_ETHER:
-			res = alloc_small(1, 0);
-			Field(res, 0) = Val_int(ether_subtype_to_bandwidth(i[1]));
-			break;
-		case IFM_IEEE80211:
-			if (i[1] & IFM_IEEE80211_HOSTAP)
-			  res = Val_int(0);
-			else {
-				res = alloc_small(1, 1);
-				Field(res, 0) = Val_int(wifi_subtype_to_bandwidth(i[1]));
-			}
-			break;
-		default:
-			failwith("Unknown media type");
+	name = String_val(iname);
+	if (name[0] == 'l' && name[1] == 'o') {
+		/* lame! */
+		res = alloc_small(1, 0);
+		Field(res, 0) = Val_int(10000);
+	} {
+		ifstatus(name, i);
+		if ((i[0] & IFM_AVALID) == 0)
+		  failwith("Invalid interface");
+		switch (IFM_TYPE(i[1])) {
+			case IFM_ETHER:
+				res = alloc_small(1, 0);
+				Field(res, 0) = Val_int(ether_subtype_to_bandwidth(i[1]));
+				break;
+			case IFM_IEEE80211:
+				if (i[1] & IFM_IEEE80211_HOSTAP)
+				  res = Val_int(0);
+				else {
+					res = alloc_small(1, 1);
+					Field(res, 0) = Val_int(wifi_subtype_to_bandwidth(i[1]));
+				}
+				break;
+			default:
+				failwith("Unknown media type");
+		}
 	}
 	CAMLreturn(res);
 #else
