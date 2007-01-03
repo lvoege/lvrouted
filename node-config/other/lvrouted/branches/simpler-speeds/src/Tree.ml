@@ -181,7 +181,7 @@ let dump_tree fname nodes =
 	output_string out (show nodes);
 	close_out out
 
-let find_parent node maxdepth addr =
+let find_node node maxdepth addr =
 	let rec traverse node depth =
 		if node.addr = addr then Some node
 		else if depth = maxdepth then None
