@@ -192,18 +192,15 @@ let derive_routes_and_mytree directips ns =
    Point 3 IS CURRENT UNIMPLEMENTED. it's probably some frobbing by scaling
    the amount 54Mbps is over 11Mbps and using the scaled factor, or something.
    *)
-	let init_payload n = (Tree.bandwidth n, 1) in
+	let init_payload = Tree.bandwidth in
 	let propagate payload n =
-		let score, hops = payload in
-		if score = -1 then (-1, hops)	(* path with bad link *)
+		if payload = -1 then -1		(* path with bad link *)
 		else let bw = Tree.bandwidth n in
-		     if bw == 1 || bw == 2 then (-1, hops) (* bad link *)
-		     else if bw > 54 then payload (* "free" jump! *)
-		     else (score + bw, hops + 1) in
+		     if bw == 1 || bw == 2 then -1 (* bad link *)
+		     else payload + bw in
 	let priority payload depth =
-		let score, hops = payload in
-		if score == -1 then -1.0
-		else (float_of_int score) /. (float_of_int (hops * depth)) in
+		if payload == -1 then -1.0
+		else (float_of_int payload) /. (float_of_int (depth * depth)) in
 
 	Log.log Log.debug ("Merging");
 	let nodes', routemap = Tree.merge nodes
