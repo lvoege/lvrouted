@@ -54,7 +54,7 @@ let print_stuff depth node parent gw payload priority =
 	string_of_int depth ^ ", parent=" ^ Unix.string_of_inet_addr (addr parent) ^
 	", priority=" ^ (string_of_float (priority payload depth)) in
 	s
-*)
+	*)
 
 (* Given:
 	- a list of spanning trees received from neighbors
@@ -121,6 +121,10 @@ let merge nodes		(* the list of nodes to merge *)
 		if queue = FloatQueue.empty then ()
 		else	let (_, (depth, node, parent, gw, payload), queue') =
 					FloatQueue.extract queue in
+(*
+			print_string ("popped " ^ print_stuff depth node parent gw payload priority);
+			print_newline();
+*)
 			if IPHash.mem routes node.addr then
 			  traverse queue' (* ignore this node *)
 			else begin
@@ -131,6 +135,10 @@ let merge nodes		(* the list of nodes to merge *)
 				let queue'' = List.fold_left (fun queue n ->
 					let payload' = propagate payload n in
 					let c = (depth + 1, n, newnode, gw, payload') in
+(*
+					print_string ("pushed " ^ print_stuff (depth + 1) newnode n gw payload' priority);
+					print_newline();
+*)
 					let prio = priority payload' (depth + 1) in
 					FloatQueue.insert queue prio c)
 						queue' node.nodes in
@@ -143,6 +151,10 @@ let merge nodes		(* the list of nodes to merge *)
 	let todo = List.fold_left (fun queue n ->
 		let payload = init_payload n in
 		let c = 1, n, fake, n.addr, payload in
+(*
+		print_string ("pushed " ^ print_stuff (1) n fake n.addr payload priority);
+		print_newline();
+*)
 		FloatQueue.insert queue (priority payload 1) c)
 			FloatQueue.empty nodes in
 	traverse todo;
