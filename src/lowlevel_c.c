@@ -1113,8 +1113,12 @@ CAMLprim value caml_ifstatus(value iname) {
 			Field(res, 0) = Val_int(ether_subtype_to_bandwidth(i[1]));
 			break;
 		case IFM_IEEE80211:
-			res = alloc_small(1, 1);
-			Field(res, 0) = Val_int(wifi_subtype_to_bandwidth(i[1]));
+			if (i[1] & IFM_IEEE80211_HOSTAP)
+			  res = Val_int(0);
+			else {
+				res = alloc_small(1, 1);
+				Field(res, 0) = Val_int(wifi_subtype_to_bandwidth(i[1]));
+			}
 			break;
 		default:
 			failwith("Unknown media type");
