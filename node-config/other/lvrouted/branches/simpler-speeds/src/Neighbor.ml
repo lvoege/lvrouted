@@ -160,12 +160,19 @@ let derive_routes_and_mytree directips ns =
 			s ^ " " ^ (Unix.string_of_inet_addr (Tree.addr a))) "" nodes in
 	Log.log Log.debug ("Available neighbors:" ^ message);
 	(* Merge the trees into a new tree and an IPMap.t *)
-	let propagate payload n = min payload (Tree.bandwidth n) in
+	let propagate payload n =
+		(* If the payload is -1, then somewhere along the path from
+		   this node to the root there has been a link with bandwidth
+		   1 or 2. This means a very crappy link, so we want to avoid
+		   this route if at all possible. Propagate the negative
+		   score. *)
+		if payload = -1 then -1
+		else match Tree.bandwidth n with
+			| 1	-> -1
+			| 2	-> -1
+			| bw	-> payload + bw in
 	let priority payload depth =
-		(* payload is an integer with the minimum Mbps on the path to
-		   the node we're asked to give a priority for *)
-		let f = if payload > 22 then 54.0 else 11.0 in
-		f /. (float_of_int (depth + 1)) in 
+		(float_of_int payload) /. (float_of_int (depth + 1)) in 
 	Log.log Log.debug ("Merging");
 	let nodes', routemap = Tree.merge nodes
 					  directips
