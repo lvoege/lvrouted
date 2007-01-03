@@ -197,10 +197,11 @@ let derive_routes_and_mytree directips ns =
 		if payload = -1 then -1		(* path with bad link *)
 		else let bw = Tree.bandwidth n in
 		     if bw == 1 || bw == 2 then -1 (* bad link *)
+		     else if bw > 100 then payload + 100 (* future-proof cap *)
 		     else payload + bw in
 	let priority payload depth =
 		if payload == -1 then -1.0
-		else (float_of_int payload) /. (float_of_int (depth * depth)) in
+		else (float_of_int payload) /. (float_of_int (depth * depth * depth * depth)) in
 
 	Log.log Log.debug ("Merging");
 	let nodes', routemap = Tree.merge nodes
