@@ -1031,6 +1031,10 @@ CAMLprim value read_routemsg(value fd) {
 }
 
 #ifdef __FreeBSD__
+
+/* NOTE: FreeBSD 6.1 seems to have gained ifmedia_baudrate(), which does this
+ * mapping. a TODO is to use that when we have no nodes older than 6.1
+ */
 static int ether_subtype_to_bandwidth(int i) {
 	switch (IFM_SUBTYPE(i)) {
 		case IFM_10_T: return 10;
@@ -1048,10 +1052,6 @@ static int ether_subtype_to_bandwidth(int i) {
 		case IFM_1000_CX: return 1000;
 		case IFM_1000_T: return 1000;
 		case IFM_HPNA_1: return 1;
-#if __FreeBSD_version > 503000
-		case IFM_10G_SR: return 10000;
-		case IFM_10G_LR: return 10000;
-#endif
 		default:
 			failwith("unknown ethernet subtype!");
 	}
