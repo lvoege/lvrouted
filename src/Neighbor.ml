@@ -110,9 +110,13 @@ let handle_data ns s sockaddr =
 		if Iface.itype (Common.from_some n.iface) = Iface.WIFI_MASTER then begin
 			(* Look for an edge to us in the new tree and copy the
 			   bandwidth field. This edge is at depth 2. *)
-			match Tree.find_parent node 2 n.myaddr with
+			match Tree.find_node node 2 n.myaddr with
 			| None -> Log.log Log.debug ("Couldn't find myself!")
-			| Some myself -> n.bandwidth <- Tree.bandwidth myself
+			| Some myself ->
+				Log.log Log.debug ("\tBandwidth: " ^ string_of_int (Tree.bandwidth myself));
+				n.bandwidth <- Tree.bandwidth myself
+		end else begin
+		  Log.log Log.debug ("\tNot a master");
 		end;
 
 		let node = Tree.node_with_bandwidth node n.bandwidth in
@@ -162,16 +166,19 @@ let derive_routes_and_mytree directips ns =
 		   the node we're asked to give a priority for *)
 		let f = if payload > 22 then 54.0 else 11.0 in
 		f /. (float_of_int (depth + 1)) in 
+	Log.log Log.debug ("Merging");
 	let nodes', routemap = Tree.merge nodes
 					  directips
 					  propagate
 					  priority
 					  Tree.bandwidth in
+	Log.log Log.debug ("Merged");
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
 		Common.IPHash.fold (fun addr gw ->
 				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
+	Log.log Log.debug ("Made routeset");
 	Route.aggregate routeset, nodes'
 
 (* Check if the given neighbor is reachable over the given Iface.t. If it
