@@ -1,8 +1,4 @@
-You need to have autoconf, ocaml and ocamlfind installed. Beware that ocaml
-versions prior to 3.08-CVS have a small memory leak that will slowly but
-surely grow the process. For us, a 64MB soekris machine with twelve neighbors
-would last about two weeks before memory got tight. Either arrange to restart
-the daemon before then, or use a later version of the ocaml compiler.
+You need to have autoconf, ocaml and ocamlfind installed. 
 
 Then just:
 
