@@ -142,8 +142,10 @@ CAMLprim value caml_iface_is_associated(value iface) {
 }
 
 static inline in_addr_t get_addr(value addr) {
+#if 0
 	if (string_length(addr) != 4)
 	  failwith("I only support IPv4 for now");
+#endif
 	return ntohl(((struct in_addr *)(String_val(addr)))->s_addr);
 }
 
