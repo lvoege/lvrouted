@@ -50,7 +50,7 @@ all: $(OCAMLBEST) $(NAME).opt
 ######################################
 
 SOURCES = Version.ml LowLevel.ml Common.ml Log.ml Route.ml MAC.ml Tree.ml \
-	Iface.ml Neighbor.ml $(NAME).ml
+	Iface.ml Neighbor.ml
 CMO = $(SOURCES:.ml=.cmo)
 CMX = $(SOURCES:.ml=.cmx)
 
@@ -62,12 +62,15 @@ opt: $(NAME).opt
 $(NAME).byte: $(CMO) lowlevel_c.o
 	$(OCAMLC) $(BFLAGS) -custom -o $@ $(CMO) lowlevel_c.o
 
-$(NAME).opt: $(CMX) lowlevel_c.c
+$(NAME).opt: $(CMX) lvrouted.cmx lowlevel_c.c
 	$(CC) -O2 -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
-	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) lowlevel_c.o
+	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) lvrouted.cmx lowlevel_c.o
 $(NAME).prof: $(SOURCES) lowlevel_c.c
 	$(CC) -O2 -p -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
 	$(OCAMLOPT) $(OFLAGS) -o $@ -p $(SOURCES) lowlevel_c.o
+
+test.opt: test.ml $(CMX) lowlevel_c.o
+	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) test.ml lowlevel_c.o
 
 Version.ml:
 	../tools/version.sh
