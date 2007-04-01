@@ -325,8 +325,13 @@ let _ =
 						(String.length s) [] in
 			logfrom sockaddr;
 			try
+				let s' = String.sub s 0 len in
+				let out = open_out (!Common.tmpdir ^ "lvrouted.packet-" ^ 
+					Unix.string_of_inet_addr (Common.get_addr_from_sockaddr sockaddr)) in
+				output_string out s';
+				close_out out;
 				Neighbor.handle_data !neighbors
-						     (String.sub s 0 len)
+						     s'
 						     sockaddr;
 				Log.log Log.debug ("data handled");
 			with InvalidPacket ->
