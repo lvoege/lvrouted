@@ -104,9 +104,9 @@ let diff oldroutes newroutes =
 	let adds = Set.diff newroutes oldroutes in
 
 	let oldmap = Set.fold (fun r -> IPMap.add r.addr r)
-		     oldroutes IPMap.empty in
+                              oldroutes IPMap.empty in
 	let newmap = Set.fold (fun r -> IPMap.add r.addr r)
-		     newroutes IPMap.empty in
+                              newroutes IPMap.empty in
 	let isect = Set.inter oldroutes newroutes in
 	let changes = Set.fold (fun r set ->
 			let old_r = IPMap.find r.addr oldmap in

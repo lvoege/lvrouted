@@ -149,8 +149,15 @@ let nuke_old_trees ns numsecs =
 		n.tree <- None) expired;
 	not (Set.is_empty expired)
 
+(* FIXME, propagate link type instead *)
+let score_offset bandwidth = 
+	if bandwidth = 10 then 85
+	else if bandwidth < 11 then 308
+	else if bandwidth < 54 then 114
+	else 76
+
 (* From the given set of direct IPs and list of neighbors, derive a list of
-   (unaggregated) routes and a merged tree. *)
+   routes and a merged tree. *)
 let derive_routes_and_mytree directips ns = 
 	(* Fetch all valid trees from the neighbors *)
 	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
@@ -161,47 +168,12 @@ let derive_routes_and_mytree directips ns =
 	Log.log Log.debug ("Available neighbors:" ^ message);
 	(* Merge the trees into a new tree and an IPMap.t *)
 
-(* To calculate a priority for a node we need to propagate some stuff through
-   the tree. There are a couple of points that come into play:
-
-   1) link bandwidths should influence the priority. it is better to route
-      over fast (.11a) links than it is to route over slow (.11b) links, both
-      for capacity and quality reasons.
-   2) longer paths are worse than shorter paths, unless compensated enough by
-      average bandwidth
-   3) it follows that there is some number of .11a links that equal one .11b
-      link as far as attractiveness goes. for example, we may say that a path
-      with three 54MBps links is more attractive than one 11Mbps link, but
-      that a path with four 54MBps links is /not/ more attractive than one
-      11MBps link.
-   4) ethernet is free as far as we're concerned here.
-   5) bad links are to be avoided. use only when no other choice.
-
-   Now the priority function gets the real depth of a node passed in. To
-   implement 4), we propagate one of our own which we don't increment for
-   ethernet links. We propagate the sum of the passed-in bandwidths and 
-   use the real depth to calculate the average.
-   
-   Higher average bandwidth is good. Higher depth is not. So a good first stab
-   is to divide the two, implementing points 1) and 2).
-
-   Point 5 is implemented by propagating a negative score for paths with a bad
-   link on them. This currently does not care about which link is less bad
-   than another.
-   
-   Point 3 IS CURRENT UNIMPLEMENTED. it's probably some frobbing by scaling
-   the amount 54Mbps is over 11Mbps and using the scaled factor, or something.
-   *)
 	let init_payload = Tree.bandwidth in
 	let propagate payload n =
 		if payload = -1 then -1		(* path with bad link *)
-		else let bw = Tree.bandwidth n in
-		     if bw == 1 || bw == 2 then -1 (* bad link *)
-		     else if bw > 100 then payload + 100 (* future-proof cap *)
-		     else payload + bw in
-	let priority payload depth =
-		if payload == -1 then -1.0
-		else (float_of_int payload) /. (float_of_int (depth * depth * depth * depth)) in
+		else let cost = 1000 / (Tree.bandwidth n) + (score_offset (Tree.bandwidth n)) in
+		     payload + cost in
+	let priority payload depth = float_of_int payload in
 
 	Log.log Log.debug ("Merging");
 	let nodes', routemap = Tree.merge nodes
