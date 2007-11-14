@@ -35,37 +35,17 @@
 AC_INIT(src/lvrouted.ml)
 
 # Check for Ocaml compilers
-
-# we first look for ocamlc in the path; if not present, we fail
-AC_CHECK_PROG(OCAMLC,ocamlc,ocamlc,no)
-if test "$OCAMLC" = no ; then
-	AC_MSG_ERROR(Cannot find ocamlc.)
-fi
-
-# we extract Ocaml version number and library path
-OCAMLVERSION=`$OCAMLC -v | sed -n -e 's|.*version *\(.*\)$|\1|p' `
-echo "ocaml version is $OCAMLVERSION"
-OCAMLLIB=`$OCAMLC -v | tail -1 | cut -f 4 -d " "`
-echo "ocaml library path is $OCAMLLIB"
-
 # then we look for ocamlopt; if not present, we issue a warning
 # if the version is not the same, we also discard it
 # we set OCAMLBEST to "opt" or "byte", whether ocamlopt is available or not
 AC_CHECK_PROG(OCAMLOPT,ocamlopt,ocamlopt,no)
-OCAMLBEST=byte
 if test "$OCAMLOPT" = no ; then
-	AC_MSG_WARN(Cannot find ocamlopt; bytecode compilation only.)
-else
-	AC_MSG_CHECKING(ocamlopt version)
-	TMPVERSION=`$OCAMLOPT -v | sed -n -e 's|.*version *\(.*\)$|\1|p' `
-	if test "$TMPVERSION" != "$OCAMLVERSION" ; then
-	    AC_MSG_RESULT(differs from ocamlc; ocamlopt discarded.)
-	    OCAMLOPT=no
-	else
-	    AC_MSG_RESULT(ok)
-	    OCAMLBEST=opt
-	fi
+	AC_MSG_ERROR(Cannot find ocamlopt.)
 fi
+OCAMLVERSION=`$OCAMLOPT -v | sed -n -e 's|.*version *\(.*\)$|\1|p' `
+echo "ocaml version is $OCAMLVERSION"
+OCAMLLIB=`$OCAMLOPT -v | tail -1 | cut -f 4 -d " "`
+echo "ocaml library path is $OCAMLLIB"
 
 AC_CHECK_PROG(OCAMLDEP,ocamldep,ocamldep,no)
 if test "$OCAMLDEP" = no ; then
