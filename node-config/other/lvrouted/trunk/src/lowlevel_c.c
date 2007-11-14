@@ -107,32 +107,49 @@ CAMLprim value int_of_file_descr(value file_descr) {
 	return file_descr;
 }
 
-/* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
-static inline int iface_is_associated(const char *iface) {
-#ifndef HAVE_DEV_WI_IF_WAVELAN_IEEE_H
-	assert(0);
-#else
-	struct ifreq ifr;
-	int sockfd;
-	struct wi_req wir;
+#ifdef __FreeBSD__
+/* stuff ifm_status in ints[0] and ifm_active in ints[1] */
+static void ifstatus(const char *iface, int *ints) {
+	struct ifmediareq ifmr;
+	int *media_list, sockfd;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
-	  failwith("socket for iface_is_associated");
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
-	ifr.ifr_data = (caddr_t)&wir;
+	  failwith("socket for get_associated_stations");
 
-	memset(&wir, 0, sizeof(wir));
-	wir.wi_len = WI_MAX_DATALEN;
-	wir.wi_type = WI_RID_CURRENT_SSID;
+	memset(&ifmr, 0, sizeof(ifmr));
+	strncpy(ifmr.ifm_name, iface, sizeof(ifmr.ifm_name));
 
-	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1) {
-		close(sockfd);
-		failwith("SIOCGWAVELAN");
-	}
+	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0)
+	  failwith("Interface doesn't support SIOC{G,S}IFMEDIA.");
+	if (ifmr.ifm_count == 0)
+	  failwith("huh, no media types?");
+
+	media_list = malloc(ifmr.ifm_count * sizeof(int));
+	if (media_list == NULL)
+	  failwith("malloc");
+	ifmr.ifm_ulist = media_list;
+
+	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0)
+	  failwith("SIOCGIFMEDIA");
+
 	close(sockfd);
-	return wir.wi_val[0];
+	free(media_list);
+
+	ints[0] = ifmr.ifm_status;
+	ints[1] = ifmr.ifm_active;
+}
+#endif
+
+/* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
+static inline int iface_is_associated(const char *iface) {
+#ifdef __FreeBSD__
+	int i[2];
+	ifstatus(iface, i);
+	return (i[0] & IFM_AVALID) &&
+	       ((IFM_TYPE(i[1]) != IFM_IEEE80211 || i[0] & IFM_ACTIVE));
+#else
+	assert(0);
 #endif
 }
 
@@ -179,7 +196,8 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 CAMLprim value string_compress(value s) {
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code, buflen;
+	int code;
+	unsigned int buflen;
 	char *buffer;
 
 	buffer = 0;
@@ -211,7 +229,8 @@ CAMLprim value string_compress(value s) {
 CAMLprim value string_decompress(value s) {
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code, buflen;
+	int code;
+	unsigned int buflen;
 	char *buffer;
 
 	buffer = 0;
@@ -434,7 +453,7 @@ CAMLprim value caml_getifaddrs(value unit) {
 			a = ((struct sockaddr_in *)ifp->x)->sin_addr.s_addr; \
 			memcpy(String_val(addr), &a, sizeof(in_addr_t)); \
 			option = alloc_small(1, Some_tag); \
-			Store_field(option, 0, addr); \
+			Field(option, 0) = addr; \
 		} else option = None_val; \
 		Store_field(tuple, idx, option);
 		STORE_OPTIONAL_ADDR(ifa_netmask, 3);
@@ -758,8 +777,8 @@ CAMLprim value hexdump_string(value s) {
 
 	len = string_length(s);
 	result = alloc_string(2 * len);
-	sp = String_val(s);
-	rp = String_val(result);
+	sp = (unsigned char *)String_val(s);
+	rp = (unsigned char *)String_val(result);
 	for (i = 0; i < len; i++) {
 #define DIGIT(x) ((x) + ((x) < 10 ? '0' : 'a' - 10))
 		*rp++ = DIGIT(*sp >> 4);
