@@ -554,13 +554,53 @@ CAMLprim value get_associated_stations(value iface) {
 	CAMLparam1(iface);	
 	CAMLlocal2(result, mac);
 #if defined(HAVE_NET80211_IEEE80211_H) || defined(HAVE_NET_IF_IEEE80211_H)
-	struct ifreq ifr;
 	int sockfd, i;
 #else
 	assert(0);
 #endif
 #if defined(HAVE_NET80211_IEEE80211_H)
+#  if defined(IEEE80211_IOC_STA_INFO)
+	/* FreeBSD 6.0 and up (hopefully), swiped from ifconfig */
+	int n;
+	uint8_t buf[24*1024];
+	struct ieee80211req ireq;
+	int len;
+	uint8_t *cp;
+
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd == 0)
+	  failwith("socket for get_associated_stations");
+	memset(&ireq, 0, sizeof(ireq));
+	strncpy(ireq.i_name, "wi0", sizeof(ireq.i_name));
+	ireq.i_type = IEEE80211_IOC_STA_INFO;
+	ireq.i_data = buf;
+	ireq.i_len = sizeof(buf);
+	if (ioctl(sockfd, SIOCG80211, &ireq) < 0)
+	  failwith("SIOCG80211");
+	len = ireq.i_len;
+
+	for (n = 0, cp = buf; len >= sizeof(struct ieee80211req_sta_info); n++) {
+		struct ieee80211req_sta_info *si;
+		si = (struct ieee80211req_sta_info *) cp;
+		cp += si->isi_len, len -= si->isi_len;
+	}
+	result = alloc_tuple(n);
+
+	len = ireq.i_len;
+	for (i = 0, cp = buf; len >= sizeof(struct ieee80211req_sta_info); i++) {
+		struct ieee80211req_sta_info *si;
+
+		si = (struct ieee80211req_sta_info *) cp;
+		mac = alloc_string(ETHER_ADDR_LEN);
+		memcpy(String_val(mac), si->isi_macaddr, ETHER_ADDR_LEN);
+		Store_field(result, i, mac);
+
+		cp += si->isi_len, len -= si->isi_len;
+	}
+	close(sockfd);
+#  else
 	/* FreeBSD 5.4 */
+	struct ifreq ifr;
 	int n;
 	struct wi_req wir;
 	struct wi_apinfo *s;
@@ -591,8 +631,10 @@ CAMLprim value get_associated_stations(value iface) {
 		Store_field(result, i, mac);
 	}
 	close(sockfd);
+#  endif
 #elif defined(HAVE_NET_IF_IEEE80211_H)
 	/* FreeBSD 5.0 */
+	struct ifreq ifr;
 	struct hostap_getall    reqall;
 	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
 
