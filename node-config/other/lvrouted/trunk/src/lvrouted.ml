@@ -184,6 +184,8 @@ let handle_routemsg udpsockfd rtsockfd = function
 
 (* Clear and re-create the current configuration *)
 let read_config _ =
+	Log.reopen_log ();
+
 	direct := [];
 	directnets := [];
 	ifaces := StringMap.empty;

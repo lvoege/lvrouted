@@ -8,6 +8,11 @@ let debug = 4
 let loglevel = ref quiet
 let logfile = ref stderr
 
+let reopen_log () = 
+	if !logfile != stderr then
+	  close_out !logfile;
+	logfile := open_out "/tmp/lvrouted.log"
+
 (* Log the given message with the given loglevel. If the current loglevel is
    higher or equal to the given level, the message is printed to the log. *)
 let log level msg =
