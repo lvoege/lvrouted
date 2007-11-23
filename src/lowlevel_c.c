@@ -827,7 +827,8 @@ CAMLprim value caml_unpack_int(value s) {
  * be pushing our luck.
  */
 static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary) {
-	value t;
+	CAMLparam1(node);
+	CAMLlocal1(t);
 	int i, numchildren;
 
 	if (buffer >= boundary)
@@ -850,7 +851,7 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 		if (buffer == NULL)
 		  failwith("Ouch in tree_to_string_rec!");
 	}
-	return buffer;
+	CAMLreturn(buffer);
 }
 
 CAMLprim value tree_to_string(value node) {
@@ -874,9 +875,10 @@ CAMLprim value tree_to_string(value node) {
  * the code. They are explicitly ignored here in order not to trip up if
  * there's anything there.
  */
-static value string_to_tree_rec(unsigned char **pp,
+static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
-	value a, node, child, chain;
+	CAMLparam0();
+	CAMLlocal4(a, node, child, chain);
 	int i;
 
 	if (*pp > limit - sizeof(int))
@@ -908,7 +910,7 @@ static value string_to_tree_rec(unsigned char **pp,
 		modify(&Field(chain, 1), child);
 		chain = child;
 	}
-	return node;
+	CAMLreturn(node);
 }
 
 /**
