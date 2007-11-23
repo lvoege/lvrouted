@@ -2,11 +2,11 @@
 
 (* Set hard limits on data and coredump size *)
 external set_limits: int -> int -> bool
-  = "set_limits" "noalloc"
+  = "set_limits"
 
 (* For debugging purposes it's handy to be able to print a file descriptor. *)
 external int_of_file_descr: Unix.file_descr -> int
-  = "int_of_file_descr" "noalloc"
+  = "int_of_file_descr"
 
 (* Given an address and a mask length (like, for example, 24), create a
    bitmask and apply it to the address *)
@@ -15,11 +15,11 @@ external mask_addr: Unix.inet_addr -> int -> Unix.inet_addr
 
 (* Return whether or not the given interface is associated *)
 external iface_is_associated: string -> bool
-  = "caml_iface_is_associated" "noalloc"
+  = "caml_iface_is_associated"
 
 (* daemon(3) *)
 external daemon: bool -> bool -> unit
-  = "caml_daemon" "noalloc"
+  = "caml_daemon"
 
 (* bzip2 the given string. NEEDS TESTING. *)
 external string_compress: string -> string
@@ -49,7 +49,7 @@ external getifaddrs: unit -> ( string			(* iface name *)
 
 (* How many bits in the given address are set? *)
 external bits_in_inet_addr: Unix.inet_addr -> int
-  = "bits_in_inet_addr" "noalloc"
+  = "bits_in_inet_addr"
 
 (* strstr(3) *)
 external strstr: string -> string -> int
@@ -115,5 +115,5 @@ external compare_ipv4_addrs: Unix.inet_addr -> Unix.inet_addr -> int
   = "compare_ipv4_addrs"
 
 external route_includes_impl: Unix.inet_addr -> int -> Unix.inet_addr -> int -> bool
-	= "route_includes_impl" "noalloc"
+	= "route_includes_impl"
 
