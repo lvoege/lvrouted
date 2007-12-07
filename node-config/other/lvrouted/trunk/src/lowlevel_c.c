@@ -590,7 +590,7 @@ CAMLprim value get_associated_stations(value iface) {
 	if (sockfd == 0)
 	  failwith("socket for get_associated_stations");
 	memset(&ireq, 0, sizeof(ireq));
-	strncpy(ireq.i_name, "wi0", sizeof(ireq.i_name));
+	strncpy(ireq.i_name, String_val(iface), sizeof(ireq.i_name));
 	ireq.i_type = IEEE80211_IOC_STA_INFO;
 	ireq.i_data = buf;
 	ireq.i_len = sizeof(buf);
@@ -827,8 +827,7 @@ CAMLprim value caml_unpack_int(value s) {
  * be pushing our luck.
  */
 static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary) {
-	CAMLparam1(node);
-	CAMLlocal1(t);
+	value t;
 	int i, numchildren;
 
 	if (buffer >= boundary)
@@ -851,7 +850,7 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 		if (buffer == NULL)
 		  failwith("Ouch in tree_to_string_rec!");
 	}
-	CAMLreturn(buffer);
+	return buffer;
 }
 
 CAMLprim value tree_to_string(value node) {
