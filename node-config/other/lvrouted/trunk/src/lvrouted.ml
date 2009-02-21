@@ -156,7 +156,7 @@ let add_address iface addr mask =
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
 		direct := (Tree.make addr [])::!direct;
 		directnets := (addr, mask)::!directnets;
-		if mask >= Common.interlink_netmask then
+		if mask >= !Common.interlink_netmask then
 		  add_neighbors iface addr mask;
 		true
 	end else false
@@ -176,7 +176,7 @@ let handle_routemsg udpsockfd rtsockfd = function
 					      !direct;
 			directnets := List.filter (fun (a, _) -> a <> addr)
 						  !directnets;
-			if mask >= Common.interlink_netmask then
+			if mask >= !Common.interlink_netmask then
 			  delete_neighbors iface addr mask;
 			broadcast_run udpsockfd rtsockfd
 		end
@@ -255,6 +255,7 @@ let argopts = [
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
+	"-m", Arg.Set_int Common.interlink_netmask, "Widest subnet to consider for interlinks";
 	"-p", Arg.Set_int Common.port, "UDP port to use";
 	(*"-r", Arg.Set resume, "Resume from saved state"; *)
 	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";

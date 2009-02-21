@@ -20,7 +20,7 @@ let compress_data = false
 (* Whether or not to really update the kernel's routing table *)
 let real_route_updates = ref false
 (* the netmask that's just narrow enough to be an interlink subnet.*)
-let interlink_netmask = 28
+let interlink_netmask = ref 28
 (* at least how many seconds between updating interface association information? *)
 let iface_assoc_update = 5.0
 (* How many seconds between updates of the actual arp table in MAC.ml? *)
