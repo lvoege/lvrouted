@@ -16,7 +16,7 @@ Lodewijk Voge
 lodewijk@wirelessleiden.nl / lvoege@gmail.com
 
 FreeBSD ports needed:
--lang/ocaml
+-lang/ocaml-nox11
 -devel/ocaml-findlib
 -devel/autoconf259
 -devel/autoheader259
