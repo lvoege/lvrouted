@@ -38,10 +38,12 @@ AC_INIT(src/lvrouted.ml)
 # then we look for ocamlopt; if not present, we issue a warning
 # if the version is not the same, we also discard it
 # we set OCAMLBEST to "opt" or "byte", whether ocamlopt is available or not
+OCAMLBEST=byte
 AC_CHECK_PROG(OCAMLOPT,ocamlopt,ocamlopt,no)
 if test "$OCAMLOPT" = no ; then
 	AC_MSG_ERROR(Cannot find ocamlopt.)
 fi
+OCAMLBEST=opt
 OCAMLVERSION=`$OCAMLOPT -v | sed -n -e 's|.*version *\(.*\)$|\1|p' `
 echo "ocaml version is $OCAMLVERSION"
 OCAMLLIB=`$OCAMLOPT -v | tail -1 | cut -f 4 -d " "`
@@ -58,6 +60,9 @@ fi
 
 AC_CHECK_PROG(OCAMLWEB,ocamlweb,ocamlweb,true)
 
+# Documentation checks, ignore if not found
+AC_CHECK_PROG(DOT,dot,dot,true)
+AC_CHECK_PROG(PS2PDF,ps2pdf,ps2pdf,true)
 AC_CHECK_PROG(XSLTPROC,xsltproc,xsltproc,true)
 
 # platform
