@@ -1,4 +1,6 @@
 XSLTPROC= @XSLTPROC@
+DOT = @DOT@
+PS2PDF = @PS2PDF@
 XSLTPROC_FLAGS = @XSLTPROC_FLAGS@
 DOCBOOK_ROOT= @DOCBOOK_ROOT@
 XML_CATALOG= @XML_CATALOG@
@@ -9,7 +11,9 @@ lvrouted.html: lvrouted.xml
 	XML_CATALOG_FILES=$(XML_CATALOG) $(XSLTPROC) $(XSLTPROC_FLAGS) xhtml.xsl lvrouted.xml > lvrouted.html || rm lvrouted.html
 
 lvrouted.pdf: lvrouted.ps
-	ps2pdf lvrouted.ps
+	$(PS2PDF) lvrouted.ps
 
 lvrouted.ps: lvrouted.dot
-	dot -Gratio=fill -Gnslimit=50.0 -Gmclimit=50.0 -Grotate=90 -Gsize="11,8" -Tps -o lvrouted.ps lvrouted.dot
+	$(DOT) -Gratio=fill -Gnslimit=50.0 -Gmclimit=50.0 -Grotate=90 -Gsize="11,8" -Tps -o lvrouted.ps lvrouted.dot
+
+install:
