@@ -4,7 +4,8 @@
 # * Subversion Version.ml file outfiled
 
 # Version target
-VERSION=`awk -F= '/let version/ {print $2}' src/Version.ml`
+VERSION_ML="./src/Version.ml"
+VERSION=`awk -F= '/let version/ {print $2}' $VERSION_ML`
 
 TMPDIR=`mktemp -d -t lvrouted`
 
@@ -14,7 +15,7 @@ mkdir $WRKSRC
 cp -R . $WRKSRC
 
 # Fixed version storage
-grep -e '^let version' -e '^let branch' src/Version.ml > $WRKSRC/VERSION
+grep -e '^let version' -e '^let branch' $VERSION_ML > $WRKSRC/VERSION
 
 # Do not build document files on release
 sed 's/^all: lvrouted.html lvrouted.pdf/all:/g' $WRKSRC/Makefile.in > $WRKSRC/Makefile.in.new
@@ -37,4 +38,4 @@ tar --exclude ".svn" --exclude "Makefile" \
   $PKGDIR/tools  \
   $PKGDIR/VERSION
 
-rm -R $TMPDIR
+rm -fR $TMPDIR
