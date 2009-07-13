@@ -6,6 +6,12 @@ install:
 	(cd src; $(MAKE) install)
 	(cd docs; $(MAKE) install)
 
+release: 
+	(cd src; $(MAKE) clean Version.ml)
+	(cd docs; $(MAKE))
+	./tools/release.sh
+
+
 Makefile: Makefile.in src/Makefile.in docs/Makefile.in config.status
 	./config.status
 
