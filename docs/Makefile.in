@@ -17,3 +17,6 @@ lvrouted.ps: lvrouted.dot
 	$(DOT) -Gratio=fill -Gnslimit=50.0 -Gmclimit=50.0 -Grotate=90 -Gsize="11,8" -Tps -o lvrouted.ps lvrouted.dot
 
 install:
+
+clean:
+	rm -f lvrouted.html lvrouted.pdf lvrouted.ps
