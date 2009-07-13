@@ -80,7 +80,8 @@ XSLTPROC_FLAGS=--nonet
 XML_CATALOG=
 for i in /usr/local/share/xml/catalog \
 	 /etc/xml/catalog \
-	 /sw/etc/xml/catalog; do
+	 /sw/etc/xml/catalog \
+   /opt/local/etc/xml/catalog; do
 	if test -f "$i"; then
 		XML_CATALOG=$i
 	fi
@@ -90,7 +91,8 @@ DOCBOOK_ROOT=
 if test ! -n "$XML_CATALOG"; then
 	for i in /usr/share/xml/docbook/stylesheet/nwalsh/ \
 		 /usr/local/share/xsl/docbook/ \
-		 /sw/share/xml/xsl/docbook-xsl; do
+		 /sw/share/xml/xsl/docbook-xsl \
+     /opt/local/share/xsl/docbook-xsl/; do
 		if test -d "$i"; then
 			DOCBOOK_ROOT=$i
 		fi
