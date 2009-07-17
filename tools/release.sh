@@ -24,6 +24,7 @@ mv $WRKSRC/Makefile.in.new $WRKSRC/Makefile.in
 # Make pretty tar file out of it
 tar --exclude ".svn" --exclude "Makefile" \
   --exclude "config.cache"  --exclude "config.log" --exclude "config.status" \
+  --exclude "src/Version.ml" \
   --exclude ".depend" \
   -cvzf lvrouted-$VERSION.tar.gz \
   -C $TMPDIR \
