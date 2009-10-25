@@ -107,6 +107,7 @@ CAMLprim value int_of_file_descr(value file_descr) {
 	return file_descr;
 }
 
+/* reference code: /usr/src/sbin/ifconfig/ifmedia.c - media_status(int s) */
 #ifdef __FreeBSD__
 /* stuff ifm_status in ints[0] and ifm_active in ints[1] */
 static void ifstatus(const char *iface, int *ints) {
@@ -142,6 +143,7 @@ static void ifstatus(const char *iface, int *ints) {
 #endif
 
 /* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
+/* reference code: /usr/src/sbin/ifconfig/ifmedia.c - media_status(int s) */
 static inline int iface_is_associated(const char *iface) {
 #ifdef __FreeBSD__
 	int i[2];
@@ -423,6 +425,7 @@ CAMLprim value caml_ether_ntoa(value s, value res) {
 	CAMLreturn(rescode);
 }
 
+/* reference code: /usr/src/sbin/ifconfig/ifconfig.c - line 256 */
 CAMLprim value caml_getifaddrs(value unit) {
 	CAMLparam1(unit);
 	struct ifaddrs *ifap, *ifp;
@@ -501,7 +504,9 @@ CAMLprim value get_addrs_in_block(value addr, value mask) {
 	CAMLreturn(result);
 }
 
-/* stolen from /usr/src/usr.sbin/arp/arp.c */
+/* reference code:
+ * /usr/src/usr.sbin/arp/arp.c - search(u_long addr, action_fn *action)
+ */
 CAMLprim value get_arp_entries(value unit) {
 	CAMLparam1(unit);
 	CAMLlocal4(result, tuple, ipaddr, macaddr);
@@ -580,6 +585,7 @@ CAMLprim value get_associated_stations(value iface) {
 #if defined(HAVE_NET80211_IEEE80211_H)
 #  if defined(IEEE80211_IOC_STA_INFO)
 	/* FreeBSD 6.0 and up (hopefully), swiped from ifconfig */
+    /* Reference code ???: /usr/src/sbin/ifconfig/ifieee80211.c - list_stations(int s)' */
 	int n;
 	uint8_t buf[24*1024];
 	struct ieee80211req ireq;
@@ -692,6 +698,7 @@ CAMLprim value routes_fetch(value unit) {
 	assert(0);
 	// parse /proc/net/route
 #else
+    /* Reference code: /usr/src/sbin/route/route.c - flushroutes(argc, argv) */
 	int sockfd, count;
 	int mib[6] = { CTL_NET, PF_ROUTE, 0, 0, NET_RT_DUMP, 0 };
 	size_t needed;
