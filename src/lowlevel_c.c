@@ -116,7 +116,7 @@ static void ifstatus(const char *iface, int *ints) {
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
-	  failwith("socket for get_associated_stations");
+	  failwith("socket for ifstatus");
 
 	memset(&ifmr, 0, sizeof(ifmr));
 	strncpy(ifmr.ifm_name, iface, sizeof(ifmr.ifm_name));
@@ -587,7 +587,10 @@ CAMLprim value get_associated_stations(value iface) {
 	/* FreeBSD 6.0 and up (hopefully), swiped from ifconfig */
     /* Reference code ???: /usr/src/sbin/ifconfig/ifieee80211.c - list_stations(int s)' */
 	int n;
-	uint8_t buf[24*1024];
+	union {
+		struct ieee80211req_sta_req req;
+		uint8_t buf[24*1024];
+	} u;
 	struct ieee80211req ireq;
 	int len;
 	uint8_t *cp;
@@ -595,16 +598,22 @@ CAMLprim value get_associated_stations(value iface) {
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == 0)
 	  failwith("socket for get_associated_stations");
+	/* Set up the request */
 	memset(&ireq, 0, sizeof(ireq));
 	strncpy(ireq.i_name, String_val(iface), sizeof(ireq.i_name));
 	ireq.i_type = IEEE80211_IOC_STA_INFO;
-	ireq.i_data = buf;
-	ireq.i_len = sizeof(buf);
+	/*
+	 * This is apparently some sort of filter to what addresses we're
+         * interested in, and all 0xff's says that we want all of them.
+	 */
+	memset(u.req.is_u.macaddr, 0xff, IEEE80211_ADDR_LEN);
+	ireq.i_data = &u;
+	ireq.i_len = sizeof(u);
 	if (ioctl(sockfd, SIOCG80211, &ireq) < 0)
 	  failwith("SIOCG80211");
 	len = ireq.i_len;
 
-	for (n = 0, cp = buf; len >= sizeof(struct ieee80211req_sta_info); n++) {
+	for (n = 0, cp = (uint8_t *)u.req.info; len >= sizeof(struct ieee80211req_sta_info); n++) {
 		struct ieee80211req_sta_info *si;
 		si = (struct ieee80211req_sta_info *) cp;
 		cp += si->isi_len, len -= si->isi_len;
@@ -612,7 +621,7 @@ CAMLprim value get_associated_stations(value iface) {
 	result = alloc_tuple(n);
 
 	len = ireq.i_len;
-	for (i = 0, cp = buf; len >= sizeof(struct ieee80211req_sta_info); i++) {
+	for (i = 0, cp = (uint8_t *)u.req.info; len >= sizeof(struct ieee80211req_sta_info); i++) {
 		struct ieee80211req_sta_info *si;
 
 		si = (struct ieee80211req_sta_info *) cp;
