@@ -121,10 +121,14 @@ static void ifstatus(const char *iface, int *ints) {
 	memset(&ifmr, 0, sizeof(ifmr));
 	strncpy(ifmr.ifm_name, iface, sizeof(ifmr.ifm_name));
 
-	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0)
-	  failwith("Interface doesn't support SIOC{G,S}IFMEDIA.");
-	if (ifmr.ifm_count == 0)
-	  failwith("huh, no media types?");
+	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0) {
+		close(sockfd);
+		failwith("Interface doesn't support SIOC{G,S}IFMEDIA.");
+	}
+	if (ifmr.ifm_count == 0) {
+		close(sockfd);
+		failwith("huh, no media types?");
+	}
 
 	media_list = malloc(ifmr.ifm_count * sizeof(int));
 	if (media_list == NULL)
@@ -596,7 +600,7 @@ CAMLprim value get_associated_stations(value iface) {
 	uint8_t *cp;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd == 0)
+	if (sockfd == -1)
 	  failwith("socket for get_associated_stations");
 	/* Set up the request */
 	memset(&ireq, 0, sizeof(ireq));
@@ -609,8 +613,10 @@ CAMLprim value get_associated_stations(value iface) {
 	memset(u.req.is_u.macaddr, 0xff, IEEE80211_ADDR_LEN);
 	ireq.i_data = &u;
 	ireq.i_len = sizeof(u);
-	if (ioctl(sockfd, SIOCG80211, &ireq) < 0)
-	  failwith("SIOCG80211");
+	if (ioctl(sockfd, SIOCG80211, &ireq) < 0) {
+		close(sockfd);
+		failwith("SIOCG80211");
+	}
 	len = ireq.i_len;
 
 	for (n = 0, cp = (uint8_t *)u.req.info; len >= sizeof(struct ieee80211req_sta_info); n++) {
