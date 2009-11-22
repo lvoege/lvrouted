@@ -25,7 +25,11 @@ mv $WRKSRC/Makefile.in.new $WRKSRC/Makefile.in
 tar --exclude ".svn" --exclude "Makefile" \
   --exclude "config.cache"  --exclude "config.log" --exclude "config.status" \
   --exclude "src/Version.ml" \
-  --exclude ".depend" \
+  --exclude "src/.depend" \
+  --exclude "src/*.o" \
+  --exclude "src/*.cmi" \
+  --exclude "src/*.cmx" \
+  --exclude ".*" \
   -cvzf lvrouted-$VERSION.tar.gz \
   -C $TMPDIR \
   $PKGDIR/INSTALL \
