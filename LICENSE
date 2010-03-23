@@ -1,4 +1,4 @@
-Copyright (c) 2002-2004 Stichting Wireless Leiden,
+Copyright (c) 2002-2010 Stichting Wireless Leiden,
 	All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -12,18 +12,6 @@ are met:
    notice, this list of conditions and the following disclaimer in
    the documentation and/or other materials provided with the
    distribution.
-
-3. The end-user documentation included with the redistribution,
-   if any, must include the following acknowledgment:
-      "This product includes software developed by the
-       Stichting Wireless Leiden (http://www.wirelessleiden.nl)."
-   Alternately, this acknowledgment may appear in the software itself,
-   if and wherever such third-party acknowledgments normally appear.
-
-4. The name "Wireless Leiden" or "Stiching Wireless Leiden" must
-   not be used to endorse, create or promote products derived from 
-   this software without prior written permission. For written
-   permission, please contact bestuur@wirelessleiden.nl
 
 THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED
 WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
@@ -41,5 +29,5 @@ POSSIBILITY OF SUCH DAMAGE.
 ======================================================================
 
 This software consists of voluntary contributions made by many
-individuals on behalf of the Stichting Wireless Leiden.  For more
+individuals on behalf of the Stichting Wireless Leiden. For more
 information see http://www.wirelessleiden.nl/
