@@ -9,9 +9,12 @@ let loglevel = ref quiet
 let logfile = ref stderr
 
 let reopen_log () = 
-	if !logfile != stderr then
-	  close_out !logfile;
-	logfile := open_out "/tmp/lvrouted.log"
+	(* Only log to file if we are in background *)
+	if not(!Common.foreground) then begin
+	  if !logfile != stderr then 
+	    close_out !logfile;
+	  logfile := open_out "/tmp/lvrouted.log"
+	end
 
 (* Log the given message with the given loglevel. If the current loglevel is
    higher or equal to the given level, the message is printed to the log. *)
@@ -20,8 +23,10 @@ let log level msg =
 	  if !Common.use_syslog then
 	    LowLevel.syslog level msg
 	  else try
-		if !logfile = stderr then
-		  logfile := open_out "/tmp/lvrouted.log";
+		(* Only log to file if we are in background *)
+		if not(!Common.foreground) then 
+		  if !logfile = stderr then
+		    logfile := open_out "/tmp/lvrouted.log";
 		output_string !logfile
 			(string_of_int (int_of_float (Unix.time ())) ^ "[" ^ string_of_int level ^ "]: " ^
 			 msg ^ "\n");
