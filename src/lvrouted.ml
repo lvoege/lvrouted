@@ -320,6 +320,8 @@ let _ =
 		Log.log Log.info "Resumed from saved state";
 	end;
 
+	Log.log Log.debug "Starting main loop";
+
 	let logfrom s = Log.log Log.debug
 			("got data from " ^
 			 Unix.string_of_inet_addr
