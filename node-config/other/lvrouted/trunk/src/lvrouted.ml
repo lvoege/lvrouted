@@ -159,7 +159,13 @@ let add_address iface addr mask =
 		if mask >= !Common.interlink_netmask then
 		  add_neighbors iface addr mask;
 		true
-	end else false
+	end else  begin
+		Log.log Log.warnings ("Address at " ^ Unix.string_of_inet_addr
+			addr ^ " on " ^ iface ^ " not applicable [not in range " ^
+			Unix.string_of_inet_addr Common.min_routable ^ " - " ^ 
+			Unix.string_of_inet_addr Common.max_routable ^ "]");
+		false
+	end	
 
 let handle_routemsg udpsockfd rtsockfd = function
 	  LowLevel.RTM_NEWADDR (iface, addr, mask) ->
