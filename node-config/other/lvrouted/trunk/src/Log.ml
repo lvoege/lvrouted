@@ -27,9 +27,10 @@ let log level msg =
 		if not(!Common.foreground) then 
 		  if !logfile = stderr then
 		    logfile := open_out "/tmp/lvrouted.log";
-		output_string !logfile
-			(string_of_int (int_of_float (Unix.time ())) ^ "[" ^ string_of_int level ^ "]: " ^
-			 msg ^ "\n");
+		let epoch = Unix.time () in 
+		  output_string !logfile
+		  	((Printf.sprintf "%.0f" epoch) ^ "[" ^ string_of_int level ^ "]: " ^
+		  	 msg ^ "\n");
 		flush !logfile
 	  with _ -> ()
 	end
