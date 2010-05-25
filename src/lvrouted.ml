@@ -156,12 +156,16 @@ let add_address iface addr mask =
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
 		direct := (Tree.make addr [])::!direct;
 		directnets := (addr, mask)::!directnets;
-		if mask >= !Common.interlink_netmask then
-		  add_neighbors iface addr mask;
+		if mask >= !Common.interlink_netmask then 
+		  add_neighbors iface addr mask
+		else 
+		  Log.log Log.warnings("Address at " ^ Unix.string_of_inet_addr
+			addr ^ " on " ^ iface ^ " ignored [netmask greater than " ^
+			string_of_int !Common.interlink_netmask ^ "]");
 		true
 	end else  begin
 		Log.log Log.warnings ("Address at " ^ Unix.string_of_inet_addr
-			addr ^ " on " ^ iface ^ " not applicable [not in range " ^
+			addr ^ " on " ^ iface ^ " ignored [not in range " ^
 			Unix.string_of_inet_addr Common.min_routable ^ " - " ^ 
 			Unix.string_of_inet_addr Common.max_routable ^ "]");
 		false
