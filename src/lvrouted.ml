@@ -195,6 +195,7 @@ let handle_routemsg udpsockfd rtsockfd = function
 (* Clear and re-create the current configuration *)
 let read_config _ =
 	Log.reopen_log ();
+	Log.log Log.debug ("(Re)opening the config file '" ^ !Common.configfile ^ "'");
 
 	direct := [];
 	directnets := [];
@@ -215,7 +216,7 @@ let read_config _ =
 		direct := !direct@(List.map (fun a -> Tree.make a []) extraaddrs);
 		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
 	with _ ->
-		Log.log Log.warnings ("Couldn't read the specified config file");
+		Log.log Log.warnings ("Couldn't read the specified config file '" ^ !configfile ^ "'");
 	end
 
 let version_info =
@@ -314,7 +315,6 @@ let _ =
 	   has been disabled until it's debugged. *)
 	if not !resume then begin
 		read_config (); 
-		Log.log Log.info "Read config";
 	end else begin
 		read_state (Common.read_file (!Common.tmpdir ^ "lvrouted.state"));
 		Log.log Log.info "Resumed from saved state";
