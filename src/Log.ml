@@ -5,7 +5,7 @@ let warnings = 2
 let info = 3
 let debug = 4
 
-let loglevel = ref quiet
+let loglevel = ref warnings
 let logfile = ref stderr
 
 let reopen_log () = 
