@@ -21,6 +21,7 @@ let unreachable = ref Neighbor.Set.empty
 (* Resume from saved state on startup instead of a new, clean state *)
 let resume = ref false
 let quit = ref false
+let default_addrs = ref IPSet.empty
 
 (* See if any previously reachable neighbors became reachable or vice-versa *)
 let check_reachable _ =
@@ -69,7 +70,8 @@ let broadcast_run udpsockfd rtsockfd =
 
 	  let newroutes, nodes =
 		Neighbor.derive_routes_and_mytree !directnets
-						  !neighbors in
+						  !neighbors
+						  !default_addrs in
 	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
@@ -194,7 +196,7 @@ let handle_routemsg udpsockfd rtsockfd = function
 
 (* Clear and re-create the current configuration *)
 let read_config _ =
-	Log.reopen_log ();
+	(*Log.reopen_log ();*)
 	Log.log Log.debug ("(Re)opening the config file '" ^ !Common.configfile ^ "'");
 
 	direct := [];
@@ -259,10 +261,16 @@ let read_state s =
 	unreachable := unreachable';
 	MAC.arptables := arptables'
 
+let parse_proxies s = 
+	Log.log Log.info ("default string " ^ s);
+	let ss = Str.split (Str.regexp_string ",") s in
+	let addrs = List.map Unix.inet_addr_of_string ss in
+	default_addrs := List.fold_left (fun a e -> IPSet.add e a) IPSet.empty addrs
+
 let argopts = [
 	"-a", Arg.Set_float Common.alarm_timeout, "Interval between checking for interesting things";
 	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
-	"-c", Arg.Set_string configfile, "Config file";
+	"-c", Arg.Set_string Common.configfile, "Config file";
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
@@ -273,6 +281,7 @@ let argopts = [
 	"-t", Arg.Set_string Common.tmpdir, "Temporary directory";
 	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
 	"-v", Arg.Unit print_version, "Print version information";
+	"-z", Arg.String parse_proxies, "Addresses that the closest of which gets the default route";
 ]
 
 (* This is the main function *)
@@ -287,7 +296,7 @@ let _ =
 	else
 	  Log.log Log.warnings "Couldn't set limits!";
 
-	Arg.parse argopts ignore "lvrouted";
+	Arg.parse argopts (fun s -> Log.log Log.debug ("unknown argument " ^ s)) "lvrouted";
 	Log.log Log.info "Parsed commandline";
 
 	if not !Common.foreground then begin

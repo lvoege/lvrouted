@@ -110,7 +110,7 @@ let nuke_old_trees ns numsecs =
 
 (* From the given set of direct IPs and list of neighbors, derive a list of
    (unaggregated) routes and a merged tree. *)
-let derive_routes_and_mytree directips ns = 
+let derive_routes_and_mytree directips ns default_addrs = 
 	(* Fetch all valid trees from the neighbors *)
 	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
 			             (fun n -> Common.from_some n.tree) 
@@ -119,12 +119,52 @@ let derive_routes_and_mytree directips ns =
 			   string_of_int (List.length nodes));
 	(* Merge the trees into a new tree and an IPMap.t *)
 	let nodes', routemap = Tree.merge nodes directips in
+
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
 		Common.IPHash.fold (fun addr gw ->
 				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
-	Route.aggregate routeset, nodes'
+	let routeset' = Route.aggregate routeset in
+
+	(* Look in the directly attached networks to see if any of them cover
+	   anything in default_addrs *)
+	let direct_proxy = List.fold_left (fun a (addr, mask) -> match a with
+		| Some x -> Some x
+		| None -> Common.IPSet.fold (fun addr' a' -> match a' with
+			| Some x' -> Some x'
+			| None -> if (LowLevel.mask_addr addr mask) = (LowLevel.mask_addr addr' mask) then
+					Some addr'
+				  else  None) default_addrs None) None directips in
+
+	(* Get all the routes that cover addresses in default_addrs. *)
+	let routes_to_look_for = Route.Set.filter (fun r ->
+			Common.IPSet.exists (fun a -> Route.matches r a) default_addrs) routeset' in
+	let routeset'' =
+		if Route.Set.is_empty routes_to_look_for then routeset'
+		else match direct_proxy with
+		| Some a -> 
+			let r' = Route.make (Unix.inet_addr_of_string "0.0.0.0") 0 a in
+			Route.Set.add r' routeset'
+		| None ->
+			Log.log Log.debug ("Doing default addrs");
+			let best_route = List.fold_left (fun a n -> match a with
+				| Some x -> Some x
+				| None -> Tree.bfs n (fun n' ->
+					let covering_routes = Route.Set.filter (fun r -> Route.matches r (Tree.addr n')) routes_to_look_for in
+					if Route.Set.cardinal covering_routes = 1 then begin
+						Some (Route.Set.choose covering_routes)
+					end else None)
+				) None nodes' in
+			match best_route with
+			| None -> routeset'
+			| Some r -> 
+				Log.log Log.debug ("Route to nearest proxy is " ^ (Route.show r));
+				let r' = Route.make (Unix.inet_addr_of_string "0.0.0.0") 0 (Route.gateway_of_route r) in
+				Route.Set.add r' routeset'
+		in
+
+	routeset'', nodes'
 
 (* Check if the given neighbor is reachable over the given Iface.t. If it
    isn't, set the neighbor's tree to None. *)

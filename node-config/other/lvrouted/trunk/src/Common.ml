@@ -71,6 +71,9 @@ module IPHash = Hashtbl.Make(IPStruct)
 
 (* Convenience functions *)
 
+let string_of_ipset ss = 
+	"{" ^ (String.concat ", " (List.map Unix.string_of_inet_addr (IPSet.elements ss))) ^ "}"
+
 (* Given an 'a option, it it a Some of a? *)
 let is_some = function
 	  None	-> false
