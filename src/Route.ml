@@ -7,6 +7,9 @@ type route = {
 	gw: Unix.inet_addr;
 }
 
+let gateway_of_route r = r.gw
+let addr_of_route r = r.addr
+
 (* Make a Set of routes. Consider two routes equal only when both their
    address and netmask are equal. The gateway can differ. This makes the
    set operations later on easier. The aggregator code does take
@@ -142,7 +145,8 @@ external lowlevel_fetch: unit -> route list
    the kernel route table. *)
 let fetch () =
 	let rs = lowlevel_fetch () in
-	make_set (List.filter (fun r -> Common.addr_in_range r.addr) rs)
+	let zero = Unix.inet_addr_of_string "0.0.0.0" in
+	make_set (List.filter (fun r -> Common.addr_in_range r.addr || r.addr = zero) rs)
 
 (* Commit the given list of adds, deletes and changes to the kernel.
    Attempt a maximum of five extra iterations of checking whether or

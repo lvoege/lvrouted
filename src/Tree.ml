@@ -15,6 +15,18 @@ let make a nodes = { addr = a; nodes = nodes }
 let addr n = n.addr
 let nodes n = n.nodes
 
+(* For the tree topped by the given node, traverse it breadth-first, calling
+   the given function on the nodes. If the function returns None, continue
+   traversing. If it returns non-None, return the result as the result of the
+   traversal. *)
+let bfs node f =
+	let rec traverse = function
+		| [] -> None
+		| x::xs -> match f x with
+				| None -> traverse (xs@x.nodes)
+				| Some r -> Some r in
+	traverse [node]
+
 (* Show the given list of nodes *)
 let show l =
 	let s = ref "" in
