@@ -125,44 +125,44 @@ let derive_routes_and_mytree directips ns default_addrs =
 		Common.IPHash.fold (fun addr gw ->
 				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
-	let routeset' = Route.aggregate routeset in
-
-	(* Look in the directly attached networks to see if any of them cover
-	   anything in default_addrs *)
-	let direct_proxy = List.fold_left (fun a (addr, mask) -> match a with
-		| Some x -> Some x
-		| None -> Common.IPSet.fold (fun addr' a' -> match a' with
-			| Some x' -> Some x'
-			| None -> if (LowLevel.mask_addr addr mask) = (LowLevel.mask_addr addr' mask) then
-					Some addr'
-				  else  None) default_addrs None) None directips in
-
-	(* Get all the routes that cover addresses in default_addrs. *)
-	let routes_to_look_for = Route.Set.filter (fun r ->
-			Common.IPSet.exists (fun a -> Route.matches r a) default_addrs) routeset' in
-	let routeset'' =
-		if Route.Set.is_empty routes_to_look_for then routeset'
-		else match direct_proxy with
-		| Some a -> 
-			let r' = Route.make (Unix.inet_addr_of_string "0.0.0.0") 0 a in
-			Route.Set.add r' routeset'
-		| None ->
-			Log.log Log.debug ("Doing default addrs");
-			let best_route = List.fold_left (fun a n -> match a with
+	(* Insert a default route to the nearest entry in default_addrs, if
+	   any *)
+	let look_for_default_addr n = 
+		let a = Tree.addr n in
+		match Common.IPSet.mem a default_addrs with
+		| true -> Some a
+		| false -> None in
+	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") nodes' in
+	let first_default_addr = Tree.bfs bogus_top_node look_for_default_addr in
+	let default_route = match first_default_addr with
+		| None -> None
+		| Some a -> (
+			Log.log Log.debug ("First default addr: " ^ (Unix.string_of_inet_addr a));
+			let gw = List.fold_left (fun acc (addr, mask) -> match acc with
 				| Some x -> Some x
-				| None -> Tree.bfs n (fun n' ->
-					let covering_routes = Route.Set.filter (fun r -> Route.matches r (Tree.addr n')) routes_to_look_for in
-					if Route.Set.cardinal covering_routes = 1 then begin
-						Some (Route.Set.choose covering_routes)
-					end else None)
-				) None nodes' in
-			match best_route with
-			| None -> routeset'
-			| Some r -> 
-				Log.log Log.debug ("Route to nearest proxy is " ^ (Route.show r));
-				let r' = Route.make (Unix.inet_addr_of_string "0.0.0.0") 0 (Route.gateway_of_route r) in
-				Route.Set.add r' routeset'
-		in
+				| None -> if LowLevel.route_includes_impl addr mask a 32 then
+						Some a
+					  else
+					  	None) None directips in
+			let gw = match gw with
+				| None -> (try Some (Common.IPHash.find routemap a)
+					   with Not_found -> None)
+				| Some x -> Some x in
+			match gw with
+			| None -> Log.log Log.errors ("Eek! Found a first default addr, but don't have a route to it!");
+				  None
+			| Some gw -> (
+				Log.log Log.debug ("Gateway: " ^ (Unix.string_of_inet_addr gw));
+				let a' = Unix.inet_addr_of_string "0.0.0.0" in
+				Some (Route.make a' 0 gw)
+			)
+		) in
+	Log.log Log.debug ("Done default addrs");
+
+	let routeset' = Route.aggregate routeset in
+	let routeset'' = match default_route with
+		| None -> routeset'
+		| Some r -> Route.Set.add r routeset' in
 
 	routeset'', nodes'
 
