@@ -745,6 +745,7 @@ CAMLprim value routes_fetch(value unit) {
 	for (p = buf; p < lim; p += rtm->rtm_msglen) {
 		rtm = (struct rt_msghdr *)p;
 		if ((rtm->rtm_flags & RTF_GATEWAY) == 0 ||
+		    (rtm->rtm_flags & RTF_DYNAMIC) == 0 || 
 		    (rtm->rtm_addrs & RTA_NETMASK) == 0)
 		  continue;
 		sin = (struct sockaddr_in *)(rtm + 1);
