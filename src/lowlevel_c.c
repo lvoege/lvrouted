@@ -788,7 +788,7 @@ CAMLprim value sha_string(value string) {
 	CAMLlocal1(result);
 
 	result = alloc_string(SHA_DIGEST_LENGTH);
-	SHA1(String_val(string), string_length(string), String_val(result));
+	SHA1((unsigned char *)String_val(string), string_length(string), (unsigned char *)String_val(result));
 	CAMLreturn(result);
 }
 
