@@ -3,16 +3,20 @@
 # * Documenation pregenerated (as docbook-xsl, ghostscript is required)
 # * Subversion Version.ml file outfiled
 
+CURRDIR=`pwd -P`
+BASEDIR=`cd $(dirname $0)/..; pwd -P`
+
 # Version target
-VERSION_ML="./src/Version.ml"
+{ cd $BASEDIR/src; $BASEDIR/tools/version.sh; }
+VERSION_ML="$BASEDIR/src/Version.ml"
 VERSION=`awk -F= '/let version/ {print $2}' $VERSION_ML`
 
-TMPDIR=`mktemp -d -t lvrouted`
+TMPDIR=`mktemp -d -t lvrouted.XXXXX`
 
 PKGDIR=lvrouted-$VERSION
 WRKSRC=$TMPDIR/$PKGDIR
 mkdir $WRKSRC
-cp -R . $WRKSRC
+cp -R ${BASEDIR}/* $WRKSRC
 
 # Fixed version storage
 grep -e '^let version' -e '^let branch' $VERSION_ML > $WRKSRC/VERSION
@@ -30,7 +34,7 @@ tar --exclude ".svn" --exclude "Makefile" \
   --exclude "src/*.cmi" \
   --exclude "src/*.cmx" \
   --exclude ".*" \
-  -cvzf lvrouted-$VERSION.tar.gz \
+  -cvzf $CURRDIR/lvrouted-$VERSION.tar.gz \
   -C $TMPDIR \
   $PKGDIR/INSTALL \
   $PKGDIR/LICENSE \
