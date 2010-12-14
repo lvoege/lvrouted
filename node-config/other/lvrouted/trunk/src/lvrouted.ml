@@ -2,6 +2,7 @@
 open Common
 open Log
 open Neighbor
+open Printexc
 
 (* First some globals. These are global because the signal handlers need to be
    able to set them when re-reading the node's configuration. *)
@@ -373,5 +374,6 @@ let _ =
 	with _ ->
 		(* Exceptions should've been caught by now, so log this as a 
 		   program error *)
+		Printexc.print_backtrace stdout;
 		Log.log Log.errors "Unhandled exception in main loop"
 	done
