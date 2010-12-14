@@ -157,8 +157,11 @@ let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
 		Log.log Log.info ("New address " ^
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
-		direct := (Tree.make addr [])::!direct;
-		directnets := (addr, mask)::!directnets;
+		let node = Tree.make addr [] in
+		if not (List.mem node !direct) then begin
+			direct := node::!direct;
+			directnets := (addr, mask)::!directnets;
+		end;
 		if mask >= !Common.interlink_netmask then 
 		  add_neighbors iface addr mask
 		else 
