@@ -1,0 +1,93 @@
+This is a very simple shortest-path routing daemon, featuring:
+
+  - UDP based. no firmware-confusing multi- or broadcasts
+  - no per-node configuration
+  - spanning tree, so no count-to-infinity
+  - some specific wireless hacks, such as keeping an eye on the interface
+    association status for clients and the list of associated stations for
+    masters
+  - the ability to sign packets for some measure of security against malicious
+    packets
+  - sequence number against replay attacks. yes I know this is not
+    bulletproof.
+
+No per node configuration: If your network has both a well-defined routable
+range (for us, that's 172.16.0.0/12) and well-defined interlink netmasks
+(anything smaller than 28 for us), the daemon can do the right thing
+automatically. The first assumption is implemented in Common.min_routable and
+Common.max_routable, the second assumption is set in
+Common.interlink_netmask.
+
+All addresses on all interfaces are examined to see if they fall
+within the routable range. For interlink subnets all possible addresses are
+treated as possible neighbors and the daemon will try to link up to daemons
+on those addresses.
+
+The algorithm in this branch of the code is OSPF-like. Every node has a
+current spanning tree for the part of the network the node knows about. At
+startup, this is just the collection of local routable addresses. At some
+tunable interval, it derives a new tree from the trees it has received from
+neighbors by a breadth-first traversal of all those trees, building up a
+new routing table and removing superfluous nodes along the way. It then
+sends the new tree to its neighbors and updates the kernel routing table. A
+subtree is superfluous if the top address is already in the routing table
+(this makes it shortest-path) or is one of the node's own addresses (this
+solves count-to-infinity).
+
+The trees can either be serialized using the generic ocaml Marshal module, or
+a handwritten serializer. The handwritten serializer assumes the routable
+range is 172.16.0.0/12 in that it uses the 12 fixed bits to store the number
+of children for a node. If your network uses a different range, either change
+tree_to_string() and string_to_tree() in lowlevel_c.c, or have the program use
+the ocaml marshaller by setting Common.use_own_marshaller to false. The
+handwritten marshaller uses 4 bytes per node while the ocaml marshaller uses
+just over 8.
+
+For 55 nodes with 286 routable addresses, on-the-wire packets are 1172
+bytes. CPU usage on a Soekris is generally a few percent, peaking to about
+five percent. RSS is about three to four MB.
+
+A couple of other assumptions about the WirelessLeiden network are in the
+code and would need to be adapted for other environments:
+
+  - Common.min_routable and Common.max_routable specify the bounds of the
+    routable range. For WirelessLeiden, this is the range from 172.16.0.0
+    up to and not including 172.31.255.0. Re-implement as needed.
+  - the hand-written tree serializer, Tree.serialize and Tree.deserialize,
+    assume the 172.16.0.0 range. if your network doesn't use the same range,
+    either adapt the serializer code in lowlevel_c.c, or use the old ocaml
+    marshaller by setting Common.use_own_marshaller to false.
+  - Common.ml has a definition for the narrowest interlink netmask. This is
+    /28 in WirelessLeiden, with the vast majority of interlink subnets being
+    /30's. 
+  - Common.ml also includes the widest netmask. This is so the route
+    aggregating code can stop in time. For wirelessleiden, this is /12.
+  - some code in lowlevel_c.c assumes FreeBSD and contains only skeleton
+    implementations for other systems, if it compiles at all on those
+    systems. Routing table updates, querying link states (associated or
+    not and media type mainly), arp table reading, those kinds of things.
+
+Common.ml also contains some other settings like the port to use and some
+timeouts. The most interesting flags are also commandline-settable.
+
+Packet signing: A secret key can be specified on the commandline with the "-s"
+flag. If set and not empty, a SHA1 hash is sent prepended to the usual
+packet content. This hash is the hash of the concatenation of the secret key
+with the packet content. On receipt, the hash is checked with the rest of the
+packet before any interpretation of the packet contents, so attacks that try
+to subvert the ocaml marshal module or inject faulty data are averted.
+
+This version sends the current time prepended to the actual data, and this is
+included in any signature. If a packet comes in from a neighbor that hasn't
+sent anything before, that timestamp is accepted as the base, and subsequent
+packets are only accepted if their sequence number is greater. This leaves a
+hole where a replayed packet will get accepted if an attacker is quicker to
+respond to a newly booted daemon than the legitimate neighbor. That packet
+would still have to have been a legitimate packet once for the hash to check
+out, so replaying that one is not that bad. Even if the attacker replays a
+whole bucketload of intercepted packets, the fun is over when the real
+neighbor gets its first packet through and pulls the timestamp up to beyond
+what the attacker has intercepted.
+
+Lodewijk Voge
+lodewijk@wirelessleiden.nl / lvoege@gmail.com
