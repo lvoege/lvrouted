@@ -180,6 +180,17 @@ static inline in_addr_t mask_addr_impl(in_addr_t addr, int masklen) {
 	return addr & bitmask(masklen);
 }
 
+static inline void mask_addr6(uint8_t *addr, int masklen) {
+	int i;
+
+	for (i = 0; i < 16 && masklen > 8; i++) {
+		masklen -= 8;
+	}
+	addr[i] &= 0xff << (8 - masklen);
+	for (i++; i < 16; i++)
+	  addr[i] = 0;
+}
+
 CAMLprim value mask_addr(value addr, value mask) {
 	CAMLparam2(addr, mask);
 	CAMLlocal1(result);
@@ -275,7 +286,6 @@ CAMLprim value string_decompress(value s) {
 static int routemsg_add(unsigned char *buffer, int type,
 			value dest, value masklen, value gw) {
 	struct rt_msghdr *msghdr;
-	struct sockaddr_in *addr;
 	static int seq = 1;
 	unsigned char *p;
 	CAMLparam3(dest, masklen, gw);
@@ -289,36 +299,69 @@ static int routemsg_add(unsigned char *buffer, int type,
 	msghdr->rtm_flags = RTF_UP | RTF_GATEWAY | RTF_DYNAMIC;
 	msghdr->rtm_seq = seq++;
 
-	addr = (struct sockaddr_in *)(msghdr + 1);
+	if (caml_string_length(dest) == 16) {
+		struct sockaddr_in6 *addr = (struct sockaddr_in6 *)(msghdr + 1);
+
+		/* The destination address */
+		memset(addr, 0, sizeof(struct sockaddr_in6));
+		addr->sin6_len = sizeof(struct sockaddr_in6);
+		addr->sin6_family = AF_INET6;
+		memcpy(addr->sin6_addr.s6_addr, String_val(dest), 16);
+		mask_addr6(addr->sin6_addr.s6_addr, Long_val(masklen));
+		addr++;
+
+		/* Gateway */
+		memset(addr, 0, sizeof(struct sockaddr_in6));
+		addr->sin6_len = sizeof(struct sockaddr_in6);
+		addr->sin6_family = AF_INET6;
+		memcpy(addr->sin6_addr.s6_addr, String_val(gw), 16);
+		addr++;
+
+		/* Netmask */
+		memset(addr, 0, sizeof(struct sockaddr_in6));
+		memcpy(addr->sin6_addr.s6_addr, String_val(gw), 16);
+
+		for (p = (unsigned char *)(addr + 1) - 1; p > (unsigned char *)addr; p--)
+		  if (*p) {
+			addr->sin6_len = p - (unsigned char *)addr + 1;
+			break;
+		  }
+
+		msghdr->rtm_msglen = (unsigned char *)addr +
+					ROUNDUP(addr->sin6_len)
+					- buffer;
+	} else {
+		struct sockaddr_in *addr = (struct sockaddr_in *)(msghdr + 1);
 #define ADD(x) \
-	memset(addr, 0, sizeof(struct sockaddr_in));	\
-	addr->sin_len = sizeof(struct sockaddr_in);	\
-	addr->sin_family = AF_INET;			\
-	addr->sin_addr.s_addr = htonl(x);		\
-	addr++;
+		memset(addr, 0, sizeof(struct sockaddr_in));	\
+		addr->sin_len = sizeof(struct sockaddr_in);	\
+		addr->sin_family = AF_INET;			\
+		addr->sin_addr.s_addr = htonl(x);		\
+		addr++;
 
-	ADD(mask_addr_impl(get_addr(dest), Long_val(masklen)));
-	ADD(get_addr(gw));
-	ADD(bitmask(Long_val(masklen)));
+		ADD(mask_addr_impl(get_addr(dest), Long_val(masklen)));
+		ADD(get_addr(gw));
+		ADD(bitmask(Long_val(masklen)));
 
-	/*
-	 * for some reason, the sin_len for the netmask's sockaddr_in should
-	 * not be the length of the sockaddr_in at all, but the offset of
-	 * the sockaddr_in's last non-zero byte. I don't know why. From
-	 * the last byte of the sockaddr_in, step backwards until there's a
-	 * non-zero byte under the cursor, then set the length.
-	 */
-	addr--;
-	for (p = (unsigned char *)(addr + 1) - 1; p > (unsigned char *)addr; p--)
-	  if (*p) {
-		addr->sin_len = p - (unsigned char *)addr + 1;
-		break;
-	  }
-	addr->sin_family = 0; /* just to be totally in sync with /usr/sbin/route */
+		/*
+		 * for some reason, the sin_len for the netmask's sockaddr_in should
+		 * not be the length of the sockaddr_in at all, but the offset of
+		 * the sockaddr_in's last non-zero byte. I don't know why. From
+		 * the last byte of the sockaddr_in, step backwards until there's a
+		 * non-zero byte under the cursor, then set the length.
+		 */
+		addr--;
+		for (p = (unsigned char *)(addr + 1) - 1; p > (unsigned char *)addr; p--)
+		  if (*p) {
+			addr->sin_len = p - (unsigned char *)addr + 1;
+			break;
+		  }
+		addr->sin_family = 0; /* just to be totally in sync with /usr/sbin/route */
 
-	msghdr->rtm_msglen = (unsigned char *)addr +
-				ROUNDUP(addr->sin_len)
-				- buffer;
+		msghdr->rtm_msglen = (unsigned char *)addr +
+					ROUNDUP(addr->sin_len)
+					- buffer;
+	}
 	
 	CAMLreturn(msghdr->rtm_msglen);
 }
