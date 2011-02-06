@@ -1,9 +1,5 @@
 (* Interface to functions in lowlevel_c.c *)
 
-(* Set hard limits on data and coredump size *)
-external set_limits: int -> int -> bool
-  = "set_limits"
-
 (* For debugging purposes it's handy to be able to print a file descriptor. *)
 external int_of_file_descr: Unix.file_descr -> int
   = "int_of_file_descr"
@@ -93,6 +89,15 @@ external pack_int: int -> string
 external unpack_int: string -> int
   = "caml_unpack_int"
 
+(* Is the given Unix.inet_addr an IPv6 address? *)
+external addr_is_ipv6: Unix.inet_addr -> bool
+  = "addr_is_ipv6"
+
+(* Given an IPv6 address and a prefix length, return a binary string of the
+   address without the prefix. This cuts down on storage cost. *)
+external chop_prefix: Unix.inet_addr -> int -> string
+  = "chop_prefix"
+
 external open_rtsock: unit -> Unix.file_descr
   = "open_rtsock"
 
@@ -110,10 +115,3 @@ type routemsg =
  *)
 external read_routemsg: Unix.file_descr -> routemsg
   = "read_routemsg"
-
-external compare_ipv4_addrs: Unix.inet_addr -> Unix.inet_addr -> int
-  = "compare_ipv4_addrs"
-
-external route_includes_impl: Unix.inet_addr -> int -> Unix.inet_addr -> int -> bool
-	= "route_includes_impl"
-

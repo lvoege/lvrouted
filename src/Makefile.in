@@ -16,7 +16,7 @@
 # where to install the binaries
 prefix=@prefix@
 exec_prefix=@exec_prefix@
-BINDIR=@sbindir@
+BINDIR=@bindir@
 
 REQUIRES= unix str
 
@@ -34,7 +34,7 @@ OCAMLWIN32 = @OCAMLWIN32@
 EXE = @EXE@
 
 INCLUDES = 
-LIBS=-cclib -lcrypto -cclib -lbz2
+LIBS=-cclib -lcrypto
 CFLAGS= -Wall -I`$(OCAMLFIND) printconf stdlib` -g
 BFLAGS = -g $(INCLUDES) $(LIBS)
 OFLAGS = $(INCLUDES) $(LIBS)
@@ -50,7 +50,7 @@ all: $(OCAMLBEST) $(NAME).opt
 ######################################
 
 SOURCES = Version.ml LowLevel.ml Common.ml Log.ml Route.ml MAC.ml Tree.ml \
-	Iface.ml Neighbor.ml
+	Iface.ml Neighbor.ml $(NAME).ml
 CMO = $(SOURCES:.ml=.cmo)
 CMX = $(SOURCES:.ml=.cmx)
 
@@ -62,18 +62,18 @@ opt: $(NAME).opt
 $(NAME).byte: $(CMO) lowlevel_c.o
 	$(OCAMLC) $(BFLAGS) -custom -o $@ $(CMO) lowlevel_c.o
 
-$(NAME).opt: $(CMX) lvrouted.cmx lowlevel_c.c
-	$(CC) -O2 -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
-	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) lvrouted.cmx lowlevel_c.o
-$(NAME).prof: $(SOURCES) lowlevel_c.c
-	$(CC) -O2 -p -Wall -I`$(OCAMLFIND) printconf stdlib` -g -c lowlevel_c.c
-	$(OCAMLOPT) $(OFLAGS) -o $@ -p $(SOURCES) lowlevel_c.o
+$(NAME).opt: $(CMX) lowlevel_c.o
+	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) lowlevel_c.o
 
-test.opt: test.ml $(CMX) lowlevel_c.o
-	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) test.ml lowlevel_c.o
-
-Version.ml:
-	../tools/version.sh
+Version.ml: .svn/entries
+	@echo Extracting svn version info
+	@echo \(\* DO NOT EDIT BY HAND \*\) > Version.ml
+	@echo let version=`svn info . | grep Revision | sed "s/.* //g"` >> Version.ml
+	@echo let branch=\"`pwd | sed "s/.*lvrouted\///g" | sed "s/\/src//g"`\" >> Version.ml
+	@echo let date=\"`date`\" >> Version.ml
+	@echo let host=\"`uname -a`\" >> Version.ml
+	@echo let ocamlopt=\"`ocamlopt -v | head -1`\" >> Version.ml
+	@echo let who=\"`whoami`\" >> Version.ml
 
 # installation
 ##############

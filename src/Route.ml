@@ -1,14 +1,10 @@
 (* Route type definition and management *)
-open Common
 
 type route = {
 	addr: Unix.inet_addr;
 	mask: int;
 	gw: Unix.inet_addr;
 }
-
-let gateway_of_route r = r.gw
-let addr_of_route r = r.addr
 
 (* Make a Set of routes. Consider two routes equal only when both their
    address and netmask are equal. The gateway can differ. This makes the
@@ -23,22 +19,31 @@ module Set = Set.Make(struct
 		  compare a.mask b.mask
 		else r
 end)
+(* Make a Map with an address as its key *)
+module Map = Map.Make(struct
+	type t = Unix.inet_addr
+	let compare = compare
+end)
 
 (* Constructor *)
 let make a m g = { addr = a; mask = m; gw = g }
 
+let includes_impl a m1 b m2 =
+	(m1 <= m2) &&
+	  (LowLevel.mask_addr a m1 =
+	   LowLevel.mask_addr b m1)
+
 (* Does route a completely include b? *)
 let includes a b =
-	LowLevel.route_includes_impl a.addr a.mask b.addr b.mask
+	includes_impl a.addr a.mask b.addr b.mask
 
-(* Does the given addr fall in the given route? *)
+(* Does the given addr fall in the given route *)
 let matches route addr =
 	LowLevel.mask_addr route.addr route.mask =
 	LowLevel.mask_addr addr route.mask
 
 let show r =
-	Unix.string_of_inet_addr r.addr ^ "/" ^
-	string_of_int r.mask ^ " -> " ^
+	Unix.string_of_inet_addr r.addr ^ "/" ^ string_of_int r.mask ^ " -> " ^
 	Unix.string_of_inet_addr r.gw
 
 (* turn a list of routes into a set of routes *)
@@ -54,10 +59,6 @@ let showroutes rs =
 
      If the netmask is the minimum netmask, move the route to the done list
      and recurse.
-
-     If the address is the same as the gateway address and it's a host route,
-     drop it. Tree.merge can pass these in the routing table, and this is the
-     most convenient place to remove them code-wise.
     
      Else expand the netmask by one bit. Check if it gobbles up any routes
      to different gateways.
@@ -69,10 +70,12 @@ let showroutes rs =
    with the addresses of the routes masked according to their netmask.
 *)
 let aggregate routes =
-	let rec aggregate' todo done_ = match todo with
-		  []	-> done_
-		| r::rs	->
-			if r.mask = !Common.min_mask then
+	let rec aggregate' todo done_ =
+		match todo with
+		  []		-> done_
+		| r :: rs	->
+			if LowLevel.addr_is_ipv6 r.addr ||
+			   r.mask = !Common.min_mask then
 			  aggregate' rs (r::done_)
 			else if r.addr = r.gw && r.mask = 32 then
 			  aggregate' rs done_
@@ -108,14 +111,14 @@ let diff oldroutes newroutes =
 	let dels = Set.diff oldroutes newroutes in
 	let adds = Set.diff newroutes oldroutes in
 
-	let oldmap = Set.fold (fun r -> IPMap.add r.addr r)
-		     oldroutes IPMap.empty in
-	let newmap = Set.fold (fun r -> IPMap.add r.addr r)
-		     newroutes IPMap.empty in
+	let oldmap = Set.fold (fun r -> Map.add r.addr r)
+		     oldroutes Map.empty in
+	let newmap = Set.fold (fun r -> Map.add r.addr r)
+		     newroutes Map.empty in
 	let isect = Set.inter oldroutes newroutes in
 	let changes = Set.fold (fun r set ->
-			let old_r = IPMap.find r.addr oldmap in
-			let new_r = IPMap.find r.addr newmap in
+			let old_r = Map.find r.addr oldmap in
+			let new_r = Map.find r.addr newmap in
 			if old_r.gw <> new_r.gw then
 			  Set.add new_r set
 			else
@@ -145,8 +148,7 @@ external lowlevel_fetch: unit -> route list
    the kernel route table. *)
 let fetch () =
 	let rs = lowlevel_fetch () in
-	let zero = Unix.inet_addr_of_string "0.0.0.0" in
-	make_set (List.filter (fun r -> Common.addr_in_range r.addr || r.addr = zero) rs)
+	make_set (List.filter (fun r -> Common.addr_in_range r.addr) rs)
 
 (* Commit the given list of adds, deletes and changes to the kernel.
    Attempt a maximum of five extra iterations of checking whether or

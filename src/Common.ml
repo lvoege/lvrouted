@@ -4,8 +4,7 @@
    exception if the signature turns out wrong *)
 exception InvalidSignature
 
-(*s Constants and tunables. Everything that is a ref here is settable
-    through some commandline option. *)
+(*s Constants *)
 
 (* The port to listen on *)
 let port = ref 12345
@@ -20,7 +19,7 @@ let compress_data = false
 (* Whether or not to really update the kernel's routing table *)
 let real_route_updates = ref false
 (* the netmask that's just narrow enough to be an interlink subnet.*)
-let interlink_netmask = ref 28
+let interlink_netmask = 28
 (* at least how many seconds between updating interface association information? *)
 let iface_assoc_update = 5.0
 (* How many seconds between updates of the actual arp table in MAC.ml? *)
@@ -50,29 +49,23 @@ let max_routable = Unix.inet_addr_of_string "172.31.255.0"
 let own_marshaller = true
 (* Where to dump debug stuff and such *)
 let tmpdir = ref "/tmp/"
+(* The IPv6 prefix of the network. *)
+let prefix = Unix.inet_addr_of_string "2001:888:1084::"
+let prefixlen = 48
 (* An optional configuration file with extra addresses *)
 let configfile = ref "/usr/local/etc/lvrouted.conf"
 
 (* Types *)
 
 module StringMap = Map.Make(String)
-(* Define a struct that can be passed to the functorized Set, Map en Hashtbl modules *)
 module IPStruct = struct
-	(* the OrderedType signature *)
 	type t = Unix.inet_addr
-	let compare = LowLevel.compare_ipv4_addrs
-	(* the HashedType signature *)
-	let equal a b = LowLevel.compare_ipv4_addrs a b = 0
-	let hash = Hashtbl.hash
+	let compare = compare
 end
 module IPSet = Set.Make(IPStruct)
 module IPMap = Map.Make(IPStruct)
-module IPHash = Hashtbl.Make(IPStruct)
 
 (* Convenience functions *)
-
-let string_of_ipset ss = 
-	"{" ^ (String.concat ", " (List.map Unix.string_of_inet_addr (IPSet.elements ss))) ^ "}"
 
 (* Given an 'a option, it it a Some of a? *)
 let is_some = function
@@ -149,8 +142,6 @@ let try_max_times max f =
 		else t (i + 1) in
 	t 0
 
-let addr_in_range a = a >= min_routable && a < max_routable
-
 let pack_string s =
 	let s = if compress_data then LowLevel.string_compress s
 		else s in
@@ -162,3 +153,9 @@ let unpack_string s =
 	  raise InvalidSignature;
 	if compress_data then LowLevel.string_decompress s
 	else s
+
+let addr_in_range a =
+	if LowLevel.addr_is_ipv6 a then
+	  LowLevel.mask_addr a prefixlen = prefix
+	else
+	  a >= min_routable && a < max_routable

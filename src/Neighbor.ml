@@ -77,13 +77,7 @@ let handle_data ns s sockaddr =
 	let s = String.sub s 4 (len - 4) in
 	let s = if Common.compress_data then LowLevel.string_decompress s
 		else s in
-	Log.log Log.debug ("deserializing from " ^ addr_s);	
-	begin try
-		n.tree <- Some (Tree.from_string s addr);
-	with Failure f ->
-		Log.log Log.debug ("failed: " ^ f);	
-		raise InvalidPacket
-	end;
+	n.tree <- Some (Tree.from_string s addr);
 	n.seqno <- stamp;
 	n.last_seen <- Unix.gettimeofday ();
 	Log.log Log.debug (name n ^ "'s tree has been set")
@@ -110,64 +104,18 @@ let nuke_old_trees ns numsecs =
 
 (* From the given set of direct IPs and list of neighbors, derive a list of
    (unaggregated) routes and a merged tree. *)
-let derive_routes_and_mytree directips ns default_addrs = 
-	(* Fetch all valid trees from the neighbors *)
+let derive_routes_and_mytree directips ns = 
 	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
 			             (fun n -> Common.from_some n.tree) 
 				     (Set.elements ns) in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
 			   string_of_int (List.length nodes));
-	(* Merge the trees into a new tree and an IPMap.t *)
 	let nodes', routemap = Tree.merge nodes directips in
-
-	(* Fold the IPMap.t into a Route.Set.t *)
-	let routeset =
-		Common.IPHash.fold (fun addr gw ->
-				     Route.Set.add (Route.make addr 32 gw))
+	let routeset = Common.IPMap.fold (fun addr gw set ->
+				     Route.Set.add (Route.make addr 32 gw) set)
 				  routemap Route.Set.empty in
-	(* Insert a default route to the nearest entry in default_addrs, if
-	   any *)
-	let look_for_default_addr n = 
-		let a = Tree.addr n in
-		match Common.IPSet.mem a default_addrs with
-		| true -> Some a
-		| false -> None in
-	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") nodes' in
-	let first_default_addr = Tree.bfs bogus_top_node look_for_default_addr in
-	let default_route = match first_default_addr with
-		| None -> None
-		| Some a -> (
-			Log.log Log.debug ("First default addr: " ^ (Unix.string_of_inet_addr a));
-			let gw = List.fold_left (fun acc (addr, mask) -> match acc with
-				| Some x -> Some x
-				| None -> if LowLevel.route_includes_impl addr mask a 32 then
-						Some a
-					  else
-					  	None) None directips in
-			let gw = match gw with
-				| None -> (try Some (Common.IPHash.find routemap a)
-					   with Not_found -> None)
-				| Some x -> Some x in
-			match gw with
-			| None -> Log.log Log.errors ("Eek! Found a first default addr, but don't have a route to it!");
-				  None
-			| Some gw -> (
-				Log.log Log.debug ("Gateway: " ^ (Unix.string_of_inet_addr gw));
-				let a' = Unix.inet_addr_of_string "0.0.0.0" in
-				Some (Route.make a' 0 gw)
-			)
-		) in
-	Log.log Log.debug ("Done default addrs");
+	Route.aggregate routeset, nodes'
 
-	let routeset' = Route.aggregate routeset in
-	let routeset'' = match default_route with
-		| None -> routeset'
-		| Some r -> Route.Set.add r routeset' in
-
-	routeset'', nodes'
-
-(* Check if the given neighbor is reachable over the given Iface.t. If it
-   isn't, set the neighbor's tree to None. *)
 let check_reachable n iface = 
 	if Common.is_none n.macaddr then begin
 		let arptable = MAC.get_arptable n.iface in

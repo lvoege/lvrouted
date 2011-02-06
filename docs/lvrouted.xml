@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.4//EN"
-                        "http://www.oasis-open.org/docbook/xml/4.4/docbookx.dtd" [
+<!DOCTYPE article PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN"
+                        "http://www.oasis-open.org/docbook/xml/4.0/docbookx.dtd" [
 <!ENTITY wleiden "<ulink url='http://www.wirelessleiden.nl/'>WirelessLeiden</ulink>">
 <!ENTITY freebsd "<ulink url='http://www.freebsd.org/'>FreeBSD</ulink>">
 <!ENTITY svn "<ulink url='http://subversion.tigris.org/'>Subversion</ulink>">
@@ -28,10 +28,10 @@
     implementations provided.
   </para>
   <para>
-    System requirements are &freebsd; 5.0 through 6.0. Other versions may
-    work, but haven't been tested at all. A port to other systems would be
-    fairly easy in that all unportable code is isolated in one relatively
-    small source file.
+    System requirements are &freebsd; 5.0 or 5.3. Other versions may work, but
+    haven't been tested at all. A port to other systems would be fairly easy
+    in that all unportable code is isolated in one relatively small source
+    file.
   </para>
   <para>
     The main body of code is written in &ocaml;. For changes other than
@@ -128,7 +128,7 @@
       Note that while "spanning tree" and "network" may conjure up images of a
       single spanning tree for the network that leaves many links unused, this
       is not the case here. Every node has a spanning tree of its own, and
-      they will generally all be different.
+      they will all be different.
     </para>
   </section>
   <section>
@@ -156,14 +156,21 @@
       administrative connections to those machines are trusted (ssh). Users
       can not be trusted, since it's an open network. Attackers may try to get
       the daemon to crash, or try to muck up routing in the network by feeding
-      nodes faulty or old data. The daemon needs to withstand this.
+      nodes faulty or old data<footnote>
+       <para>
+	 A patch is ready to be deployed to hide interlink SSIDs. This will
+	 make it more difficult for an attacker, but certainly not impossible
+	 as most of the node configurations live in a publically accessible
+	 &svn; repository.
+       </para>
+      </footnote>.
     </para>
     <para>
       Because nodes can trust eachother, all that is needed is that they be
       able to verify that packets sent to them are from a legitimate node.
       A simple secret key scheme would be able to do that. The problem of 
       distributing the secret keys safely is no problem here because
-      administrative connections are trusted.
+      administrative connections are secure.
     </para>
     <para>
       A packet consists of a hash, a sequence number and the serialized
@@ -436,16 +443,6 @@
               you can't really debug on. Dump the state and copy it to a
               machine you can debug on. </entry>.
           </row>
-          <row>
-            <entry>SIGCHLD</entry>
-            <entry>Elevate the loglevel to debug. This is useful when a daemon
-              appears not to accept packets from its neighbors and you want to
-              know why. Keep an eye on <filename>/tmp/lvrouted.log</filename>
-              because it'll grow large. Restart the daemon when you've found
-              the issue, there is currently no way to bring the loglevel back
-              down.
-            </entry>
-          </row>
         </tbody>
       </tgroup>
     </table>
@@ -455,7 +452,12 @@
       Bugs
     </title>
     <para>
-      None that I know of, currently.
+      Only one that I know of: the memory image will grow. It grows very
+      slowly, but it grows nonetheless. The busiest node in &wleiden; will
+      start with a RSS of about 5MB, but will have grown to 10MB in a week.
+    </para>
+    <para>
+      The interim workaround is simply to restart the daemon once a week.
     </para>
   </section>
 </article>

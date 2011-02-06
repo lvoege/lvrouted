@@ -1,0 +1,21 @@
+This is the IPv6 branch of the code.
+
+Additional assumptions the tree serializer makes wrt the (IPv4-only) trunk:
+  - Services on nodes that need to talk to eachother do so over IPv4.
+  - Other than services talking to eachother, there is no need to propagate
+    routes to interlink addresses through the network.
+  - The prefix length of the network is a /48.
+  - Nodes have /64's on their user interfaces. This is needed for
+    autoconfiguration to work anyway.
+  - This leaves 16 bits of addresses to propagate through the network. 
+  - the serializer needs to be able to (de)serialize trees with both IPv4 and
+    IPv6 addresses, so it needs to be able to distinguish between the two. one
+    bit will do.
+  - no one node will ever have more than seven user ranges (/64's for IPv6, 
+    /24 for IPv4), so three bits will do to describe the number of ranges
+  - no more than 4096 /64's will be deployed for some time to come, so
+    actually 12 bits of address are enough to propagate
+  - 1 + 3 + 12 = 16 bits to propagate IPv6 addresses
+  - 1 + 3 + 20 = 24 bits to propagate IPv4 addresses.
+
+if we ever decide not to propagate interlink addresses for IPv4 

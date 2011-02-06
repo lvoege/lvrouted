@@ -35,19 +35,37 @@
 AC_INIT(src/lvrouted.ml)
 
 # Check for Ocaml compilers
+
+# we first look for ocamlc in the path; if not present, we fail
+AC_CHECK_PROG(OCAMLC,ocamlc,ocamlc,no)
+if test "$OCAMLC" = no ; then
+	AC_MSG_ERROR(Cannot find ocamlc.)
+fi
+
+# we extract Ocaml version number and library path
+OCAMLVERSION=`$OCAMLC -v | sed -n -e 's|.*version *\(.*\)$|\1|p' `
+echo "ocaml version is $OCAMLVERSION"
+OCAMLLIB=`$OCAMLC -v | tail -1 | cut -f 4 -d " "`
+echo "ocaml library path is $OCAMLLIB"
+
 # then we look for ocamlopt; if not present, we issue a warning
 # if the version is not the same, we also discard it
 # we set OCAMLBEST to "opt" or "byte", whether ocamlopt is available or not
-OCAMLBEST=byte
 AC_CHECK_PROG(OCAMLOPT,ocamlopt,ocamlopt,no)
+OCAMLBEST=byte
 if test "$OCAMLOPT" = no ; then
-	AC_MSG_ERROR(Cannot find ocamlopt.)
+	AC_MSG_WARN(Cannot find ocamlopt; bytecode compilation only.)
+else
+	AC_MSG_CHECKING(ocamlopt version)
+	TMPVERSION=`$OCAMLOPT -v | sed -n -e 's|.*version *\(.*\)$|\1|p' `
+	if test "$TMPVERSION" != "$OCAMLVERSION" ; then
+	    AC_MSG_RESULT(differs from ocamlc; ocamlopt discarded.)
+	    OCAMLOPT=no
+	else
+	    AC_MSG_RESULT(ok)
+	    OCAMLBEST=opt
+	fi
 fi
-OCAMLBEST=opt
-OCAMLVERSION=`$OCAMLOPT -v | sed -n -e 's|.*version *\(.*\)$|\1|p' `
-echo "ocaml version is $OCAMLVERSION"
-OCAMLLIB=`$OCAMLOPT -v | tail -1 | cut -f 4 -d " "`
-echo "ocaml library path is $OCAMLLIB"
 
 AC_CHECK_PROG(OCAMLDEP,ocamldep,ocamldep,no)
 if test "$OCAMLDEP" = no ; then
@@ -60,9 +78,6 @@ fi
 
 AC_CHECK_PROG(OCAMLWEB,ocamlweb,ocamlweb,true)
 
-# Documentation checks, ignore if not found
-AC_CHECK_PROG(DOT,dot,dot,true)
-AC_CHECK_PROG(PS2PDF,ps2pdf,ps2pdf,true)
 AC_CHECK_PROG(XSLTPROC,xsltproc,xsltproc,true)
 
 # platform
@@ -80,8 +95,7 @@ XSLTPROC_FLAGS=--nonet
 XML_CATALOG=
 for i in /usr/local/share/xml/catalog \
 	 /etc/xml/catalog \
-	 /sw/etc/xml/catalog \
-   /opt/local/etc/xml/catalog; do
+	 /sw/etc/xml/catalog; do
 	if test -f "$i"; then
 		XML_CATALOG=$i
 	fi
@@ -91,8 +105,7 @@ DOCBOOK_ROOT=
 if test ! -n "$XML_CATALOG"; then
 	for i in /usr/share/xml/docbook/stylesheet/nwalsh/ \
 		 /usr/local/share/xsl/docbook/ \
-		 /sw/share/xml/xsl/docbook-xsl \
-     /opt/local/share/xsl/docbook-xsl/; do
+		 /sw/share/xml/xsl/docbook-xsl; do
 		if test -d "$i"; then
 			DOCBOOK_ROOT=$i
 		fi

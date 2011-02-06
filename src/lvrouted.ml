@@ -2,7 +2,6 @@
 open Common
 open Log
 open Neighbor
-open Printexc
 
 (* First some globals. These are global because the signal handlers need to be
    able to set them when re-reading the node's configuration. *)
@@ -21,8 +20,6 @@ let last_time = ref 0.0
 let unreachable = ref Neighbor.Set.empty
 (* Resume from saved state on startup instead of a new, clean state *)
 let resume = ref false
-let quit = ref false
-let default_addrs = ref IPSet.empty
 
 (* See if any previously reachable neighbors became reachable or vice-versa *)
 let check_reachable _ =
@@ -71,8 +68,7 @@ let broadcast_run udpsockfd rtsockfd =
 
 	  let newroutes, nodes =
 		Neighbor.derive_routes_and_mytree !directnets
-						  !neighbors
-						  !default_addrs in
+						  !neighbors in
 	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
@@ -110,6 +106,7 @@ let broadcast_run udpsockfd rtsockfd =
 		output_string out (Route.showroutes newroutes);
 		close_out out;
 	  end;
+	  Gc.minor ();
 	  Log.log Log.debug "finished broadcast run"
 
 (* This function is called periodically from the select() loop. It decides
@@ -130,7 +127,7 @@ let periodic_check udpsockfd rtsockfd =
 
 let abort_handler _ =
 	Log.log Log.info "Exiting.";
-	quit := true
+	exit 0
 
 (* For the given interface and netblock, add all possible neighbors to the
    global set *)
@@ -157,33 +154,17 @@ let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
 		Log.log Log.info ("New address " ^
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
-		let node = Tree.make addr [] in
-		if not (List.mem node !direct) then begin
-			direct := node::!direct;
-			directnets := (addr, mask)::!directnets;
-		end;
-		if mask >= !Common.interlink_netmask then 
-		  add_neighbors iface addr mask
-		else 
-		  Log.log Log.warnings("Address at " ^ Unix.string_of_inet_addr
-			addr ^ " on " ^ iface ^ " ignored [netmask greater than " ^
-			string_of_int !Common.interlink_netmask ^ "]");
+		direct := (Tree.make addr [])::!direct;
+		directnets := (addr, mask)::!directnets;
+		if mask >= Common.interlink_netmask then
+		  add_neighbors iface addr mask;
 		true
-	end else  begin
-		Log.log Log.warnings ("Address at " ^ Unix.string_of_inet_addr
-			addr ^ " on " ^ iface ^ " ignored [not in range " ^
-			Unix.string_of_inet_addr Common.min_routable ^ " - " ^ 
-			Unix.string_of_inet_addr Common.max_routable ^ "]");
-		false
-	end	
+	end else false
 
 let handle_routemsg udpsockfd rtsockfd = function
 	  LowLevel.RTM_NEWADDR (iface, addr, mask) ->
-	  	if add_address iface addr mask then begin
-			Log.log Log.info ("Added address " ^
-				Unix.string_of_inet_addr addr ^ " on " ^ iface);
+	  	if add_address iface addr mask then
 		  broadcast_run udpsockfd rtsockfd
-		end
 	| LowLevel.RTM_DELADDR (iface, addr, mask) ->
 		if Common.addr_in_range addr then begin
 			Log.log Log.info ("Deleted address " ^
@@ -192,7 +173,7 @@ let handle_routemsg udpsockfd rtsockfd = function
 					      !direct;
 			directnets := List.filter (fun (a, _) -> a <> addr)
 						  !directnets;
-			if mask >= !Common.interlink_netmask then
+			if mask >= Common.interlink_netmask then
 			  delete_neighbors iface addr mask;
 			broadcast_run udpsockfd rtsockfd
 		end
@@ -200,9 +181,6 @@ let handle_routemsg udpsockfd rtsockfd = function
 
 (* Clear and re-create the current configuration *)
 let read_config _ =
-	(*Log.reopen_log ();*)
-	Log.log Log.debug ("(Re)opening the config file '" ^ !Common.configfile ^ "'");
-
 	direct := [];
 	directnets := [];
 	ifaces := StringMap.empty;
@@ -222,7 +200,7 @@ let read_config _ =
 		direct := !direct@(List.map (fun a -> Tree.make a []) extraaddrs);
 		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
 	with _ ->
-		Log.log Log.warnings ("Couldn't read the specified config file '" ^ !configfile ^ "'");
+		Log.log Log.warnings ("Couldn't read the specified config file");
 	end
 
 let version_info =
@@ -265,42 +243,26 @@ let read_state s =
 	unreachable := unreachable';
 	MAC.arptables := arptables'
 
-let parse_proxies s = 
-	Log.log Log.info ("default string " ^ s);
-	let ss = Str.split (Str.regexp_string ",") s in
-	let addrs = List.map Unix.inet_addr_of_string ss in
-	default_addrs := List.fold_left (fun a e -> IPSet.add e a) IPSet.empty addrs
-
 let argopts = [
 	"-a", Arg.Set_float Common.alarm_timeout, "Interval between checking for interesting things";
 	"-b", Arg.Set_float Common.bcast_interval, "Interval between contacting neighbors";
-	"-c", Arg.Set_string Common.configfile, "Config file";
+	"-c", Arg.Set_string configfile, "Config file";
 	"-d", Arg.Set_int Log.loglevel, "Loglevel. Higher is chattier";
 	"-f", Arg.Set Common.foreground, "Stay in the foreground";
 	"-l", Arg.Set Common.use_syslog, "Log to syslog instead of /tmp/lvrouted.log";
-	"-m", Arg.Set_int Common.interlink_netmask, "Widest subnet to consider for interlinks";
 	"-p", Arg.Set_int Common.port, "UDP port to use";
 	(*"-r", Arg.Set resume, "Resume from saved state"; *)
 	"-s", Arg.Set_string Common.secret, "Secret to sign packets with";
 	"-t", Arg.Set_string Common.tmpdir, "Temporary directory";
 	"-u", Arg.Set Common.real_route_updates, "Upload routes to the kernel";
 	"-v", Arg.Unit print_version, "Print version information";
-	"-z", Arg.String parse_proxies, "Addresses that the closest of which gets the default route";
 ]
 
 (* This is the main function *)
 let _ =
 	Log.log Log.info "Starting up";
 
-	Gc.set { (Gc.get ()) with Gc.space_overhead = 200 };
-
-	let tenmb = 10 * 1024 * 1024 in
-	if LowLevel.set_limits tenmb tenmb then
-	  Log.log Log.info "Limits set"
-	else
-	  Log.log Log.warnings "Couldn't set limits!";
-
-	Arg.parse argopts (fun s -> Log.log Log.debug ("unknown argument " ^ s)) "lvrouted";
+	Arg.parse argopts ignore "lvrouted";
 	Log.log Log.info "Parsed commandline";
 
 	if not !Common.foreground then begin
@@ -308,14 +270,12 @@ let _ =
 		Log.log Log.info "daemonized";
 	end;
 
-	(* Open the UDP and the routing socket *)
 	let udpsockfd = Unix.socket Unix.PF_INET Unix.SOCK_DGRAM 0 in
 	Unix.setsockopt udpsockfd Unix.SO_REUSEADDR true;
 	Unix.bind udpsockfd (Unix.ADDR_INET (Unix.inet_addr_any, !Common.port));
 	let rtsockfd = LowLevel.open_rtsock () in
-	Log.log Log.info "Opened and bound sockets";
+	Log.log Log.info "Opened and bound socket";
 
-	(* Set up the signal handlers *)
 	let set_handler f = List.iter (fun i -> Sys.set_signal i (Sys.Signal_handle f)) in
 	set_handler abort_handler [Sys.sigabrt; Sys.sigquit; Sys.sigterm ];
 	set_handler (fun _ -> read_config ()) [Sys.sighup];
@@ -323,47 +283,33 @@ let _ =
 	set_handler dump_state [Sys.sigusr2];
 	Log.log Log.info "Set signal handlers";
 
-	(* Read the configuration from the system, or restart from a saved
-	   checkpoint. Restarting doesn't work yet and the resume variable
-	   has been disabled until it's debugged. *)
 	if not !resume then begin
 		read_config (); 
+		Log.log Log.info "Read config";
 	end else begin
 		read_state (Common.read_file (!Common.tmpdir ^ "lvrouted.state"));
 		Log.log Log.info "Resumed from saved state";
 	end;
 
-	Log.log Log.debug "Starting main loop";
-
 	let logfrom s = Log.log Log.debug
 			("got data from " ^
 			 Unix.string_of_inet_addr
 				(Common.get_addr_from_sockaddr s)) in
-	let s = String.create 65536 in		(* buffer to read into *)
+	let s = String.create 65536 in
 	let readfds = [ udpsockfd; rtsockfd ] in
 	let last_periodic_check = ref 0.0 in
-	while not !quit do try
-		(* Wait for interesting events *)
-		let fds, _, _ =
-			try Unix.select readfds [] [] !Common.alarm_timeout
-			with Unix.Unix_error (Unix.EINTR, _, _) -> [], [], [] in
+	while true do try
+		Gc.minor ();
+		let fds, _, _ = Unix.select readfds [] []
+					!Common.alarm_timeout in
 		if List.mem udpsockfd fds then begin
-			(* A packet came in on the UDP socket *)
 			let len, sockaddr = Unix.recvfrom udpsockfd s 0
 						(String.length s) [] in
 			logfrom sockaddr;
-			try
-				let s' = String.sub s 0 len in
-				let out = open_out (!Common.tmpdir ^ "lvrouted.packet-" ^ 
-					Unix.string_of_inet_addr (Common.get_addr_from_sockaddr sockaddr)) in
-				output_string out s';
-				close_out out;
-				Neighbor.handle_data !neighbors
-						     s'
-						     sockaddr;
-				Log.log Log.debug ("data handled");
-			with InvalidPacket ->
-				Log.log Log.errors ("Invalid packet!")
+			Neighbor.handle_data !neighbors
+					     (String.sub s 0 len)
+					     sockaddr;
+			Log.log Log.debug ("data handled");
 		end;
 		if List.mem rtsockfd fds then
 		  handle_routemsg udpsockfd rtsockfd
@@ -374,9 +320,5 @@ let _ =
 			periodic_check udpsockfd rtsockfd;
 			last_periodic_check := now;
 		end;
-	with _ ->
-		(* Exceptions should've been caught by now, so log this as a 
-		   program error *)
-		Printexc.print_backtrace stdout;
-		Log.log Log.errors "Unhandled exception in main loop"
+	with _ -> ()
 	done

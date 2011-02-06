@@ -8,24 +8,17 @@ type node = {
 	mutable nodes: node list;
 }
 
+module Map = Map.Make(struct
+	type t = node
+	let compare = compare
+end)
+
 (* Constructor *)
 let make a nodes = { addr = a; nodes = nodes }
 
 (* Accessors *)
 let addr n = n.addr
 let nodes n = n.nodes
-
-(* For the tree topped by the given node, traverse it breadth-first, calling
-   the given function on the nodes. If the function returns None, continue
-   traversing. If it returns non-None, return the result as the result of the
-   traversal. *)
-let bfs node f =
-	let rec traverse = function
-		| [] -> None
-		| x::xs -> match f x with
-				| None -> traverse (xs@x.nodes)
-				| Some r -> Some r in
-	traverse [node]
 
 (* Show the given list of nodes *)
 let show l =
@@ -38,6 +31,15 @@ let show l =
 	show' 0 l;
 	!s
 
+let compare n1 n2 =
+	n1.addr = n2.addr && (List.length n1.nodes = List.length n2.nodes) &&
+	let m1 = List.fold_left (fun s n -> Map.add n n s) Map.empty n1.nodes in
+	List.for_all (fun n2 ->
+		try
+			let n1 = Map.find n2 m1 in
+			compare n1 n2 = 0
+		with Not_found -> false) n2.nodes
+
 (* Given a list of spanning trees received from neighbors and a set of our
    own addresses, return the spanning tree for this node, plus a routing
    table.
@@ -49,17 +51,18 @@ let show l =
       add a route and create a new node and prepend it to the parent's
       list of children.
    4. Filter out routes that are included in a route from the
-      list of directly attached routes. This may not be necessary anymore, but
-      it was when route addition didn't work correctly.
+      list of directly attached routes.
 
-   The traversal routine takes a routing table and a list of tuples to
-   process. Those tuples are of the form (node, parent, gateway address).
-   If the node isn't already in the routing table:
-     - a new node is produced and hooked under the parent
-     - the new node is inserted into the routing table
-     - the original node's children are appended to the list of tuples to
-       process, with the new node as the parent entry. the gateway argument
-       stays the same.
+   The traversal routine applies a callback function to a list of
+   (node, parent, gateway address) tuples. If the callback produces a
+   new node, it is hooked under the parent's list of children and the
+   original node's children are appended to the list of tuples to
+   traverse.
+
+TODO: 4 may be nothing more than cosmetics now that route addition
+      finally works right. 4 was added because some of the evidence
+      while debugging pointed to such routes acting up. check if it
+      is just cosmetic now and note it.
 
    Note that the resulting spanning tree is returned as the list of
    first-level nodes, because the top node is relevant only to the
@@ -69,31 +72,29 @@ let show l =
 *)
 let merge nodes directnets =
 	(* step 1 *)
-	let routes = IPHash.create 512 in
-	List.iter (fun (a, _) -> IPHash.add routes a a) directnets;
+	let routes = List.fold_left (fun map (a, _) -> IPMap.add a a map)
+				    IPMap.empty directnets in
 	(* step 2 *)
 	let fake = make Unix.inet_addr_any [] in
 	(* step 3 *)
-	let rec traverse = function
-		  []			-> ()	(* all done *)
+	let rec traverse routes = function
+		  []			-> routes
 		| (node,parent,gw)::xs	-> 
-			if IPHash.mem routes node.addr then
-			  traverse xs (* ignore this node *)
+			if IPMap.mem node.addr routes then
+			  traverse routes xs (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
 				let newnode = make node.addr [] in
 				parent.nodes <- newnode::parent.nodes;
-				IPHash.add routes node.addr gw;
-				(* and continue traversing, after appending the children of this node to the todo list *)
-				traverse (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
+				traverse (IPMap.add node.addr gw routes)
+					 (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
 			end in
-	let todo = List.map (fun node -> node, fake, node.addr) nodes in
-	traverse todo;
+	let routes = traverse routes (List.map (fun node -> node, fake, node.addr) nodes) in
 	(* step 4 *)
-	IPHash.iter (fun a gw ->
-		if List.exists (fun (a', n) ->
-			LowLevel.route_includes_impl a' n a 32) directnets then
-		  IPHash.remove routes a) routes;
+	let routes = IPMap.fold (fun a gw map ->
+			if List.exists (fun (a', n) ->
+				Route.includes_impl a' n a 32) directnets then map
+			else IPMap.add a gw map) routes IPMap.empty in
 	fake.nodes, routes
 
 external serialize: node -> string = "tree_to_string"
@@ -116,4 +117,4 @@ let from_string s from_addr : node =
 let dump_tree fname nodes =
 	let out = open_out (!Common.tmpdir ^ fname) in
 	output_string out (show nodes);
-	close_out out
+	close_out out;

@@ -14,8 +14,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
-#include <sys/time.h>
-#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/sysctl.h>
 #include <ifaddrs.h>
@@ -55,7 +53,6 @@
 #include <caml/fail.h>
 #include <caml/memory.h>
 #include <caml/mlvalues.h>
-#include <caml/signals.h>
 
 //#define DUMP_ROUTEPACKET
 
@@ -87,75 +84,36 @@ static inline int bitcount(unsigned int i) {
 	return c;
 }
 
-CAMLprim value set_limits(value data, value core) {
-	CAMLparam2(data, core);
-	struct rlimit rlimit;
-
-	if (getrlimit(RLIMIT_DATA, &rlimit) == -1)
-	  CAMLreturn(Val_bool(0));
-	rlimit.rlim_max = Long_val(data);
-	if (setrlimit(RLIMIT_DATA, &rlimit) == -1)
-	  CAMLreturn(Val_bool(0));
-
-	if (getrlimit(RLIMIT_CORE, &rlimit) == -1)
-	  CAMLreturn(Val_bool(0));
-	rlimit.rlim_max = Long_val(core);
-	CAMLreturn(Val_bool(setrlimit(RLIMIT_CORE, &rlimit) == 0));
-}
-
 CAMLprim value int_of_file_descr(value file_descr) {
 	return file_descr;
 }
 
-/* reference code: /usr/src/sbin/ifconfig/ifmedia.c - media_status(int s) */
-#ifdef __FreeBSD__
-/* stuff ifm_status in ints[0] and ifm_active in ints[1] */
-static void ifstatus(const char *iface, int *ints) {
-	struct ifmediareq ifmr;
-	int *media_list, sockfd;
+/* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
+static inline int iface_is_associated(const char *iface) {
+#ifndef HAVE_DEV_WI_IF_WAVELAN_IEEE_H
+	return 1;
+#else
+	struct ifreq ifr;
+	int sockfd;
+	struct wi_req wir;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
-	  failwith("socket for ifstatus");
+	  failwith("socket for get_associated_stations");
+	memset(&ifr, 0, sizeof(ifr));
+	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
+	ifr.ifr_data = (caddr_t)&wir;
 
-	memset(&ifmr, 0, sizeof(ifmr));
-	strncpy(ifmr.ifm_name, iface, sizeof(ifmr.ifm_name));
+	memset(&wir, 0, sizeof(wir));
+	wir.wi_len = WI_MAX_DATALEN;
+	wir.wi_type = WI_RID_CURRENT_SSID;
 
-	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0) {
+	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1) {
 		close(sockfd);
-		failwith("Interface doesn't support SIOC{G,S}IFMEDIA.");
+		failwith("SIOCGWAVELAN");
 	}
-	if (ifmr.ifm_count == 0) {
-		close(sockfd);
-		failwith("huh, no media types?");
-	}
-
-	media_list = malloc(ifmr.ifm_count * sizeof(int));
-	if (media_list == NULL)
-	  failwith("malloc");
-	ifmr.ifm_ulist = media_list;
-
-	if (ioctl(sockfd, SIOCGIFMEDIA, (caddr_t)&ifmr) < 0)
-	  failwith("SIOCGIFMEDIA");
-
 	close(sockfd);
-	free(media_list);
-
-	ints[0] = ifmr.ifm_status;
-	ints[1] = ifmr.ifm_active;
-}
-#endif
-
-/* mostly stolen from /usr/src/sbin/wicontrol/wicontrol.c */
-/* reference code: /usr/src/sbin/ifconfig/ifmedia.c - media_status(int s) */
-static inline int iface_is_associated(const char *iface) {
-#ifdef __FreeBSD__
-	int i[2];
-	ifstatus(iface, i);
-	return (i[0] & IFM_AVALID) &&
-	       ((IFM_TYPE(i[1]) != IFM_IEEE80211 || i[0] & IFM_ACTIVE));
-#else
-	assert(0);
+	return wir.wi_val[0];
 #endif
 }
 
@@ -164,11 +122,7 @@ CAMLprim value caml_iface_is_associated(value iface) {
 	CAMLreturn(Val_bool(iface_is_associated(String_val(iface))));
 }
 
-static inline in_addr_t get_addr(value addr) {
-#if 0
-	if (string_length(addr) != 4)
-	  failwith("I only support IPv4 for now");
-#endif
+static inline in_addr_t get_addr4(value addr) {
 	return ntohl(((struct in_addr *)(String_val(addr)))->s_addr);
 }
 
@@ -183,12 +137,34 @@ static inline in_addr_t mask_addr_impl(in_addr_t addr, int masklen) {
 CAMLprim value mask_addr(value addr, value mask) {
 	CAMLparam2(addr, mask);
 	CAMLlocal1(result);
-	in_addr_t res_addr;
-	
-	res_addr = htonl(mask_addr_impl(get_addr(addr),
-			 Long_val(mask)));
-	result = alloc_string(4);
-	memcpy(String_val(result), &res_addr, 4);
+	in_addr_t res4_addr;
+	int masklen, addrlen, i;
+	uint32_t *from6, *to6;
+
+	addrlen = string_length(addr);
+	result = alloc_string(addrlen);
+	masklen = Long_val(mask);
+	switch (addrlen) {
+		case sizeof(in_addr_t):
+			res4_addr = htonl(mask_addr_impl(get_addr4(addr), mask));
+			memcpy(String_val(result), &res4_addr, addrlen);
+			break;
+		case sizeof(struct in6_addr):
+			from6 = (uint32_t *)String_val(addr);
+			to6 = (uint32_t *)String_val(result);
+			for (i = 0; masklen >= 32; masklen -= 32, i++)
+			  to6[i] = from6[i];
+			if (masklen) {
+				to6[i] = htonl(mask_addr_impl(ntohl(from6[i]),
+							      masklen));
+				i++;
+			}
+			for (; i < 4; i++)
+			  to6[i] = 0;
+			break;
+		default:
+			failwith("ouch, bogus Unix.inet_addr!");
+	}
 	CAMLreturn(result);
 }
 
@@ -200,10 +176,12 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 }
 
 CAMLprim value string_compress(value s) {
+	assert(0); /* TESTME first */
+	return Val_unit;
+#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code;
-	unsigned int buflen;
+	int code, buflen;
 	char *buffer;
 
 	buffer = 0;
@@ -218,8 +196,7 @@ CAMLprim value string_compress(value s) {
 				1,
 				0,
 				0);
-		if (code == BZ_OUTBUFF_FULL)
-		  buflen *= 2;
+		buflen *= 2;
 	} while (code == BZ_OUTBUFF_FULL);	
 	if (code == BZ_OK) {
 		result = alloc_string(buflen);
@@ -230,13 +207,16 @@ CAMLprim value string_compress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_compress");
 	}
+#endif
 }
 
 CAMLprim value string_decompress(value s) {
+	assert(0); /* TESTME first */
+	return Val_unit;
+#if 0
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code;
-	unsigned int buflen;
+	int code, buflen;
 	char *buffer;
 
 	buffer = 0;
@@ -250,8 +230,7 @@ CAMLprim value string_decompress(value s) {
 				string_length(s),
 				0,
 				0);
-		if (code == BZ_OUTBUFF_FULL)
-		  buflen *= 2;
+		buflen *= 2;
 	} while (code == BZ_OUTBUFF_FULL);	
 	if (code == BZ_OK) {
 		result = alloc_string(buflen);
@@ -262,23 +241,21 @@ CAMLprim value string_decompress(value s) {
 		free(buffer);
 		failwith("Cannot handle error in string_decompress");
 	}
+#endif
 }
 
 #ifdef HAVE_RTMSG
-/*
- * I had assumed that the fact that route updates are done through
- * messages over a socket in FreeBSD, that meant you could put
- * multiple updates in one message. That's why this routine is
- * the way it is, but it later turned out you're assumed to only
- * be write()ing one message at a time.
- */
 static int routemsg_add(unsigned char *buffer, int type,
 			value dest, value masklen, value gw) {
 	struct rt_msghdr *msghdr;
 	struct sockaddr_in *addr;
+	struct sockaddr_in6 *addr6;
 	static int seq = 1;
 	unsigned char *p;
 	CAMLparam3(dest, masklen, gw);
+	static unsigned char mask64[16] =
+		{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 	msghdr = (struct rt_msghdr *)buffer;	
 	memset(msghdr, 0, sizeof(struct rt_msghdr));
@@ -288,8 +265,9 @@ static int routemsg_add(unsigned char *buffer, int type,
 	msghdr->rtm_pid = 0;
 	msghdr->rtm_flags = RTF_UP | RTF_GATEWAY | RTF_DYNAMIC;
 	msghdr->rtm_seq = seq++;
-
-	addr = (struct sockaddr_in *)(msghdr + 1);
+	
+	if (string_length(dest) == sizeof(in_addr_t)) {
+		addr = (struct sockaddr_in *)(msghdr + 1);
 #define ADD(x) \
 	memset(addr, 0, sizeof(struct sockaddr_in));	\
 	addr->sin_len = sizeof(struct sockaddr_in);	\
@@ -297,39 +275,72 @@ static int routemsg_add(unsigned char *buffer, int type,
 	addr->sin_addr.s_addr = htonl(x);		\
 	addr++;
 
-	ADD(mask_addr_impl(get_addr(dest), Long_val(masklen)));
-	ADD(get_addr(gw));
-	ADD(bitmask(Long_val(masklen)));
+		ADD(mask_addr_impl(get_addr4(dest), Long_val(masklen)));
+		ADD(get_addr4(gw));
+		ADD(bitmask(Long_val(masklen)));
 
-	/*
-	 * for some reason, the sin_len for the netmask's sockaddr_in should
-	 * not be the length of the sockaddr_in at all, but the offset of
-	 * the sockaddr_in's last non-zero byte. I don't know why. From
-	 * the last byte of the sockaddr_in, step backwards until there's a
-	 * non-zero byte under the cursor, then set the length.
-	 */
-	addr--;
-	for (p = (unsigned char *)(addr + 1) - 1; p > (unsigned char *)addr; p--)
-	  if (*p) {
-		addr->sin_len = p - (unsigned char *)addr + 1;
-		break;
-	  }
-	addr->sin_family = 0; /* just to be totally in sync with /usr/sbin/route */
+		/*
+		 * for some reason, the sin_len for the netmask's sockaddr_in should
+		 * not be the length of the sockaddr_in at all, but the offset of
+		 * the sockaddr_in's last non-zero byte. I don't know why. From
+		 * the last byte of the sockaddr_in, step backwards until there's a
+		 * non-zero byte under the cursor, then set the length.
+		 */
+		addr--;
+		for (p = (unsigned char *)(addr + 1) - 1; p > (unsigned char *)addr; p--)
+		  if (*p) {
+			addr->sin_len = p - (unsigned char *)addr + 1;
+			break;
+		  }
+		addr->sin_family = 0; /* just to be totally in sync with /usr/sbin/route */
 
-	msghdr->rtm_msglen = (unsigned char *)addr +
-				ROUNDUP(addr->sin_len)
-				- buffer;
+		msghdr->rtm_msglen = (unsigned char *)addr +
+					ROUNDUP(addr->sin_len)
+					- buffer;
+	} else {
+		addr6 = (struct sockaddr_in6 *)(msghdr + 1);
+#define ADD6(x) \
+	memset(addr6, 0, sizeof(struct sockaddr_in6));	\
+	addr6->sin6_len = sizeof(struct sockaddr_in6);	\
+	addr6->sin6_family = AF_INET6;			\
+	memcpy(addr6->sin6_addr.s6_addr, String_val(x), sizeof(struct sockaddr_in6)); \
+	addr6++;
+
+		ADD6(dest);
+		ADD6(gw);
+		ADD6(mask64);
+
+		/*
+		 * for some reason, the sin_len for the netmask's sockaddr_in should
+		 * not be the length of the sockaddr_in at all, but the offset of
+		 * the sockaddr_in's last non-zero byte. I don't know why. From
+		 * the last byte of the sockaddr_in, step backwards until there's a
+		 * non-zero byte under the cursor, then set the length.
+		 */
+		addr6--;
+		for (p = (unsigned char *)(addr6 + 1) - 1; p > (unsigned char *)addr6; p--)
+		  if (*p) {
+			addr6->sin6_len = p - (unsigned char *)addr6 + 1;
+			break;
+		  }
+		addr6->sin6_family = 0; /* just to be totally in sync with /usr/sbin/route */
+
+		msghdr->rtm_msglen = (unsigned char *)addr6 +
+					ROUNDUP(addr6->sin6_len)
+					- buffer;
+	}
 	
 	CAMLreturn(msghdr->rtm_msglen);
 }
 #endif
 
-CAMLprim value routes_commit(value rtsock, value deletes, value adds, value changes) {
+CAMLprim value routes_commit(value rtsock,
+			value deletes, value adds, value changes) {
 	CAMLparam4(rtsock, deletes, adds, changes);
 	CAMLlocal5(result, adderrs, delerrs, cherrs, tuple);
 	CAMLlocal1(v);
 #ifdef HAVE_RTMSG
-	int sockfd, buflen, len, i;
+	int sockfd, buflen, len;
 	unsigned char *buffer;
 #ifdef DUMP_ROUTEPACKET
 	FILE *debug;
@@ -349,10 +360,7 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 		fwrite(buffer, 1, len, debug);
 		fclose(debug);
 #endif
-		enter_blocking_section();
-		i = write(sockfd, buffer, len);
-		leave_blocking_section();
-		if (i < 0) {
+		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
 			Store_field(tuple, 0, v);
 			Store_field(tuple, 1, copy_string(strerror(errno)));
@@ -363,10 +371,7 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 	for (delerrs = Val_int(0); deletes != Val_int(0); deletes = Field(deletes, 1)) {
 		v = Field(deletes, 0);
 		len = routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
-		enter_blocking_section();
-		i = write(sockfd, buffer, len);
-		leave_blocking_section();
-		if (i < 0) {
+		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
 			Store_field(tuple, 0, v);
 			Store_field(tuple, 1, copy_string(strerror(errno)));
@@ -377,10 +382,7 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 	for (cherrs = Val_int(0); changes != Val_int(0); changes = Field(changes, 1)) {
 		v = Field(changes, 0);
 		len = routemsg_add(buffer, RTM_CHANGE, Field(v, 0), Field(v, 1), Field(v, 2));
-		enter_blocking_section();
-		i = write(sockfd, buffer, len);
-		leave_blocking_section();
-		if (i < 0) {
+		if (write(sockfd, buffer, len) < 0) {
 			tuple = alloc_tuple(2);
 			Store_field(tuple, 0, v);
 			Store_field(tuple, 1, copy_string(strerror(errno)));
@@ -394,7 +396,10 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 	Store_field(result, 1, adderrs);
 	Store_field(result, 2, cherrs);
 #else
-	assert(0);
+	result = alloc_tuple(3);
+	Store_field(result, 0, alloc_tuple(0));
+	Store_field(result, 1, alloc_tuple(0));
+	Store_field(result, 2, alloc_tuple(0));
 #endif
 	CAMLreturn(result);
 }
@@ -429,11 +434,16 @@ CAMLprim value caml_ether_ntoa(value s, value res) {
 	CAMLreturn(rescode);
 }
 
-/* reference code: /usr/src/sbin/ifconfig/ifconfig.c - line 256 */
+static char *get_addr_ofs(int ip6, struct sockaddr *addr) {
+	return ip6 ? (char *)((struct sockaddr_in6 *)addr)->sin6_addr.s6_addr :
+		     (char *)&((struct sockaddr_in *)addr)->sin_addr.s_addr;
+}
+
 CAMLprim value caml_getifaddrs(value unit) {
 	CAMLparam1(unit);
 	struct ifaddrs *ifap, *ifp;
-	in_addr_t a;
+	int addrlen;
+	struct in6_addr *saddr6;
 	CAMLlocal4(result, tuple, addr, option);
 
 	if (getifaddrs(&ifap) == -1)
@@ -441,26 +451,40 @@ CAMLprim value caml_getifaddrs(value unit) {
 
 	result = Val_int(0);
 	for (ifp = ifap; ifp; ifp = ifp->ifa_next) {
-		if (ifp->ifa_addr->sa_family != AF_INET)
+		if (ifp->ifa_addr->sa_family != AF_INET &&
+		    ifp->ifa_addr->sa_family != AF_INET6)
 		  continue;	/* not interested */
+
+		saddr6 = ifp->ifa_addr->sa_family == AF_INET6 ?
+				&((struct sockaddr_in6 *)ifp->ifa_addr)->sin6_addr
+				: 0;
+		if (saddr6 &&
+			(IN6_IS_ADDR_LINKLOCAL(saddr6) ||
+			 IN6_IS_ADDR_SITELOCAL(saddr6) || 
+			 IN6_IS_ADDR_LOOPBACK(saddr6) ||
+			 IN6_IS_ADDR_UNSPECIFIED(saddr6) ||
+			 IN6_IS_ADDR_V4MAPPED(saddr6)))
+		  continue;
 
 		tuple = alloc_tuple(6);
 		Store_field(tuple, 0, copy_string(ifp->ifa_name));
 		Store_field(tuple, 1, copy_nativeint(ifp->ifa_flags));
 
-		addr = alloc_string(sizeof(in_addr_t));
-		a = ((struct sockaddr_in *)ifp->ifa_addr)->sin_addr.s_addr;
-		memcpy(String_val(addr), &a, sizeof(in_addr_t));
+		addrlen = saddr6 ? sizeof(struct in6_addr) : 
+				   sizeof(struct in_addr);
+		addr = alloc_string(addrlen);
+		memcpy(String_val(addr), 
+				get_addr_ofs(saddr6 != 0, ifp->ifa_addr),
+				addrlen);
 		Store_field(tuple, 2, addr);
 /* I'm not sure how the GC preprocessor magic would work with an inline
  * function here, so I'll use an ugly macro instead */
 #define STORE_OPTIONAL_ADDR(x, idx) \
 		if (ifp->x) { \
-			addr = alloc_string(sizeof(in_addr_t)); \
-			a = ((struct sockaddr_in *)ifp->x)->sin_addr.s_addr; \
-			memcpy(String_val(addr), &a, sizeof(in_addr_t)); \
+			addr = alloc_string(addrlen); \
+			memcpy(String_val(addr), get_addr_ofs(saddr6 != 0, ifp->ifa_addr), addrlen); \
 			option = alloc_small(1, Some_tag); \
-			Field(option, 0) = addr; \
+			Store_field(option, 0, addr); \
 		} else option = None_val; \
 		Store_field(tuple, idx, option);
 		STORE_OPTIONAL_ADDR(ifa_netmask, 3);
@@ -476,8 +500,15 @@ CAMLprim value caml_getifaddrs(value unit) {
 
 CAMLprim value bits_in_inet_addr(value addr) {
 	CAMLparam1(addr);
+	int count;
+	char *p, *lim;
 
-	CAMLreturn(Val_int(bitcount(get_addr(addr))));
+	p = String_val(addr);
+	lim = p + string_length(addr);
+	for (count = 0; p < lim; p++)
+	  count += bitcount(*p);
+
+	CAMLreturn(Val_int(count));
 }
 
 CAMLprim value caml_strstr(value big, value little) {
@@ -494,7 +525,7 @@ CAMLprim value get_addrs_in_block(value addr, value mask) {
 	in_addr_t a;
 	int i, numaddrs;
 
-	a = mask_addr_impl(get_addr(addr), Long_val(mask)) + 1;
+	a = mask_addr_impl(get_addr4(addr), Long_val(mask)) + 1;
 	numaddrs = (1 << (32 - Long_val(mask))) - 2;
 	if (numaddrs < 0) /* happens if the netmask was 32 to begin with */
 	  numaddrs = 0;
@@ -508,9 +539,7 @@ CAMLprim value get_addrs_in_block(value addr, value mask) {
 	CAMLreturn(result);
 }
 
-/* reference code:
- * /usr/src/usr.sbin/arp/arp.c - search(u_long addr, action_fn *action)
- */
+/* stolen from /usr/src/usr.sbin/arp/arp.c */
 CAMLprim value get_arp_entries(value unit) {
 	CAMLparam1(unit);
 	CAMLlocal4(result, tuple, ipaddr, macaddr);
@@ -571,8 +600,6 @@ CAMLprim value get_arp_entries(value unit) {
 		}
 		free(buf);
 	}
-#else
-	assert(0);
 #endif
 
 	CAMLreturn(result);
@@ -582,65 +609,12 @@ CAMLprim value get_associated_stations(value iface) {
 	CAMLparam1(iface);	
 	CAMLlocal2(result, mac);
 #if defined(HAVE_NET80211_IEEE80211_H) || defined(HAVE_NET_IF_IEEE80211_H)
+	struct ifreq ifr;
 	int sockfd, i;
 #else
-	assert(0);
+	result = alloc_tuple(0);
 #endif
 #if defined(HAVE_NET80211_IEEE80211_H)
-#  if defined(IEEE80211_IOC_STA_INFO)
-	/* FreeBSD 6.0 and up (hopefully), swiped from ifconfig */
-    /* Reference code ???: /usr/src/sbin/ifconfig/ifieee80211.c - list_stations(int s)' */
-	int n;
-	union {
-		struct ieee80211req_sta_req req;
-		uint8_t buf[24*1024];
-	} u;
-	struct ieee80211req ireq;
-	int len;
-	uint8_t *cp;
-
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd == -1)
-	  failwith("socket for get_associated_stations");
-	/* Set up the request */
-	memset(&ireq, 0, sizeof(ireq));
-	strncpy(ireq.i_name, String_val(iface), sizeof(ireq.i_name));
-	ireq.i_type = IEEE80211_IOC_STA_INFO;
-	/*
-	 * This is apparently some sort of filter to what addresses we're
-         * interested in, and all 0xff's says that we want all of them.
-	 */
-	memset(u.req.is_u.macaddr, 0xff, IEEE80211_ADDR_LEN);
-	ireq.i_data = &u;
-	ireq.i_len = sizeof(u);
-	if (ioctl(sockfd, SIOCG80211, &ireq) < 0) {
-		close(sockfd);
-		failwith("SIOCG80211");
-	}
-	len = ireq.i_len;
-
-	for (n = 0, cp = (uint8_t *)u.req.info; len >= sizeof(struct ieee80211req_sta_info); n++) {
-		struct ieee80211req_sta_info *si;
-		si = (struct ieee80211req_sta_info *) cp;
-		cp += si->isi_len, len -= si->isi_len;
-	}
-	result = alloc_tuple(n);
-
-	len = ireq.i_len;
-	for (i = 0, cp = (uint8_t *)u.req.info; len >= sizeof(struct ieee80211req_sta_info); i++) {
-		struct ieee80211req_sta_info *si;
-
-		si = (struct ieee80211req_sta_info *) cp;
-		mac = alloc_string(ETHER_ADDR_LEN);
-		memcpy(String_val(mac), si->isi_macaddr, ETHER_ADDR_LEN);
-		Store_field(result, i, mac);
-
-		cp += si->isi_len, len -= si->isi_len;
-	}
-	close(sockfd);
-#  else
-	/* FreeBSD 5.4 */
-	struct ifreq ifr;
 	int n;
 	struct wi_req wir;
 	struct wi_apinfo *s;
@@ -663,18 +637,15 @@ CAMLprim value get_associated_stations(value iface) {
 
 	n = *(int *)(wir.wi_val);
 	result = alloc_tuple(n);
-	s = (struct wi_apinfo *)((char *)wir.wi_val + sizeof(int));
+	s = (struct wi_apinfo *)(wir.wi_val + sizeof(int));
 	for (i = 0; i < n; i++) {
-		mac = alloc_string(ETHER_ADDR_LEN);
+		mac = alloc_string(6);
 		memcpy(String_val(mac), s->bssid, ETHER_ADDR_LEN);
 		s++;
 		Store_field(result, i, mac);
 	}
 	close(sockfd);
-#  endif
 #elif defined(HAVE_NET_IF_IEEE80211_H)
-	/* FreeBSD 5.0 */
-	struct ifreq ifr;
 	struct hostap_getall    reqall;
 	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
 
@@ -713,13 +684,14 @@ CAMLprim value routes_fetch(value unit) {
 	assert(0);
 	// parse /proc/net/route
 #else
-    /* Reference code: /usr/src/sbin/route/route.c - flushroutes(argc, argv) */
 	int sockfd, count;
 	int mib[6] = { CTL_NET, PF_ROUTE, 0, 0, NET_RT_DUMP, 0 };
 	size_t needed;
 	unsigned char *buf, *p, *lim, *p2, *lim2;
 	struct rt_msghdr *rtm;
 	struct sockaddr_in *sin;
+	struct sockaddr_in6 *sin6;
+	struct sockaddr *sa;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
@@ -745,35 +717,63 @@ CAMLprim value routes_fetch(value unit) {
 	for (p = buf; p < lim; p += rtm->rtm_msglen) {
 		rtm = (struct rt_msghdr *)p;
 		if ((rtm->rtm_flags & RTF_GATEWAY) == 0 ||
-		    (rtm->rtm_flags & RTF_DYNAMIC) == 0 || 
 		    (rtm->rtm_addrs & RTA_NETMASK) == 0)
 		  continue;
-		sin = (struct sockaddr_in *)(rtm + 1);
-		if (sin->sin_family != AF_INET)
+		sa = (struct sockaddr *)(rtm + 1);
+		if (sa->sa_family != AF_INET &&
+		    sa->sa_family != AF_INET6)
 		  continue;
 
 		tuple = alloc_tuple(3);
+		if (sa->sa_family == AF_INET) {
+			sin = (struct sockaddr_in *)(rtm + 1);
 
-		/* fill in destination */
-		addr = alloc_string(sizeof(in_addr_t));
-		*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
-		Store_field(tuple, 0, addr);
-		sin++;
-	
-		/* gateway */
-		addr = alloc_string(sizeof(in_addr_t));
-		*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
-		Store_field(tuple, 2, addr);
-		sin++;
+			/* fill in destination */
+			addr = alloc_string(sizeof(in_addr_t));
+			*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
+			Store_field(tuple, 0, addr);
+			sin++;
+		
+			/* gateway */
+			addr = alloc_string(sizeof(in_addr_t));
+			*(in_addr_t *)(String_val(addr)) = sin->sin_addr.s_addr;
+			Store_field(tuple, 2, addr);
+			sin++;
 
-		/* netmask. bwurk, why the fsck all this fudging with
-		   ->sin_len?! */
-		count = 0;
-		lim2 = (unsigned char *)sin + sin->sin_len;
-		p2 = (unsigned char *)&sin->sin_addr.s_addr;
-		for (; p2 < lim2; p2++)
-		  count += bitcount(*p2);
-		Store_field(tuple, 1, Val_long(count));
+			/* netmask. bwurk, why the fsck all this fudging with
+			   ->sin_len?! */
+			count = 0;
+			lim2 = (unsigned char *)sin + sin->sin_len;
+			p2 = (unsigned char *)&sin->sin_addr.s_addr;
+			for (; p2 < lim2; p2++)
+			  count += bitcount(*p2);
+			Store_field(tuple, 1, Val_long(count));
+		} else {
+			sin6 = (struct sockaddr_in6 *)(rtm + 1);
+
+			/* fill in destination */
+			addr = alloc_string(sizeof(struct in6_addr));
+			memcpy(String_val(addr), sin6->sin6_addr.s6_addr,
+					sizeof(struct in6_addr));
+			Store_field(tuple, 0, addr);
+			sin++;
+		
+			/* gateway */
+			addr = alloc_string(sizeof(struct in6_addr));
+			memcpy(String_val(addr), sin6->sin6_addr.s6_addr,
+					sizeof(struct in6_addr));
+			Store_field(tuple, 2, addr);
+			sin++;
+
+			/* netmask. bwurk, why the fsck all this fudging with
+			   ->sin_len?! */
+			count = 0;
+			lim2 = (unsigned char *)sin + sin->sin_len;
+			p2 = (unsigned char *)&sin->sin_addr.s_addr;
+			for (; p2 < lim2; p2++)
+			  count += bitcount(*p2);
+			Store_field(tuple, 1, Val_long(count));
+		}
 
 		result = prepend_listelement(tuple, result);
 	}
@@ -788,7 +788,7 @@ CAMLprim value sha_string(value string) {
 	CAMLlocal1(result);
 
 	result = alloc_string(SHA_DIGEST_LENGTH);
-	SHA1((unsigned char *)String_val(string), string_length(string), (unsigned char *)String_val(result));
+	SHA1(String_val(string), string_length(string), String_val(result));
 	CAMLreturn(result);
 }
 
@@ -800,8 +800,8 @@ CAMLprim value hexdump_string(value s) {
 
 	len = string_length(s);
 	result = alloc_string(2 * len);
-	sp = (unsigned char *)String_val(s);
-	rp = (unsigned char *)String_val(result);
+	sp = String_val(s);
+	rp = String_val(result);
 	for (i = 0; i < len; i++) {
 #define DIGIT(x) ((x) + ((x) < 10 ? '0' : 'a' - 10))
 		*rp++ = DIGIT(*sp >> 4);
@@ -849,31 +849,22 @@ CAMLprim value caml_unpack_int(value s) {
  * propagate, so packing a node in 24 bits instead of 32 would probably
  * be pushing our luck.
  */
-static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary) {
-	value t;
-	int i, numchildren;
+static unsigned char *tree_to_string_rec(value node, unsigned char *buffer) {
+	CAMLparam1(node);
+	CAMLlocal1(t);
+	unsigned char *buffer_tmp;
+	int i;
 
-	if (buffer >= boundary)
-	  return NULL;
-
-	numchildren = 0;
-	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1))
-	  numchildren++;
-	/* put the number of children in the upper twelve bits */
-	i  = numchildren << 20;
-	/* mask out the 20 relevant bits and or it in */
-	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
-	/* that's all for this node. store it. */
-	*(int *)buffer = htonl(i);
-	buffer += sizeof(int);
-
-	/* and recurse into the children */
+	buffer_tmp = buffer + sizeof(int);
+	i = 0;
 	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
-		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
-		if (buffer == NULL)
-		  failwith("Ouch in tree_to_string_rec!");
+		buffer_tmp = tree_to_string_rec(Field(t, 0), buffer_tmp);
+		i++;
 	}
-	return buffer;
+	i <<= 20;
+	i |= get_addr4(Field(node, 0)) & ((1 << 20) - 1);
+	*(int *)buffer = htonl(i);
+	CAMLreturn(buffer_tmp);
 }
 
 CAMLprim value tree_to_string(value node) {
@@ -882,28 +873,20 @@ CAMLprim value tree_to_string(value node) {
 	unsigned char *buffer, *t;
 
 	buffer = malloc(65536);
-	t = tree_to_string_rec(node, buffer, buffer + 65536);
+	t = tree_to_string_rec(node, buffer);
 	result = alloc_string(t - buffer);
 	memcpy(String_val(result), buffer, t - buffer);
 	free(buffer);
 	CAMLreturn(result);
 }
 
-/* This is the converse of tree_to_string_rec(). Unpack the packed-together
- * number of children and node address. It reads slightly more difficult
- * because there's high-level data structures to be created and filled.
- *
- * NOTE: the upper six bits are reserved and not relevant to this branch of
- * the code. They are explicitly ignored here in order not to trip up if
- * there's anything there.
- */
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
 	CAMLlocal4(a, node, child, chain);
 	int i;
 
-	if (*pp > limit - sizeof(int))
+	if (*pp >= limit)
 	  failwith("faulty packet");
 	i = ntohl(*(int *)(*pp));
 	*pp += sizeof(int);
@@ -918,14 +901,8 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	 * assigned to node. if the node struct changes so the list of
 	 * children is no longer the second field, this must be changed */
 	chain = node;
-	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
+	for (i >>= 20; i > 0; i--) {
 		child = alloc_small(2, 0);
-		/*
-		 * The rules say alloc_small()ed stuff needs to be initialized
-		 * before the next allocation or the GC may crash. Put a bogus
-		 * value in field 0 and modify() it below after the recursive
-		 * call comes back.
-		 */
 		Field(child, 0) = Val_unit;
 		Field(child, 1) = Val_int(0);
 		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
@@ -935,24 +912,30 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	CAMLreturn(node);
 }
 
-/**
- * Unpack the given string back into a tree of Tree.node structures. Copy the
- * string to the C heap first, or the garbage collector may move it while
- * we're working on it when one of the alloc_*() triggers a collection cycle.
- */
 CAMLprim value string_to_tree(value s) {
 	CAMLparam1(s);
-	CAMLlocal1(res);
-	int len;
-	unsigned char *buffer, *p;
+	CAMLlocal2(res, a);
+	unsigned char *p;
 
-	len = string_length(s);
-	buffer = malloc(len);
-	memcpy(buffer, String_val(s), len);
-	p = buffer;
-	res = string_to_tree_rec(&p, p + len);
-	free(buffer);
-	CAMLreturn(res);
+	p = String_val(s);
+	CAMLreturn(string_to_tree_rec(&p, p + string_length(s)));
+}
+
+CAMLprim value addr_is_ipv6(value addr) {
+	CAMLparam1(addr);
+	CAMLreturn(Val_bool(string_length(addr) == sizeof(struct in6_addr)));
+}
+
+CAMLprim value chop_prefix(value addr, value prefixlen) {
+	CAMLparam2(addr, prefixlen);
+	CAMLlocal1(result);
+	int len;
+	if (string_length(addr) < sizeof(struct in6_addr))
+	  failwith("Oops, LowLevel.chop_prefix used on a non-IPv6 address!");
+	len = sizeof(struct in6_addr) - Long_val(prefixlen);
+	result = alloc_string(len);
+	memcpy(String_val(result), String_val(addr) + Long_val(prefixlen), len);
+	CAMLreturn(result);
 }
 
 CAMLprim value open_rtsock(value unit) {
@@ -980,7 +963,6 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 	  failwith("Unknown interface in read_routemsg");
 	p = (char *)(ifa + 1);
 	okay_to_add = 1;
-	masklen = -1;
 	for (i = 1; i && okay_to_add; i <<= 1) {
 		if (ifa->ifam_addrs & i) {
 			sin = (struct sockaddr_in *)p;
@@ -1003,7 +985,7 @@ static value get_routemsg(struct ifa_msghdr *ifa, int tag) {
 			p += ROUNDUP(sin->sin_len);
 		}
 	}
-	if (okay_to_add && masklen != -1) {
+	if (okay_to_add) {
 		res = alloc_small(3, tag);
 		Field(res, 0) = copy_string(ifnam);
 		Field(res, 1) = addr;
@@ -1049,38 +1031,8 @@ CAMLprim value read_routemsg(value fd) {
 	}
 	free(buffer);
 #else
-	assert(0);
+	res = Val_int(0);
 #endif
-	CAMLreturn(res);
-}
-
-CAMLprim value compare_ipv4_addrs(value a, value b) {
-	CAMLparam2(a, b);
-	CAMLlocal1(res);
-	in_addr_t a1, b1;
-
-	a1 = get_addr(a);
-	b1 = get_addr(b);
-	if (a1 < b1)
-	  res = Val_int(-1);
-	else if (a1 > b1)
-	  res = Val_int(1);
-	else res = Val_int(0);
-	CAMLreturn(res);
-}
-
-CAMLprim value route_includes_impl(value a, value m1, value b, value m2) {
-	CAMLparam4(a, m1, b, m2);
-	CAMLlocal1(res);
-	int _m1, _m2;
-	_m1 = Long_val(m1);
-	_m2 = Long_val(m2);
-	if (m1 <= m2) {
-		in_addr_t _a, _b;
-		_a = get_addr(a) & bitmask(_m1);
-		_b = get_addr(b) & bitmask(_m1);
-		res = Val_bool(_a == _b);
-	} else res = Val_bool(0);
 	CAMLreturn(res);
 }
 
