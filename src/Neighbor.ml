@@ -70,9 +70,11 @@ let handle_data ns s sockaddr =
 
 	let n = List.hd (Set.elements n) in
 	let stamp = LowLevel.unpack_int (String.sub s 0 4) in
+(*
 	bailwhen (stamp <= n.seqno)
 		("Received old sequence number (" ^ string_of_int stamp ^
 		 " <= " ^ string_of_int n.seqno ^ ") from");
+		 *)
 
 	let s = String.sub s 4 (len - 4) in
 	let s = if Common.compress_data then LowLevel.string_decompress s
