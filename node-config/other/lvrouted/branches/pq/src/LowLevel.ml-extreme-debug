@@ -1,0 +1,149 @@
+(* Interface to functions in lowlevel_c.c *)
+open Gc
+
+let dump = ref stderr
+
+let wrap s x =
+	if !dump = stderr then
+		dump := open_out "/tmp/dump.txt";
+	seek_out !dump 0;
+	output_string !dump (s ^ "\n");
+	flush !dump;
+	Gc.compact (); x
+
+(* Set hard limits on data and coredump size *)
+external set_limits_real: int -> int -> bool
+  = "set_limits"
+let set_limits x y = wrap "set_limits" (set_limits_real x y)
+
+(* For debugging purposes it's handy to be able to print a file descriptor. *)
+external int_of_file_descr_real: Unix.file_descr -> int
+  = "int_of_file_descr"
+let int_of_file_descr x = wrap "int_of_file_descr" (int_of_file_descr_real x)
+
+(* Given an address and a mask length (like, for example, 24), create a
+   bitmask and apply it to the address *)
+external mask_addr: Unix.inet_addr -> int -> Unix.inet_addr
+  = "mask_addr"
+
+(* Return whether or not the given interface is associated *)
+external iface_is_associated_real: string -> bool
+  = "caml_iface_is_associated"
+let iface_is_associated x = wrap "iface_is_associated" (iface_is_associated_real x)
+
+(* daemon(3) *)
+external daemon_real: bool -> bool -> unit
+  = "caml_daemon"
+let daemon x y = wrap "daemon" (daemon_real x y)
+
+(* bzip2 the given string. NEEDS TESTING. *)
+external string_compress_real: string -> string
+  = "string_compress"
+let string_compress x = wrap "string_compress" (string_compress_real x)
+
+(* bzip2 -d the given string. NEEDS TESTING. *)
+external string_decompress_real: string -> string
+  = "string_decompress"
+let string_decompress x = wrap "string_decompress" (string_decompress_real x)
+
+(* ether_aton(3) *)
+external ether_aton: string -> string -> bool
+  = "caml_ether_aton"
+
+(* ether_ntoa(3) *)
+external ether_ntoa: string -> string -> bool
+  = "caml_ether_ntoa"
+
+(* getifaddrs(3). Will only return IPv4 addresses for now. *)
+external getifaddrs_real: unit -> ( string			(* iface name *)
+			     * int			(* iface flags *)
+			     * Unix.inet_addr 		(* iface addr *)
+			     * Unix.inet_addr option	(* netmask *)
+			     * Unix.inet_addr option	(* broadcast *)
+			     * Unix.inet_addr option)	(* dst addr *)
+			     list
+  = "caml_getifaddrs"
+let getifaddrs x = wrap "getifaddrs" (getifaddrs_real x)
+
+(* How many bits in the given address are set? *)
+external bits_in_inet_addr_real: Unix.inet_addr -> int
+  = "bits_in_inet_addr"
+let bits_in_inet_addr x = wrap "bits_in_inet_addr" (bits_in_inet_addr_real x)
+
+(* strstr(3) *)
+external strstr_real: string -> string -> int
+  = "caml_strstr"
+let strstr x y = wrap "strstr" (strstr_real x y)
+
+(* Given an address and a netmask, return all the usable addresses in that
+   block. So 172.16.0.1/30 will return 172.16.0.1 and 172.16.0.2. *)
+external get_addrs_in_block_real: Unix.inet_addr -> int -> Unix.inet_addr list
+  = "get_addrs_in_block"
+let get_addrs_in_block x y = wrap "get_addrs_in_block" (get_addrs_in_block_real x y)
+
+(* Get the entire arp table. *)
+external get_arp_entries_real: unit -> ( string		(* iface name *)
+				  * Unix.inet_addr	(* IPv4 addr *)
+				  * string)		(* MAC.t *)
+				  list
+  = "get_arp_entries"
+let get_arp_entries x = wrap "get_arp_entries" (get_arp_entries_real x)
+
+(* Get all the MAC.t's that are associated with the interface with the given 
+   name. *)
+external get_associated_stations_real: string -> string array
+  = "get_associated_stations"
+let get_associated_stations x = wrap "get_associated_stations" (get_associated_stations_real x)
+
+(* SHA1(3) *)
+external sha_string_real: string -> string
+  = "sha_string"
+let sha_string x = wrap "sha_string" (sha_string_real x)
+
+(* Return a primitively hexdumped version of the given (possibly binary)
+   string. Useful when debugging. *)
+external hexdump_string_real: string -> string
+  = "hexdump_string"
+let hexdump_string x = wrap "hexdump_string" (hexdump_string_real x)
+
+(* Send the given string with the given priority to the syslog. These
+   priorities are those as defined in Log.ml, /not/ the standard values
+   from <syslog.h> ! *)
+external syslog_real: int -> string -> unit
+  = "caml_syslog"
+let syslog x y = wrap "syslog" (syslog_real x y)
+
+external pack_int_real: int -> string
+  = "caml_pack_int"
+let pack_int x = wrap "pack_int" (pack_int_real x)
+
+external unpack_int_real: string -> int
+  = "caml_unpack_int"
+let unpack_int x = wrap "unpack_int" (unpack_int_real x)
+
+external open_rtsock_real: unit -> Unix.file_descr
+  = "open_rtsock"
+let open_rtsock x = wrap "open_rtsock" (open_rtsock_real x)
+
+(* Define the routing messages. There are a lot more, but it turns out these
+   are either preceded or followed by RTM_NEWADDR's or RTM_DELADDR's. For our
+   purpose it's enough to listen for those two *)
+type routemsg =
+	  RTM_NOTHING
+	| RTM_NEWADDR	of string * Unix.inet_addr * int
+	| RTM_DELADDR	of string * Unix.inet_addr * int
+
+(* RTM_NOTHING_real: nothing interesting
+   RTM_NEWADDR_real: the interface with the given name got a new address and netmask
+   RTM_DELADDR_real: the interface with the given name lost the given address and netmask
+ *)
+external read_routemsg_real: Unix.file_descr -> routemsg
+  = "read_routemsg"
+let read_routemsg x = wrap "read_routemsg" (read_routemsg_real x)
+
+external compare_ipv4_addrs: Unix.inet_addr -> Unix.inet_addr -> int
+  = "compare_ipv4_addrs"
+
+external route_includes_impl: Unix.inet_addr -> int -> Unix.inet_addr -> int -> bool
+	= "route_includes_impl"
+
