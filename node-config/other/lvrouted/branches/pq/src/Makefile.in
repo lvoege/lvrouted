@@ -49,8 +49,8 @@ all: $(OCAMLBEST) $(NAME).opt
 # bytecode and native-code compilation
 ######################################
 
-SOURCES = Version.ml LowLevel.ml Common.ml Log.ml Route.ml MAC.ml Tree.ml \
-	Iface.ml Neighbor.ml PrioQueue.ml
+SOURCES = Version.ml LowLevel.ml Common.ml Log.ml Route.ml MAC.ml PrioQueue.ml Tree.ml \
+	Iface.ml Neighbor.ml
 CMO = $(SOURCES:.ml=.cmo)
 CMX = $(SOURCES:.ml=.cmx)
 

@@ -8,6 +8,11 @@ type node = {
 	mutable nodes: node list;
 }
 
+module IntQueue = PrioQueue.Make(struct
+	type t = int
+	let compare = compare
+end)
+
 (* Constructor *)
 let make a nodes = { addr = a; nodes = nodes }
 
@@ -74,20 +79,31 @@ let merge nodes directnets =
 	(* step 2 *)
 	let fake = make Unix.inet_addr_any [] in
 	(* step 3 *)
-	let rec traverse = function
-		  []			-> ()	(* all done *)
-		| (node,parent,gw)::xs	-> 
+	let rec traverse pq =
+		if pq = IntQueue.empty then ()
+		else    let (_, (depth, node, parent, gw), pq') = IntQueue.extract pq in
 			if IPHash.mem routes node.addr then
-			  traverse xs (* ignore this node *)
+			  traverse pq' (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
 				let newnode = make node.addr [] in
 				parent.nodes <- newnode::parent.nodes;
 				IPHash.add routes node.addr gw;
-				(* and continue traversing, after appending the children of this node to the todo list *)
-				traverse (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
+
+				(* Create queue elements for the children of
+				   this node and push them on. For now the
+				   priority is going to be the depth of the
+				   parent plus one, giving normal BFS
+				   behavior. *)
+				let prio' = depth + 1 in
+				let pq'' = List.fold_left (fun pq' child ->
+					let child_element = (prio', child, newnode, gw) in
+					IntQueue.insert pq' prio' child_element) pq' node.nodes in
+				traverse pq''
 			end in
-	let todo = List.map (fun node -> node, fake, node.addr) nodes in
+	let todo = List.fold_left (fun q node ->
+			let e = (0, node, fake, node.addr) in
+			IntQueue.insert q 0 e) IntQueue.empty nodes in
 	traverse todo;
 	(* step 4 *)
 	IPHash.iter (fun a gw ->
