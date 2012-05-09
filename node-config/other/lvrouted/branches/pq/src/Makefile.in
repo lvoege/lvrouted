@@ -50,7 +50,7 @@ all: $(OCAMLBEST) $(NAME).opt
 ######################################
 
 SOURCES = Version.ml LowLevel.ml Common.ml Log.ml Route.ml MAC.ml Tree.ml \
-	Iface.ml Neighbor.ml
+	Iface.ml Neighbor.ml PrioQueue.ml
 CMO = $(SOURCES:.ml=.cmo)
 CMX = $(SOURCES:.ml=.cmx)
 
