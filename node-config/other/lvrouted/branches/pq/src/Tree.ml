@@ -43,6 +43,11 @@ let show l =
 	show' 0 l;
 	!s
 
+let dump_tree fname nodes =
+	let out = open_out (!Common.tmpdir ^ fname) in
+	output_string out (show nodes);
+	close_out out
+
 let are_two_iphashes_equal one other =
 	let l1 = IPHash.fold (fun k v a -> (k, v)::a) one [] in
 	let l2 = IPHash.fold (fun k v a -> (k, v)::a) other [] in
@@ -134,8 +139,11 @@ let merge nodes directnets =
 			end in
 	let todo_orig = List.map (fun node -> node, fake_orig, node.addr) nodes in
 	traverse_orig todo_orig;
-	if not (are_two_iphashes_equal routes routes_orig) then
-	  raise (Failure "Eep!");
+	if not (are_two_iphashes_equal routes routes_orig) then begin
+		dump_tree "tree.new" fake.nodes;
+		dump_tree "tree.orig" fake_orig.nodes;
+		raise (Failure "Eep!");
+	end;
 
 	(* step 4 *)
 	IPHash.iter (fun a gw ->
@@ -160,8 +168,3 @@ let from_string s from_addr : node =
 	else
 	  (* This is the most dangerous bit in all of the code: *)
 	  { addr = from_addr; nodes = (Marshal.from_string s 0: node list) }
-
-let dump_tree fname nodes =
-	let out = open_out (!Common.tmpdir ^ fname) in
-	output_string out (show nodes);
-	close_out out
