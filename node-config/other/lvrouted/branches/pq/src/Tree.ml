@@ -93,9 +93,12 @@ let merge nodes directnets =
 	(* step 2 *)
 	let fake = make Unix.inet_addr_any [] in
 	(* step 3 *)
+	let out = open_out (!Common.tmpdir ^ "trav1.txt") in
 	let rec traverse pq =
 		if pq = IntQueue.empty then ()
 		else    let (_, (depth, node, parent, gw), pq') = IntQueue.extract pq in
+			output_string out (Unix.string_of_inet_addr node.addr);
+			output_string out "\n";
 			if IPHash.mem routes node.addr then
 			  traverse pq' (* ignore this node *)
 			else begin
@@ -119,14 +122,18 @@ let merge nodes directnets =
 			let e = (0, node, fake, node.addr) in
 			IntQueue.insert q 0 e) IntQueue.empty nodes in
 	traverse todo;
+	close_out out;
 
 	(* Verification: do it again using the old algorithm. *)
 	let routes_orig = IPHash.create 512 in
 	let fake_orig = make Unix.inet_addr_any [] in
 	List.iter (fun (a, _) -> IPHash.add routes_orig a a) directnets;
+	let out = open_out (!Common.tmpdir ^ "trav2.txt") in
 	let rec traverse_orig = function
 		  []			-> ()	(* all done *)
 		| (node,parent,gw)::xs	-> 
+			output_string out (Unix.string_of_inet_addr node.addr);
+			output_string out "\n";
 			if IPHash.mem routes_orig node.addr then
 			  traverse_orig xs (* ignore this node *)
 			else begin
@@ -139,6 +146,7 @@ let merge nodes directnets =
 			end in
 	let todo_orig = List.map (fun node -> node, fake_orig, node.addr) nodes in
 	traverse_orig todo_orig;
+	close_out out;
 	dump_tree "tree.new" fake.nodes;
 	dump_tree "tree.orig" fake_orig.nodes;
 	if not (are_two_iphashes_equal routes routes_orig) then begin
