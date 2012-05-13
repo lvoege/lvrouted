@@ -43,6 +43,15 @@ let show l =
 	show' 0 l;
 	!s
 
+let are_two_iphashes_equal one other =
+	let l1 = IPHash.fold (fun k v a -> (k, v)::a) one [] in
+	let l2 = IPHash.fold (fun k v a -> (k, v)::a) other [] in
+	let l1_ = List.sort compare l1 in
+	let l2_ = List.sort compare l2 in
+	List.fold_left2 (fun a x y -> match a with
+		| false -> false
+		| true -> compare x y = 0) true l1_ l2_
+
 (* Given a list of spanning trees received from neighbors and a set of our
    own addresses, return the spanning tree for this node, plus a routing
    table.
@@ -105,6 +114,29 @@ let merge nodes directnets =
 			let e = (0, node, fake, node.addr) in
 			IntQueue.insert q 0 e) IntQueue.empty nodes in
 	traverse todo;
+
+	(* Verification: do it again using the old algorithm. *)
+	let routes_orig = IPHash.create 512 in
+	let fake_orig = make Unix.inet_addr_any [] in
+	List.iter (fun (a, _) -> IPHash.add routes_orig a a) directnets;
+	let rec traverse_orig = function
+		  []			-> ()	(* all done *)
+		| (node,parent,gw)::xs	-> 
+			if IPHash.mem routes node.addr then
+			  traverse_orig xs (* ignore this node *)
+			else begin
+				(* copy this node and hook it into the new tree *)
+				let newnode = make node.addr [] in
+				parent.nodes <- newnode::parent.nodes;
+				IPHash.add routes_orig node.addr gw;
+				(* and continue traversing, after appending the children of this node to the todo list *)
+				traverse_orig (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
+			end in
+	let todo_orig = List.map (fun node -> node, fake_orig, node.addr) nodes in
+	traverse_orig todo_orig;
+	if not (are_two_iphashes_equal routes routes_orig) then
+	  raise (Failure "Eep!");
+
 	(* step 4 *)
 	IPHash.iter (fun a gw ->
 		if List.exists (fun (a', n) ->
