@@ -127,7 +127,7 @@ let merge nodes directnets =
 	let rec traverse_orig = function
 		  []			-> ()	(* all done *)
 		| (node,parent,gw)::xs	-> 
-			if IPHash.mem routes node.addr then
+			if IPHash.mem routes_orig node.addr then
 			  traverse_orig xs (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
@@ -139,11 +139,12 @@ let merge nodes directnets =
 			end in
 	let todo_orig = List.map (fun node -> node, fake_orig, node.addr) nodes in
 	traverse_orig todo_orig;
+	dump_tree "tree.new" fake.nodes;
+	dump_tree "tree.orig" fake_orig.nodes;
 	if not (are_two_iphashes_equal routes routes_orig) then begin
-		dump_tree "tree.new" fake.nodes;
-		dump_tree "tree.orig" fake_orig.nodes;
 		raise (Failure "Eep!");
 	end;
+	print_string ("YAY!\n");
 
 	(* step 4 *)
 	IPHash.iter (fun a gw ->
