@@ -8,7 +8,7 @@ module Make(P: Set.OrderedType) = struct
 	let rec insert queue prio elt = match queue with
 		  Empty -> Node (prio, elt, Empty, Empty)
 		| Node (p, e, left, right) ->
-			if prio > p then
+			if prio < p then
 				Node (prio, elt, insert right p e, left)
 			else
 				Node (p, e, insert right prio elt, left)
@@ -19,7 +19,7 @@ module Make(P: Set.OrderedType) = struct
 		| Node (prio, elt, Empty, right) -> right
 		| Node (prio, elt, (Node (lprio, lelt, _, _) as left),
 		                  (Node (rprio, relt, _, _) as right)) ->
-			if lprio > rprio then
+			if lprio < rprio then
 				Node (lprio, lelt, remove_top left, right)
 			else
 				Node (rprio, relt, left, remove_top right)
