@@ -95,3 +95,9 @@ let is_reachable iface mac =
 	    WIRED -> true
 	  | WIFI_MASTER -> MAC.Set.mem mac (Common.from_some iface.associated)
 	  | WIFI_CLIENT -> Common.from_some iface.is_associated
+
+let is_nanostation iface =
+	MAC.Set.exists (fun a ->
+		let s = MAC.ether_ntoa a in
+		let s' = String.sub s 0 8 in
+		(String.compare s' "00:15:6d") == 0) (Common.from_some iface.arpentries)
