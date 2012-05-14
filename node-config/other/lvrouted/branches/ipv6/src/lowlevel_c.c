@@ -629,8 +629,6 @@ CAMLprim value get_associated_stations(value iface) {
 #else
 	assert(0);
 #endif
-#if defined(HAVE_NET80211_IEEE80211_H)
-#  if defined(IEEE80211_IOC_STA_INFO)
 	/* FreeBSD 6.0 and up (hopefully), swiped from ifconfig */
     /* Reference code ???: /usr/src/sbin/ifconfig/ifieee80211.c - list_stations(int s)' */
 	int n;
@@ -681,71 +679,6 @@ CAMLprim value get_associated_stations(value iface) {
 		cp += si->isi_len, len -= si->isi_len;
 	}
 	close(sockfd);
-#  else
-	/* FreeBSD 5.4 */
-	struct ifreq ifr;
-	int n;
-	struct wi_req wir;
-	struct wi_apinfo *s;
-
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd == -1)
-	  failwith("socket for get_associated_stations");
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
-	ifr.ifr_data = (caddr_t)&wir;
-
-	memset(&wir, 0, sizeof(wir));
-	wir.wi_len = WI_MAX_DATALEN;
-	wir.wi_type = WI_RID_READ_APS;
-
-	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1) {
-		close(sockfd);
-		failwith("SIOCGWAVELAN");
-	}
-
-	n = *(int *)(wir.wi_val);
-	result = alloc_tuple(n);
-	s = (struct wi_apinfo *)((char *)wir.wi_val + sizeof(int));
-	for (i = 0; i < n; i++) {
-		mac = alloc_string(ETHER_ADDR_LEN);
-		memcpy(String_val(mac), s->bssid, ETHER_ADDR_LEN);
-		s++;
-		Store_field(result, i, mac);
-	}
-	close(sockfd);
-#  endif
-#elif defined(HAVE_NET_IF_IEEE80211_H)
-	/* FreeBSD 5.0 */
-	struct ifreq ifr;
-	struct hostap_getall    reqall;
-	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
-
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd == -1)
-	  failwith("socket for get_associated_stations");
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
-	ifr.ifr_data = (caddr_t) &reqall;
-
-	memset(&reqall, 0, sizeof(reqall));
-	reqall.size = sizeof(stas);
-	reqall.addr = stas;
-
-	memset(&stas, 0, sizeof(stas));
-
-	if (ioctl(sockfd, SIOCHOSTAP_GETALL, &ifr) < 0) {
-		close(sockfd);
-		failwith("SIOCHOSTAP_GETALL");
-	}
-	result = alloc_tuple(reqall.nstations);
-	for (i = 0; i < reqall.nstations; i++) {
-		mac = alloc_string(ETHER_ADDR_LEN);
-		memcpy(String_val(mac), stas[i].addr, ETHER_ADDR_LEN);
-		Store_field(result, i, mac);
-	}
-	close(sockfd);
-#endif
 	CAMLreturn(result);
 }
 
