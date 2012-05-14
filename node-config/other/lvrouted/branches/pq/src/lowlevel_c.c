@@ -987,6 +987,62 @@ CAMLprim value read_routemsg(value fd) {
 	CAMLreturn(res);
 }
 
+static const struct ifmedia_baudrate ifmedia_baudrate_descriptions[] = IFM_BAUDRATE_DESCRIPTIONS;
+
+static uint64_t ifmedia_baudrate(int mword) {
+	int i;
+
+	for (i = 0; ifmedia_baudrate_descriptions[i].ifmb_word != 0; i++) {
+		if ((mword & (IFM_NMASK|IFM_TMASK)) ==
+		    ifmedia_baudrate_descriptions[i].ifmb_word)
+			return (ifmedia_baudrate_descriptions[i].ifmb_baudrate);
+	}
+
+	/* Not known. */
+	return (0);
+}
+
+CAMLprim value caml_ifstatus(value iname) {
+#ifdef __FreeBSD__
+	CAMLparam1(iname);
+	CAMLlocal1(res);
+	int i[2];
+	const char *name;
+	uint64_t bw;
+
+	name = String_val(iname);
+	if (name[0] == 'l' && name[1] == 'o') {
+		/* lame! */
+		res = alloc_small(1, 0);
+		Field(res, 0) = Val_int(10000);
+	} {
+		ifstatus(name, i);
+		bw = ifmedia_baudrate(i[1]);
+		if ((i[0] & IFM_AVALID) == 0)
+		  failwith("Invalid interface");
+		switch (IFM_TYPE(i[1])) {
+			case IFM_ETHER:
+				res = alloc_small(1, 0);
+				Field(res, 0) = Val_int(bw / IF_Mbps(1));
+				break;
+			case IFM_IEEE80211:
+				if (i[1] & IFM_IEEE80211_HOSTAP)
+				  res = Val_int(0);
+				else {
+					res = alloc_small(1, 1);
+					Field(res, 0) = Val_int(bw / IF_Mbps(1));
+				}
+				break;
+			default:
+				failwith("Unknown media type");
+		}
+	}
+	CAMLreturn(res);
+#else
+	assert(0);
+#endif
+}
+
 CAMLprim value compare_ipv4_addrs(value a, value b) {
 	CAMLparam2(a, b);
 	CAMLlocal1(res);
