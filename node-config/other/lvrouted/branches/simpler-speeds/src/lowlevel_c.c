@@ -506,7 +506,7 @@ CAMLprim value get_arp_entries(value unit) {
 
 	result = Val_int(0);
 #ifdef __FreeBSD__
-	int mib[6], numentries;
+	int mib[6];
 	size_t needed;
 	char *lim, *buf, *next;
 	struct rt_msghdr *rtm;
@@ -530,7 +530,6 @@ CAMLprim value get_arp_entries(value unit) {
 			free(buf);
 			failwith("fetch of arp table");
 		}
-		numentries = 0;
 		lim = buf + needed;
 		for (next = buf; next < lim; next += rtm->rtm_msglen) {
 			rtm = (struct rt_msghdr *)next;
