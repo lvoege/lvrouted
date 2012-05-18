@@ -134,7 +134,7 @@ let derive_routes_and_mytree directips ns default_addrs =
 		match Common.IPSet.mem a default_addrs with
 		| true -> Some a
 		| false -> None in
-	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") nodes' in
+	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") true nodes' in
 	let first_default_addr = Tree.bfs bogus_top_node look_for_default_addr in
 	let default_route = match first_default_addr with
 		| None -> None

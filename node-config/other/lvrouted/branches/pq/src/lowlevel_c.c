@@ -790,18 +790,20 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	  return NULL;
 
 	numchildren = 0;
-	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1))
+	for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1))
 	  numchildren++;
-	/* put the number of children in the upper twelve bits */
-	i  = numchildren << 20;
-	/* mask out the 20 relevant bits and or it in */
+	/* put the number of children in the six sixth-to-last bits */
+	i = numchildren << 20;
+	/* or in the the "eth" boolean in the upper six bits */
+	i |= Val_int(Field(node, 1)) << 26;
+	/* mask out the 20 relevant bits and or the address in */
 	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
 	/* that's all for this node. store it. */
 	*(int *)buffer = htonl(i);
 	buffer += sizeof(int);
 
 	/* and recurse into the children */
-	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
+	for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1)) {
 		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
 		if (buffer == NULL)
 		  failwith("Ouch in tree_to_string_rec!");
@@ -842,9 +844,10 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	*pp += sizeof(int);
 	a = alloc_string(4);
 	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
-	node = alloc_small(2, 0);
+	node = alloc_small(3, 0);
 	Field(node, 0) = a;
-	Field(node, 1) = Val_int(0);
+	Field(node, 1) = Int_val(i >> 26);
+	Field(node, 2) = Val_int(0);
 
 	/* new children get hooked on the second field of chain. by luck,
 	 * the list itself is in the second field of node, so chain can be

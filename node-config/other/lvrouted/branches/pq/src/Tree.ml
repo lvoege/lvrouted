@@ -5,6 +5,7 @@ open Common
 
 type node = {
 	addr: Unix.inet_addr;
+	eth: bool; 
 	mutable nodes: node list;
 }
 
@@ -14,7 +15,7 @@ module IntQueue = PrioQueue.Make(struct
 end)
 
 (* Constructor *)
-let make a nodes = { addr = a; nodes = nodes }
+let make a eth nodes = { addr = a; eth = eth; nodes = nodes }
 
 (* Accessors *)
 let addr n = n.addr
@@ -82,7 +83,7 @@ let merge nodes directnets =
 	let routes = IPHash.create 512 in
 	List.iter (fun (a, _) -> IPHash.add routes a a) directnets;
 	(* step 2 *)
-	let fake = make Unix.inet_addr_any [] in
+	let fake = make Unix.inet_addr_any true [] in
 	(* step 3 *)
 	let rec traverse pq =
 		if pq = IntQueue.empty then ()
@@ -91,7 +92,7 @@ let merge nodes directnets =
 			  traverse pq' (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
-				let newnode = make node.addr [] in
+				let newnode = make node.addr node.eth [] in
 				parent.nodes <- newnode::parent.nodes;
 				IPHash.add routes node.addr gw;
 
@@ -122,7 +123,7 @@ external serialize: node -> string = "tree_to_string"
 external deserialize: string -> node = "string_to_tree"
 
 let to_string (nodes: node list) =
-	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
+	let fake = { addr = Unix.inet_addr_any; eth = true; nodes = nodes } in
 	if Common.own_marshaller then serialize fake 
 	else Marshal.to_string nodes []
 
@@ -133,4 +134,4 @@ let from_string s from_addr : node =
 	  { (deserialize s) with addr = from_addr }
 	else
 	  (* This is the most dangerous bit in all of the code: *)
-	  { addr = from_addr; nodes = (Marshal.from_string s 0: node list) }
+	  { addr = from_addr; eth = false; nodes = (Marshal.from_string s 0: node list) }
