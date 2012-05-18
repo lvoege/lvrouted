@@ -755,7 +755,7 @@ CAMLprim value caml_syslog(value pri, value s) {
 	};
 	if (Long_val(pri) >= 5)
 	  failwith("Invalid priority for syslog()");
-	syslog(tmp[Long_val(pri)], String_val(s));
+	syslog(tmp[Long_val(pri)], "%s", String_val(s));
 	CAMLreturn(Val_unit);
 }
 
