@@ -39,7 +39,7 @@ let show l =
 	let rec show' indent l =
 		let i = String.make indent '\t' in
 		List.iter (fun n ->
-			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ "\n";
+			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ (if n.eth then " (eth)" else "") ^ "\n";
 			show' (indent + 1) n.nodes) l in
 	show' 0 l;
 	!s
@@ -87,7 +87,7 @@ let merge nodes directnets =
 	(* step 3 *)
 	let rec traverse pq =
 		if pq = IntQueue.empty then ()
-		else    let (_, (depth, node, parent, gw), pq') = IntQueue.extract pq in
+		else    let (prio, (node, parent, gw), pq') = IntQueue.extract pq in
 			if IPHash.mem routes node.addr then
 			  traverse pq' (* ignore this node *)
 			else begin
@@ -98,17 +98,18 @@ let merge nodes directnets =
 
 				(* Create queue elements for the children of
 				   this node and push them on. For now the
-				   priority is going to be the depth of the
+				   priority is going to be the priority of the
 				   parent plus one, giving normal BFS
 				   behavior. *)
-				let prio' = depth + 1 in
+				(*let prio' = prio + (if node.eth then 1 else 10) in*)
+				let prio' = prio + 1 in
 				let pq'' = List.fold_left (fun pq' child ->
-					let child_element = (prio', child, newnode, gw) in
+					let child_element = (child, newnode, gw) in
 					IntQueue.insert pq' prio' child_element) pq' node.nodes in
 				traverse pq''
 			end in
 	let todo = List.fold_left (fun q node ->
-			let e = (0, node, fake, node.addr) in
+			let e = (node, fake, node.addr) in
 			IntQueue.insert q 0 e) IntQueue.empty nodes in
 	traverse todo;
 
