@@ -69,10 +69,16 @@ let broadcast_run udpsockfd rtsockfd =
 			close_out out
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
 
+	  let is_eth iface = 
+		if StringMap.mem iface !ifaces then
+			let i = StringMap.find iface !ifaces in
+			(Iface.itype i == Iface.WIRED) && not (Iface.is_nanostation i)
+		else false in
 	  let newroutes, nodes =
 		Neighbor.derive_routes_and_mytree !directnets
 						  !neighbors
-						  !default_addrs in
+						  !default_addrs
+						  is_eth in
 	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
