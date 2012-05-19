@@ -849,11 +849,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	Field(node, 1) = Int_val(i >> 26);
 	Field(node, 2) = Val_int(0);
 
-	/* new children get hooked on the second field of chain. by luck,
-	 * the list itself is in the second field of node, so chain can be
-	 * assigned to node. if the node struct changes so the list of
-	 * children is no longer the second field, this must be changed */
-	chain = node;
+	chain = Val_unit;
 	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
 		child = alloc_small(2, 0);
 		/*
@@ -865,7 +861,10 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 		Field(child, 0) = Val_unit;
 		Field(child, 1) = Val_int(0);
 		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
-		modify(&Field(chain, 1), child);
+		if (chain == Val_unit)
+		  modify(&Field(node, 2), child);
+		else
+		  modify(&Field(chain, 1), child);
 		chain = child;
 	}
 	CAMLreturn(node);
