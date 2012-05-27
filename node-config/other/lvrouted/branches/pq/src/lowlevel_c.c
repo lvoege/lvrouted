@@ -341,7 +341,7 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 	if (buffer == 0)
 	  failwith("malloc");
 
-	for (adderrs = Val_int(0); adds != Val_int(0); adds = Field(adds, 1)) {
+	for (adderrs = Val_emptylist; adds != Val_emptylist; adds = Field(adds, 1)) {
 		v = Field(adds, 0);
 		len = routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
 #ifdef DUMP_ROUTEPACKET
@@ -360,7 +360,7 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 		}
 	}
 
-	for (delerrs = Val_int(0); deletes != Val_int(0); deletes = Field(deletes, 1)) {
+	for (delerrs = Val_emptylist; deletes != Val_emptylist; deletes = Field(deletes, 1)) {
 		v = Field(deletes, 0);
 		len = routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
 		enter_blocking_section();
@@ -374,7 +374,7 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 		}
 	}
 
-	for (cherrs = Val_int(0); changes != Val_int(0); changes = Field(changes, 1)) {
+	for (cherrs = Val_emptylist; changes != Val_emptylist; changes = Field(changes, 1)) {
 		v = Field(changes, 0);
 		len = routemsg_add(buffer, RTM_CHANGE, Field(v, 0), Field(v, 1), Field(v, 2));
 		enter_blocking_section();
@@ -406,10 +406,10 @@ CAMLprim value caml_ether_aton(value s, value mac) {
 
 	ea = ether_aton(String_val(s));
 	if (ea == 0)
-	  res = Val_int(0);
+	  res = Val_false;
 	else {
 		memcpy(String_val(mac), ea, ETHER_ADDR_LEN);
-		res = Val_int(1);
+		res = Val_true;
 	}
 	CAMLreturn(res);
 }
@@ -421,10 +421,10 @@ CAMLprim value caml_ether_ntoa(value s, value res) {
 
 	p = ether_ntoa((struct ether_addr *)String_val(s));
 	if (p == 0 || strlen(p) > 17)
-	  rescode = Val_int(0);
+	  rescode = Val_false;
 	else {
 		memcpy(String_val(res), p, strlen(p));
-		rescode = Val_int(1);
+		rescode = Val_true;
 	}
 	CAMLreturn(rescode);
 }
@@ -439,7 +439,7 @@ CAMLprim value caml_getifaddrs(value unit) {
 	if (getifaddrs(&ifap) == -1)
 	  failwith("getifaddrs");
 
-	result = Val_int(0);
+	result = Val_emptylist;
 	for (ifp = ifap; ifp; ifp = ifp->ifa_next) {
 		if (ifp->ifa_addr->sa_family != AF_INET)
 		  continue;	/* not interested */
@@ -674,7 +674,7 @@ CAMLprim value routes_fetch(value unit) {
 	}
 
 	lim = buf + needed;
-	result = Val_int(0);
+	result = Val_emptylist;
 	for (p = buf; p < lim; p += rtm->rtm_msglen) {
 		rtm = (struct rt_msghdr *)p;
 		if ((rtm->rtm_flags & RTF_GATEWAY) == 0 ||
@@ -790,12 +790,12 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	  return NULL;
 
 	numchildren = 0;
-	for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1))
+	for (t = Field(node, 2); t != Val_emptylist; t = Field(t, 1))
 	  numchildren++;
 	/* put the number of children in the six sixth-to-last bits */
 	i = numchildren << 20;
 	/* or in the the "eth" boolean in the upper six bits */
-	i |= Val_int(Field(node, 1)) << 26;
+	i |= Bool_val(Field(node, 1)) << 26;
 	/* mask out the 20 relevant bits and or the address in */
 	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
 	/* that's all for this node. store it. */
@@ -803,7 +803,7 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	buffer += sizeof(int);
 
 	/* and recurse into the children */
-	for (t = Field(node, 2); t != Val_int(0); t = Field(t, 1)) {
+	for (t = Field(node, 2); t != Val_emptylist; t = Field(t, 1)) {
 		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
 		if (buffer == NULL)
 		  failwith("Ouch in tree_to_string_rec!");
@@ -846,8 +846,8 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
 	node = alloc_small(3, 0);
 	Field(node, 0) = a;
-	Field(node, 1) = Int_val(i >> 26);
-	Field(node, 2) = Val_int(0);
+	Field(node, 1) = Val_bool(i >> 26);
+	Field(node, 2) = Val_emptylist;
 
 	chain = Val_unit;
 	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
@@ -859,7 +859,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 		 * call comes back.
 		 */
 		Field(child, 0) = Val_unit;
-		Field(child, 1) = Val_int(0);
+		Field(child, 1) = Val_emptylist;
 		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
 		if (chain == Val_unit)
 		  modify(&Field(node, 2), child);

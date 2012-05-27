@@ -72,7 +72,9 @@ let broadcast_run udpsockfd rtsockfd =
 	  let is_eth iface = 
 		if StringMap.mem iface !ifaces then
 			let i = StringMap.find iface !ifaces in
-			(Iface.itype i == Iface.WIRED) && not (Iface.is_nanostation i)
+			let res = (Iface.itype i == Iface.WIRED) && not (Iface.is_nanostation i) in
+			Log.log Log.debug ("iface " ^ iface ^ " is " ^ (if res then "" else "not ") ^ "wired");
+			res
 		else false in
 	  let newroutes, nodes =
 		Neighbor.derive_routes_and_mytree !directnets
