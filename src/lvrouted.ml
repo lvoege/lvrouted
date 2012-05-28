@@ -69,10 +69,18 @@ let broadcast_run udpsockfd rtsockfd =
 			close_out out
 		end else if Sys.file_exists fname then Sys.remove fname) !neighbors;
 
+	  let is_eth iface = 
+		if StringMap.mem iface !ifaces then
+			let i = StringMap.find iface !ifaces in
+			let res = (Iface.itype i == Iface.WIRED) && not (Iface.is_nanostation i) in
+			Log.log Log.debug ("iface " ^ iface ^ " is " ^ (if res then "" else "not ") ^ "wired");
+			res
+		else false in
 	  let newroutes, nodes =
 		Neighbor.derive_routes_and_mytree !directnets
 						  !neighbors
-						  !default_addrs in
+						  !default_addrs
+						  is_eth in
 	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
@@ -157,7 +165,7 @@ let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
 		Log.log Log.info ("New address " ^
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
-		let node = Tree.make addr [] in
+		let node = Tree.make addr false [] in
 		if not (List.mem node !direct) then begin
 			direct := node::!direct;
 			directnets := (addr, mask)::!directnets;
@@ -219,7 +227,7 @@ let read_config _ =
 		let lines = snarf_lines_from_channel chan in
 		close_in chan;
 		let extraaddrs = List.map Unix.inet_addr_of_string lines in
-		direct := !direct@(List.map (fun a -> Tree.make a []) extraaddrs);
+		direct := !direct@(List.map (fun a -> Tree.make a false []) extraaddrs);
 		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
 	with _ ->
 		Log.log Log.warnings ("Couldn't read the specified config file '" ^ !configfile ^ "'");
