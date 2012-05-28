@@ -341,7 +341,7 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 	if (buffer == 0)
 	  failwith("malloc");
 
-	for (adderrs = Val_int(0); adds != Val_int(0); adds = Field(adds, 1)) {
+	for (adderrs = Val_emptylist; adds != Val_emptylist; adds = Field(adds, 1)) {
 		v = Field(adds, 0);
 		len = routemsg_add(buffer, RTM_ADD, Field(v, 0), Field(v, 1), Field(v, 2));
 #ifdef DUMP_ROUTEPACKET
@@ -360,7 +360,7 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 		}
 	}
 
-	for (delerrs = Val_int(0); deletes != Val_int(0); deletes = Field(deletes, 1)) {
+	for (delerrs = Val_emptylist; deletes != Val_emptylist; deletes = Field(deletes, 1)) {
 		v = Field(deletes, 0);
 		len = routemsg_add(buffer, RTM_DELETE, Field(v, 0), Field(v, 1), Field(v, 2));
 		enter_blocking_section();
@@ -374,7 +374,7 @@ CAMLprim value routes_commit(value rtsock, value deletes, value adds, value chan
 		}
 	}
 
-	for (cherrs = Val_int(0); changes != Val_int(0); changes = Field(changes, 1)) {
+	for (cherrs = Val_emptylist; changes != Val_emptylist; changes = Field(changes, 1)) {
 		v = Field(changes, 0);
 		len = routemsg_add(buffer, RTM_CHANGE, Field(v, 0), Field(v, 1), Field(v, 2));
 		enter_blocking_section();
@@ -406,10 +406,10 @@ CAMLprim value caml_ether_aton(value s, value mac) {
 
 	ea = ether_aton(String_val(s));
 	if (ea == 0)
-	  res = Val_int(0);
+	  res = Val_false;
 	else {
 		memcpy(String_val(mac), ea, ETHER_ADDR_LEN);
-		res = Val_int(1);
+		res = Val_true;
 	}
 	CAMLreturn(res);
 }
@@ -421,10 +421,10 @@ CAMLprim value caml_ether_ntoa(value s, value res) {
 
 	p = ether_ntoa((struct ether_addr *)String_val(s));
 	if (p == 0 || strlen(p) > 17)
-	  rescode = Val_int(0);
+	  rescode = Val_false;
 	else {
 		memcpy(String_val(res), p, strlen(p));
-		rescode = Val_int(1);
+		rescode = Val_true;
 	}
 	CAMLreturn(rescode);
 }
@@ -439,7 +439,7 @@ CAMLprim value caml_getifaddrs(value unit) {
 	if (getifaddrs(&ifap) == -1)
 	  failwith("getifaddrs");
 
-	result = Val_int(0);
+	result = Val_emptylist;
 	for (ifp = ifap; ifp; ifp = ifp->ifa_next) {
 		if (ifp->ifa_addr->sa_family != AF_INET)
 		  continue;	/* not interested */
@@ -586,8 +586,6 @@ CAMLprim value get_associated_stations(value iface) {
 #else
 	assert(0);
 #endif
-#if defined(HAVE_NET80211_IEEE80211_H)
-#  if defined(IEEE80211_IOC_STA_INFO)
 	/* FreeBSD 6.0 and up (hopefully), swiped from ifconfig */
     /* Reference code ???: /usr/src/sbin/ifconfig/ifieee80211.c - list_stations(int s)' */
 	int n;
@@ -638,71 +636,6 @@ CAMLprim value get_associated_stations(value iface) {
 		cp += si->isi_len, len -= si->isi_len;
 	}
 	close(sockfd);
-#  else
-	/* FreeBSD 5.4 */
-	struct ifreq ifr;
-	int n;
-	struct wi_req wir;
-	struct wi_apinfo *s;
-
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd == -1)
-	  failwith("socket for get_associated_stations");
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
-	ifr.ifr_data = (caddr_t)&wir;
-
-	memset(&wir, 0, sizeof(wir));
-	wir.wi_len = WI_MAX_DATALEN;
-	wir.wi_type = WI_RID_READ_APS;
-
-	if (ioctl(sockfd, SIOCGWAVELAN, &ifr) == -1) {
-		close(sockfd);
-		failwith("SIOCGWAVELAN");
-	}
-
-	n = *(int *)(wir.wi_val);
-	result = alloc_tuple(n);
-	s = (struct wi_apinfo *)((char *)wir.wi_val + sizeof(int));
-	for (i = 0; i < n; i++) {
-		mac = alloc_string(ETHER_ADDR_LEN);
-		memcpy(String_val(mac), s->bssid, ETHER_ADDR_LEN);
-		s++;
-		Store_field(result, i, mac);
-	}
-	close(sockfd);
-#  endif
-#elif defined(HAVE_NET_IF_IEEE80211_H)
-	/* FreeBSD 5.0 */
-	struct ifreq ifr;
-	struct hostap_getall    reqall;
-	struct hostap_sta       stas[WIHAP_MAX_STATIONS];
-
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd == -1)
-	  failwith("socket for get_associated_stations");
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, String_val(iface), sizeof(ifr.ifr_name));
-	ifr.ifr_data = (caddr_t) &reqall;
-
-	memset(&reqall, 0, sizeof(reqall));
-	reqall.size = sizeof(stas);
-	reqall.addr = stas;
-
-	memset(&stas, 0, sizeof(stas));
-
-	if (ioctl(sockfd, SIOCHOSTAP_GETALL, &ifr) < 0) {
-		close(sockfd);
-		failwith("SIOCHOSTAP_GETALL");
-	}
-	result = alloc_tuple(reqall.nstations);
-	for (i = 0; i < reqall.nstations; i++) {
-		mac = alloc_string(ETHER_ADDR_LEN);
-		memcpy(String_val(mac), stas[i].addr, ETHER_ADDR_LEN);
-		Store_field(result, i, mac);
-	}
-	close(sockfd);
-#endif
 	CAMLreturn(result);
 }
 
@@ -741,7 +674,7 @@ CAMLprim value routes_fetch(value unit) {
 	}
 
 	lim = buf + needed;
-	result = Val_int(0);
+	result = Val_emptylist;
 	for (p = buf; p < lim; p += rtm->rtm_msglen) {
 		rtm = (struct rt_msghdr *)p;
 		if ((rtm->rtm_flags & RTF_GATEWAY) == 0 ||
@@ -822,7 +755,7 @@ CAMLprim value caml_syslog(value pri, value s) {
 	};
 	if (Long_val(pri) >= 5)
 	  failwith("Invalid priority for syslog()");
-	syslog(tmp[Long_val(pri)], String_val(s));
+	syslog(tmp[Long_val(pri)], "%s", String_val(s));
 	CAMLreturn(Val_unit);
 }
 
@@ -857,18 +790,20 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	  return NULL;
 
 	numchildren = 0;
-	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1))
+	for (t = Field(node, 2); t != Val_emptylist; t = Field(t, 1))
 	  numchildren++;
-	/* put the number of children in the upper twelve bits */
-	i  = numchildren << 20;
-	/* mask out the 20 relevant bits and or it in */
+	/* put the number of children in the six sixth-to-last bits */
+	i = numchildren << 20;
+	/* or in the the "eth" boolean in the upper six bits */
+	i |= Bool_val(Field(node, 1)) << 26;
+	/* mask out the 20 relevant bits and or the address in */
 	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
 	/* that's all for this node. store it. */
 	*(int *)buffer = htonl(i);
 	buffer += sizeof(int);
 
 	/* and recurse into the children */
-	for (t = Field(node, 1); t != Val_int(0); t = Field(t, 1)) {
+	for (t = Field(node, 2); t != Val_emptylist; t = Field(t, 1)) {
 		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
 		if (buffer == NULL)
 		  failwith("Ouch in tree_to_string_rec!");
@@ -909,15 +844,12 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	*pp += sizeof(int);
 	a = alloc_string(4);
 	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
-	node = alloc_small(2, 0);
+	node = alloc_small(3, 0);
 	Field(node, 0) = a;
-	Field(node, 1) = Val_int(0);
+	Field(node, 1) = Val_bool(i >> 26);
+	Field(node, 2) = Val_emptylist;
 
-	/* new children get hooked on the second field of chain. by luck,
-	 * the list itself is in the second field of node, so chain can be
-	 * assigned to node. if the node struct changes so the list of
-	 * children is no longer the second field, this must be changed */
-	chain = node;
+	chain = Val_unit;
 	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
 		child = alloc_small(2, 0);
 		/*
@@ -927,9 +859,12 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 		 * call comes back.
 		 */
 		Field(child, 0) = Val_unit;
-		Field(child, 1) = Val_int(0);
+		Field(child, 1) = Val_emptylist;
 		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
-		modify(&Field(chain, 1), child);
+		if (chain == Val_unit)
+		  modify(&Field(node, 2), child);
+		else
+		  modify(&Field(chain, 1), child);
 		chain = child;
 	}
 	CAMLreturn(node);
@@ -1052,6 +987,62 @@ CAMLprim value read_routemsg(value fd) {
 	assert(0);
 #endif
 	CAMLreturn(res);
+}
+
+static const struct ifmedia_baudrate ifmedia_baudrate_descriptions[] = IFM_BAUDRATE_DESCRIPTIONS;
+
+static uint64_t ifmedia_baudrate(int mword) {
+	int i;
+
+	for (i = 0; ifmedia_baudrate_descriptions[i].ifmb_word != 0; i++) {
+		if ((mword & (IFM_NMASK|IFM_TMASK)) ==
+		    ifmedia_baudrate_descriptions[i].ifmb_word)
+			return (ifmedia_baudrate_descriptions[i].ifmb_baudrate);
+	}
+
+	/* Not known. */
+	return (0);
+}
+
+CAMLprim value caml_ifstatus(value iname) {
+#ifdef __FreeBSD__
+	CAMLparam1(iname);
+	CAMLlocal1(res);
+	int i[2];
+	const char *name;
+	uint64_t bw;
+
+	name = String_val(iname);
+	if (name[0] == 'l' && name[1] == 'o') {
+		/* lame! */
+		res = alloc_small(1, 0);
+		Field(res, 0) = Val_int(10000);
+	} {
+		ifstatus(name, i);
+		bw = ifmedia_baudrate(i[1]);
+		if ((i[0] & IFM_AVALID) == 0)
+		  failwith("Invalid interface");
+		switch (IFM_TYPE(i[1])) {
+			case IFM_ETHER:
+				res = alloc_small(1, 0);
+				Field(res, 0) = Val_int(bw / IF_Mbps(1));
+				break;
+			case IFM_IEEE80211:
+				if (i[1] & IFM_IEEE80211_HOSTAP)
+				  res = Val_int(0);
+				else {
+					res = alloc_small(1, 1);
+					Field(res, 0) = Val_int(bw / IF_Mbps(1));
+				}
+				break;
+			default:
+				failwith("Unknown media type");
+		}
+	}
+	CAMLreturn(res);
+#else
+	assert(0);
+#endif
 }
 
 CAMLprim value compare_ipv4_addrs(value a, value b) {

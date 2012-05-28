@@ -5,11 +5,17 @@ open Common
 
 type node = {
 	addr: Unix.inet_addr;
+	eth: bool; 
 	mutable nodes: node list;
 }
 
+module IntQueue = PrioQueue.Make(struct
+	type t = int
+	let compare = compare
+end)
+
 (* Constructor *)
-let make a nodes = { addr = a; nodes = nodes }
+let make a eth nodes = { addr = a; eth = eth; nodes = nodes }
 
 (* Accessors *)
 let addr n = n.addr
@@ -33,10 +39,15 @@ let show l =
 	let rec show' indent l =
 		let i = String.make indent '\t' in
 		List.iter (fun n ->
-			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ "\n";
+			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ (if n.eth then " (eth)" else "") ^ "\n";
 			show' (indent + 1) n.nodes) l in
 	show' 0 l;
 	!s
+
+let dump_tree fname nodes =
+	let out = open_out (!Common.tmpdir ^ fname) in
+	output_string out (show nodes);
+	close_out out
 
 (* Given a list of spanning trees received from neighbors and a set of our
    own addresses, return the spanning tree for this node, plus a routing
@@ -72,23 +83,36 @@ let merge nodes directnets =
 	let routes = IPHash.create 512 in
 	List.iter (fun (a, _) -> IPHash.add routes a a) directnets;
 	(* step 2 *)
-	let fake = make Unix.inet_addr_any [] in
+	let fake = make Unix.inet_addr_any true [] in
 	(* step 3 *)
-	let rec traverse = function
-		  []			-> ()	(* all done *)
-		| (node,parent,gw)::xs	-> 
+	let rec traverse pq =
+		if pq = IntQueue.empty then ()
+		else    let (prio, (node, parent, gw), pq') = IntQueue.extract pq in
 			if IPHash.mem routes node.addr then
-			  traverse xs (* ignore this node *)
+			  traverse pq' (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
-				let newnode = make node.addr [] in
+				let newnode = make node.addr node.eth [] in
 				parent.nodes <- newnode::parent.nodes;
 				IPHash.add routes node.addr gw;
-				(* and continue traversing, after appending the children of this node to the todo list *)
-				traverse (xs@(List.map (fun node' -> node', newnode, gw) node.nodes))
+
+				(* Create queue elements for the children of
+				   this node and push them on. For now the
+				   priority is going to be the priority of the
+				   parent plus one, giving normal BFS
+				   behavior. *)
+				(*let prio' = prio + (if node.eth then 1 else 10) in*)
+				let prio' = prio + 1 in
+				let pq'' = List.fold_left (fun pq' child ->
+					let child_element = (child, newnode, gw) in
+					IntQueue.insert pq' prio' child_element) pq' node.nodes in
+				traverse pq''
 			end in
-	let todo = List.map (fun node -> node, fake, node.addr) nodes in
+	let todo = List.fold_left (fun q node ->
+			let e = (node, fake, node.addr) in
+			IntQueue.insert q 0 e) IntQueue.empty nodes in
 	traverse todo;
+
 	(* step 4 *)
 	IPHash.iter (fun a gw ->
 		if List.exists (fun (a', n) ->
@@ -100,7 +124,7 @@ external serialize: node -> string = "tree_to_string"
 external deserialize: string -> node = "string_to_tree"
 
 let to_string (nodes: node list) =
-	let fake = { addr = Unix.inet_addr_any; nodes = nodes } in
+	let fake = { addr = Unix.inet_addr_any; eth = true; nodes = nodes } in
 	if Common.own_marshaller then serialize fake 
 	else Marshal.to_string nodes []
 
@@ -111,9 +135,4 @@ let from_string s from_addr : node =
 	  { (deserialize s) with addr = from_addr }
 	else
 	  (* This is the most dangerous bit in all of the code: *)
-	  { addr = from_addr; nodes = (Marshal.from_string s 0: node list) }
-
-let dump_tree fname nodes =
-	let out = open_out (!Common.tmpdir ^ fname) in
-	output_string out (show nodes);
-	close_out out
+	  { addr = from_addr; eth = false; nodes = (Marshal.from_string s 0: node list) }

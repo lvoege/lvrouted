@@ -110,13 +110,18 @@ let nuke_old_trees ns numsecs =
 		n.tree <- None) expired;
 	not (Set.is_empty expired)
 
-(* From the given set of direct IPs and list of neighbors, derive a list of
-   (unaggregated) routes and a merged tree. *)
-let derive_routes_and_mytree directips ns default_addrs = 
+(* From the given set of direct IPs, a list of neighbors, a list of default
+   gateways on the network to look out for (and indeed insert a default route
+   for the nearest of these) plus a function that says whether an interface
+   counts as a zero-hop one, derive a list of (unaggregated) routes and a
+   merged tree. *)
+let derive_routes_and_mytree directips ns default_addrs f = 
 	(* Fetch all valid trees from the neighbors *)
-	let nodes = Common.filtermap (fun n -> Common.is_some n.tree)
-			             (fun n -> Common.from_some n.tree) 
-				     (Set.elements ns) in
+	let nodes = Set.fold (fun e a -> match e.tree with
+		| None -> a
+		| Some t -> 
+			let t' = Tree.make (Tree.addr t) (f e.iface) (Tree.nodes t) in
+			t'::a) ns [] in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
 			   string_of_int (List.length nodes));
 	(* Merge the trees into a new tree and an IPMap.t *)
@@ -134,7 +139,7 @@ let derive_routes_and_mytree directips ns default_addrs =
 		match Common.IPSet.mem a default_addrs with
 		| true -> Some a
 		| false -> None in
-	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") nodes' in
+	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") true nodes' in
 	let first_default_addr = Tree.bfs bogus_top_node look_for_default_addr in
 	let default_route = match first_default_addr with
 		| None -> None
