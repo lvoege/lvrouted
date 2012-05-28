@@ -784,7 +784,7 @@ CAMLprim value caml_unpack_int(value s) {
  */
 static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary) {
 	value t;
-	int i, numchildren;
+	int i, flags, numchildren;
 
 	if (buffer >= boundary)
 	  return NULL;
@@ -795,7 +795,9 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	/* put the number of children in the six sixth-to-last bits */
 	i = numchildren << 20;
 	/* or in the the "eth" boolean in the upper six bits */
-	i |= Bool_val(Field(node, 1)) << 26;
+	flags = Bool_val(Field(node, 1)); // eth
+	flags |= Bool_val(Field(node, 2)) << 1; // gateway
+	i |= flags << 26;
 	/* mask out the 20 relevant bits and or the address in */
 	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
 	/* that's all for this node. store it. */
@@ -836,7 +838,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
 	CAMLlocal4(a, node, child, chain);
-	int i;
+	int flags, i;
 
 	if (*pp > limit - sizeof(int))
 	  failwith("faulty packet");
@@ -846,8 +848,10 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
 	node = alloc_small(3, 0);
 	Field(node, 0) = a;
-	Field(node, 1) = Val_bool(i >> 26);
-	Field(node, 2) = Val_emptylist;
+	flags = i >> 26;
+	Field(node, 1) = Val_bool(flags & 1);
+	Field(node, 2) = Val_bool(flags & 2);
+	Field(node, 3) = Val_emptylist;
 
 	chain = Val_unit;
 	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
@@ -862,7 +866,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 		Field(child, 1) = Val_emptylist;
 		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
 		if (chain == Val_unit)
-		  modify(&Field(node, 2), child);
+		  modify(&Field(node, 3), child);
 		else
 		  modify(&Field(chain, 1), child);
 		chain = child;

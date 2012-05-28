@@ -5,7 +5,10 @@ open Common
 
 type node = {
 	addr: Unix.inet_addr;
-	eth: bool; 
+	eth: bool; 	(* Is this an ethernet link, but not one with
+			   nanostations on it? *)
+	gateway: bool; 	(* Is this a gateway to the outside? IOW, one that we
+			   can lay a default route to? *)
 	mutable nodes: node list;
 }
 
@@ -15,11 +18,12 @@ module IntQueue = PrioQueue.Make(struct
 end)
 
 (* Constructor *)
-let make a eth nodes = { addr = a; eth = eth; nodes = nodes }
+let make a eth gateway nodes = { addr = a; eth = eth; gateway = gateway; nodes = nodes }
 
 (* Accessors *)
 let addr n = n.addr
 let nodes n = n.nodes
+let gateway n = n.gateway
 
 (* For the tree topped by the given node, traverse it breadth-first, calling
    the given function on the nodes. If the function returns None, continue
@@ -39,7 +43,7 @@ let show l =
 	let rec show' indent l =
 		let i = String.make indent '\t' in
 		List.iter (fun n ->
-			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ (if n.eth then " (eth)" else "") ^ "\n";
+			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ (if n.eth then " (eth)" else "") ^ (if n.gateway then " (gw)" else "") ^ "\n";
 			show' (indent + 1) n.nodes) l in
 	show' 0 l;
 	!s
@@ -82,17 +86,20 @@ let merge nodes directnets =
 	(* step 1 *)
 	let routes = IPHash.create 512 in
 	List.iter (fun (a, _) -> IPHash.add routes a a) directnets;
+	let default_gw = ref Unix.inet_addr_any in
 	(* step 2 *)
-	let fake = make Unix.inet_addr_any true [] in
+	let fake = make Unix.inet_addr_any true false [] in
 	(* step 3 *)
 	let rec traverse pq =
 		if pq = IntQueue.empty then ()
 		else    let (prio, (node, parent, gw), pq') = IntQueue.extract pq in
+			if !default_gw = Unix.inet_addr_any && node.gateway then
+			  default_gw := gw;
 			if IPHash.mem routes node.addr then
 			  traverse pq' (* ignore this node *)
 			else begin
 				(* copy this node and hook it into the new tree *)
-				let newnode = make node.addr node.eth [] in
+				let newnode = make node.addr node.eth node.gateway [] in
 				parent.nodes <- newnode::parent.nodes;
 				IPHash.add routes node.addr gw;
 
@@ -118,13 +125,13 @@ let merge nodes directnets =
 		if List.exists (fun (a', n) ->
 			LowLevel.route_includes_impl a' n a 32) directnets then
 		  IPHash.remove routes a) routes;
-	fake.nodes, routes
+	fake.nodes, routes, !default_gw
 
 external serialize: node -> string = "tree_to_string"
 external deserialize: string -> node = "string_to_tree"
 
 let to_string (nodes: node list) =
-	let fake = { addr = Unix.inet_addr_any; eth = true; nodes = nodes } in
+	let fake = { addr = Unix.inet_addr_any; eth = true; gateway = false; nodes = nodes } in
 	if Common.own_marshaller then serialize fake 
 	else Marshal.to_string nodes []
 
@@ -135,4 +142,4 @@ let from_string s from_addr : node =
 	  { (deserialize s) with addr = from_addr }
 	else
 	  (* This is the most dangerous bit in all of the code: *)
-	  { addr = from_addr; eth = false; nodes = (Marshal.from_string s 0: node list) }
+	  { addr = from_addr; eth = false; gateway = false; nodes = (Marshal.from_string s 0: node list) }

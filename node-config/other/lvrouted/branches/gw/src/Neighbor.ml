@@ -115,61 +115,31 @@ let nuke_old_trees ns numsecs =
    for the nearest of these) plus a function that says whether an interface
    counts as a zero-hop one, derive a list of (unaggregated) routes and a
    merged tree. *)
-let derive_routes_and_mytree directips ns default_addrs f = 
+let derive_routes_and_mytree directips ns f = 
 	(* Fetch all valid trees from the neighbors *)
 	let nodes = Set.fold (fun e a -> match e.tree with
 		| None -> a
 		| Some t -> 
-			let t' = Tree.make (Tree.addr t) (f e.iface) (Tree.nodes t) in
+			let t' = Tree.make (Tree.addr t) (f e.iface) (Tree.gateway t) (Tree.nodes t) in
 			t'::a) ns [] in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
 			   string_of_int (List.length nodes));
 	(* Merge the trees into a new tree and an IPMap.t *)
-	let nodes', routemap = Tree.merge nodes directips in
+	let nodes', routemap, default_gw = Tree.merge nodes directips in
 
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
 		Common.IPHash.fold (fun addr gw ->
 				     Route.Set.add (Route.make addr 32 gw))
 				  routemap Route.Set.empty in
-	(* Insert a default route to the nearest entry in default_addrs, if
-	   any *)
-	let look_for_default_addr n = 
-		let a = Tree.addr n in
-		match Common.IPSet.mem a default_addrs with
-		| true -> Some a
-		| false -> None in
-	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") true nodes' in
-	let first_default_addr = Tree.bfs bogus_top_node look_for_default_addr in
-	let default_route = match first_default_addr with
-		| None -> None
-		| Some a -> (
-			Log.log Log.debug ("First default addr: " ^ (Unix.string_of_inet_addr a));
-			let gw = List.fold_left (fun acc (addr, mask) -> match acc with
-				| Some x -> Some x
-				| None -> if LowLevel.route_includes_impl addr mask a 32 then
-						Some a
-					  else
-					  	None) None directips in
-			let gw = match gw with
-				| None -> (try Some (Common.IPHash.find routemap a)
-					   with Not_found -> None)
-				| Some x -> Some x in
-			match gw with
-			| None -> Log.log Log.errors ("Eek! Found a first default addr, but don't have a route to it!");
-				  None
-			| Some gw -> (
-				Log.log Log.debug ("Gateway: " ^ (Unix.string_of_inet_addr gw));
-				let a' = Unix.inet_addr_of_string "0.0.0.0" in
-				Some (Route.make a' 0 gw)
-			)
-		) in
-	Log.log Log.debug ("Done default addrs");
 
 	let routeset' = Route.aggregate routeset in
-	let routeset'' = match default_route with
-		| None -> routeset'
-		| Some r -> Route.Set.add r routeset' in
+	let routeset'' = if default_gw = Unix.inet_addr_any then routeset' 
+		else begin
+			Log.log Log.debug ("Gateway: " ^ (Unix.string_of_inet_addr default_gw));
+			let a' = Unix.inet_addr_of_string "0.0.0.0" in
+			Route.Set.add (Route.make a' 0 default_gw) routeset'
+		end  in
 
 	routeset'', nodes'
 
