@@ -120,12 +120,12 @@ let derive_routes_and_mytree directips ns default_addrs f =
 	let nodes = Set.fold (fun e a -> match e.tree with
 		| None -> a
 		| Some t -> 
-			let t' = Tree.make (Tree.addr t) (f e.iface) (Tree.nodes t) in
+			let t' = Tree.make (Tree.addr t) (f e.iface) (Tree.gateway t) (Tree.nodes t) in
 			t'::a) ns [] in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
 			   string_of_int (List.length nodes));
 	(* Merge the trees into a new tree and an IPMap.t *)
-	let nodes', routemap = Tree.merge nodes directips in
+	let nodes', routemap, default_gw = Tree.merge nodes directips in
 
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
@@ -139,7 +139,7 @@ let derive_routes_and_mytree directips ns default_addrs f =
 		match Common.IPSet.mem a default_addrs with
 		| true -> Some a
 		| false -> None in
-	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") true nodes' in
+	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") true false nodes' in
 	let first_default_addr = Tree.bfs bogus_top_node look_for_default_addr in
 	let default_route = match first_default_addr with
 		| None -> None
