@@ -5,8 +5,8 @@
 <!ENTITY freebsd "<ulink url='http://www.freebsd.org/'>FreeBSD</ulink>">
 <!ENTITY svn "<ulink url='http://subversion.tigris.org/'>Subversion</ulink>">
 <!ENTITY ocaml "<ulink url='http://caml.inria.fr/'>OCaml</ulink>">
-<!ENTITY root "<ulink url='http://wleiden.webweaving.org:8080/svn/node-config/other/lvrouted/'>http://wleiden.webweaving.org:8080/svn/node-config/other/lvrouted/</ulink>">
-<!ENTITY trunk "<ulink url='http://wleiden.webweaving.org:8080/svn/node-config/other/lvrouted/trunk/'>http://wleiden.webweaving.org:8080/svn/node-config/other/lvrouted/trunk/</ulink>">
+<!ENTITY root "<ulink url='http://svn.wirelessleiden.nl/svn/node-config/other/lvrouted/'>http://svn.wirelessleiden.nl/svn/node-config/other/lvrouted/</ulink>">
+<!ENTITY trunk "<ulink url='http://svn.wirelessleiden.nl/svn/node-config/other/lvrouted/trunk/'>http://svn.wirelessleiden.nl/svn/node-config/other/lvrouted/trunk/</ulink>">
 ]>
 <article>
   <artheader>
