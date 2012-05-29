@@ -790,7 +790,7 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	  return NULL;
 
 	numchildren = 0;
-	for (t = Field(node, 2); t != Val_emptylist; t = Field(t, 1))
+	for (t = Field(node, 3); t != Val_emptylist; t = Field(t, 1))
 	  numchildren++;
 	/* put the number of children in the six sixth-to-last bits */
 	i = numchildren << 20;
@@ -805,7 +805,7 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	buffer += sizeof(int);
 
 	/* and recurse into the children */
-	for (t = Field(node, 2); t != Val_emptylist; t = Field(t, 1)) {
+	for (t = Field(node, 3); t != Val_emptylist; t = Field(t, 1)) {
 		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
 		if (buffer == NULL)
 		  failwith("Ouch in tree_to_string_rec!");
