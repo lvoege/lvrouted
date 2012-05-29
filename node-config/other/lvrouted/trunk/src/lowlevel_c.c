@@ -846,7 +846,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	*pp += sizeof(int);
 	a = alloc_string(4);
 	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
-	node = alloc_small(3, 0);
+	node = alloc_small(4, 0);
 	Field(node, 0) = a;
 	flags = i >> 26;
 	Field(node, 1) = Val_bool(flags & 1);
