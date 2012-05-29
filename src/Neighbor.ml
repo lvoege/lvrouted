@@ -164,10 +164,15 @@ let derive_routes_and_mytree directips ns default_addrs f =
 				Some (Route.make a' 0 gw)
 			)
 		) in
+	let default_route' = match default_route with
+		| None -> if default_gw = Unix.inet_addr_any then None
+			  else let a = Unix.inet_addr_of_string "0.0.0.0" in
+			       Some (Route.make a 0 default_gw)
+		| _ -> default_route in
 	Log.log Log.debug ("Done default addrs");
 
 	let routeset' = Route.aggregate routeset in
-	let routeset'' = match default_route with
+	let routeset'' = match default_route' with
 		| None -> routeset'
 		| Some r -> Route.Set.add r routeset' in
 
