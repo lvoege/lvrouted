@@ -23,7 +23,7 @@ let unreachable = ref Neighbor.Set.empty
 let resume = ref false
 let quit = ref false
 let default_addrs = ref IPSet.empty
-let is_gateway = ref true
+let is_gateway = ref false
 
 (* See if any previously reachable neighbors became reachable or vice-versa *)
 let check_reachable _ =
