@@ -15,7 +15,7 @@ type t = {
 	mutable last_assoc_update: float;
 	mutable last_arp_update: float;
 	mutable arpentries: MAC.Set.t option;
-	(* is type is master, this is the set of associated macaddrs*)
+	(* is type is master, this is the set of associated macaddrs *)
 	mutable associated: MAC.Set.t option;
 	(* is type is client, whether or not this iface is associated
 	   with a master *)
@@ -100,4 +100,5 @@ let is_nanostation iface =
 	MAC.Set.exists (fun a ->
 		let s = MAC.ether_ntoa a in
 		let s' = String.sub s 0 8 in
-		(String.compare s' "00:15:6d") == 0) (Common.from_some iface.arpentries)
+		(String.compare s' "00:15:6d") == 0 ||
+		(String.compare s' "00:27:22") == 0) (Common.from_some iface.arpentries)
