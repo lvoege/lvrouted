@@ -5,8 +5,7 @@ open Common
 
 type node = {
 	addr: Unix.inet_addr;
-	eth: bool; 	(* Is this an ethernet link, but not one with
-			   nanostations on it? *)
+	prio: int; 	(* The priority this address should have. *)
 	gateway: bool; 	(* Is this a gateway to the outside? IOW, one that we
 			   can lay a default route to? *)
 	mutable nodes: node list;
@@ -18,7 +17,7 @@ module IntQueue = PrioQueue.Make(struct
 end)
 
 (* Constructor *)
-let make a eth gateway nodes = { addr = a; eth = eth; gateway = gateway; nodes = nodes }
+let make a prio gateway nodes = { addr = a; prio = prio; gateway = gateway; nodes = nodes }
 
 (* Accessors *)
 let addr n = n.addr
@@ -43,7 +42,7 @@ let show l =
 	let rec show' indent l =
 		let i = String.make indent '\t' in
 		List.iter (fun n ->
-			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ (if n.eth then " (eth)" else "") ^ (if n.gateway then " (gw)" else "") ^ "\n";
+			s := !s ^ i ^ Unix.string_of_inet_addr n.addr ^ "(" ^ (string_of_int n.prio) ^ ")" ^ (if n.gateway then " (gw)" else "") ^ "\n";
 			show' (indent + 1) n.nodes) l in
 	show' 0 l;
 	!s
@@ -99,7 +98,7 @@ let merge nodes directnets =
 	(* step 2 *)
 	let default_gw = ref Unix.inet_addr_any in
 	(* step 3 *)
-	let fake = make Unix.inet_addr_any true false [] in
+	let fake = make Unix.inet_addr_any 0 false [] in
 	(* step 4 *)
 	let rec traverse pq =
 		if pq = IntQueue.empty then ()
@@ -117,7 +116,7 @@ let merge nodes directnets =
 				traverse pq'
 			with Not_found -> 
 				(* copy this node and hook it into the new tree *)
-				let newnode = make node.addr node.eth node.gateway [] in
+				let newnode = make node.addr node.prio node.gateway [] in
 				parent.nodes <- newnode::parent.nodes;
 				IPHash.add routes node.addr (prio, gw);
 
@@ -126,7 +125,7 @@ let merge nodes directnets =
 				   priority is going to be the priority of the
 				   parent plus one, giving normal BFS
 				   behavior. *)
-				let prio' = prio + (if node.eth then 1 else 10) in
+				let prio' = prio + node.prio in
 				(*let prio' = prio + 1 in*)
 				let pq'' = List.fold_left (fun pq' child ->
 					let child_element = (child, newnode, gw) in
@@ -149,7 +148,7 @@ external serialize: node -> string = "tree_to_string"
 external deserialize: string -> node = "string_to_tree"
 
 let to_string (nodes: node list) =
-	let fake = { addr = Unix.inet_addr_any; eth = true; gateway = false; nodes = nodes } in
+	let fake = { addr = Unix.inet_addr_any; prio = 0; gateway = false; nodes = nodes } in
 	if Common.own_marshaller then serialize fake 
 	else Marshal.to_string nodes []
 
@@ -160,4 +159,4 @@ let from_string s from_addr : node =
 	  { (deserialize s) with addr = from_addr }
 	else
 	  (* This is the most dangerous bit in all of the code: *)
-	  { addr = from_addr; eth = false; gateway = false; nodes = (Marshal.from_string s 0: node list) }
+	  { addr = from_addr; prio = 0; gateway = false; nodes = (Marshal.from_string s 0: node list) }
