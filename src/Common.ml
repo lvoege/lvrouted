@@ -15,8 +15,6 @@ let bcast_interval = ref 30.0
 let timeout: float = 4.0 *. !bcast_interval
 (* How many seconds between checking interfaces and expiry times? *)
 let alarm_timeout = ref 9.0
-(* Whether or not to compress the data that goes over the wire *)
-let compress_data = false
 (* Whether or not to really update the kernel's routing table *)
 let real_route_updates = ref false
 (* the netmask that's just narrow enough to be an interlink subnet.*)
@@ -151,14 +149,3 @@ let try_max_times max f =
 
 let addr_in_range a = a >= min_routable && a < max_routable
 
-let pack_string s =
-	let s = if compress_data then LowLevel.string_compress s
-		else s in
-	sign_string s
-
-let unpack_string s =
-	let goodsig, s = verify_string s in
-	if not goodsig then
-	  raise InvalidSignature;
-	if compress_data then LowLevel.string_decompress s
-	else s

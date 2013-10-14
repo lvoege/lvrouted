@@ -199,34 +199,6 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 	CAMLreturn(Val_unit);
 }
 
-CAMLprim value string_compress(value s) {
-	CAMLparam1(s);
-	CAMLlocal1(result);
-	char *buf;
-
-	int input_len = string_length(s);
-	buf = malloc(LZ4_compressBound(input_len));
-	int output_len = LZ4_compress(String_val(s), buf, input_len);
-
-	result = alloc_string(output_len);
-	memcpy(String_val(result), buf, output_len);
-	free(buf);
-	CAMLreturn(result);
-}
-
-CAMLprim value string_decompress(value s) {
-	CAMLparam1(s);
-	CAMLlocal1(result);
-	char *buf;
-
-	buf = malloc(65536);
-	int output_len = LZ4_decompress_fast(String_val(s), buf, 65536);
-	result = alloc_string(output_len);
-	memcpy(String_val(result), buf, output_len);
-	free(buf);
-	CAMLreturn(result);
-}
-
 #ifdef HAVE_RTMSG
 /*
  * I had assumed that the fact that route updates are done through
@@ -766,7 +738,7 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 	flags |= Bool_val(Field(node, 2)) << 14; // gateway
 
 	// store it
-	((uint16_t *)buffer)[0] = htonl(flags);
+	((uint16_t *)buffer)[0] = htons(flags);
 	buffer += sizeof(flags);
 
 	/* and recurse into the children */
@@ -781,13 +753,20 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 CAMLprim value tree_to_string(value node) {
 	CAMLparam1(node);
 	CAMLlocal1(result);
-	unsigned char *buffer, *t;
+	unsigned char *uncompressed_buffer, *compressed_buffer, *t;
 
-	buffer = malloc(65536);
-	t = tree_to_string_rec(node, buffer, buffer + 65536);
-	result = alloc_string(t - buffer);
-	memcpy(String_val(result), buffer, t - buffer);
-	free(buffer);
+	uncompressed_buffer = malloc(65536);
+	t = tree_to_string_rec(node, uncompressed_buffer, uncompressed_buffer + 65536);
+	int max_len = LZ4_compressBound(t - uncompressed_buffer);
+	compressed_buffer = malloc(max_len);
+	int actual_len = LZ4_compress((char *)uncompressed_buffer, (char *)compressed_buffer, t - uncompressed_buffer);
+	free(uncompressed_buffer);
+
+	// make a string with the input size and then the compressed buffer
+	result = alloc_string(sizeof(int) + actual_len);
+	*(int *)(String_val(result)) = htonl(t - uncompressed_buffer);
+	memcpy(String_val(result) + sizeof(int), compressed_buffer, actual_len);
+	free(compressed_buffer);
 	CAMLreturn(result);
 }
 
@@ -809,11 +788,12 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	Field(node, 0) = a;
 	*pp += sizeof(in_addr_t);
 
-	flags = ntohl(((uint16_t *)*pp)[0]);
+	flags = ntohs(((uint16_t *)*pp)[0]);
 	*pp += sizeof(flags);
 	Field(node, 1) = Val_bool(flags & (1 << 15));
 	Field(node, 2) = Val_bool(flags & (1 << 14));
 
+	Field(node, 3) = Val_emptylist;
 	chain = Val_unit;
 	for (flags &= (1 << 5) - 1; flags > 0; flags--) {
 		child = alloc_small(2, 0);
@@ -846,10 +826,9 @@ CAMLprim value string_to_tree(value s) {
 	int len;
 	unsigned char *buffer, *p;
 
-	len = string_length(s);
-	buffer = malloc(len);
-	memcpy(buffer, String_val(s), len);
-	p = buffer;
+	p = buffer = malloc(65536);
+	len = ntohl(*(int *)(String_val(s)));
+	LZ4_decompress_fast(String_val(s) + sizeof(int), (char *)buffer, len);
 	res = string_to_tree_rec(&p, p + len);
 	free(buffer);
 	CAMLreturn(res);
