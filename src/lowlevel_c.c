@@ -773,36 +773,38 @@ CAMLprim value caml_unpack_int(value s) {
 	CAMLreturn(Val_int(*(int *)(String_val(s))));
 }
 
-/* Store a node into a buffer. It is enough to store the node contents
- * (the address in this case) plus the number of children and recurse.
- * Since the 172.16.0.0/12 range only uses 20 bits, the number of children
- * can be packed into the 12 fixed bits.
- * 
- * It is conceivable for our nodes to have more than 16 addresses to
- * propagate, so packing a node in 24 bits instead of 32 would probably
- * be pushing our luck.
+/* Store a node into a buffer. We store the node contents (the address), some
+ * flags and the number of child nodes in 48 bits and recurse. The address is
+ * the first 32bits, the next 16 bit word is divided up (high to low) in 11
+ * bits for flags and five bits for the number of children. Five bits for
+ * children gives 32 addresses per node which should be enough, but just in
+ * case the low bit of the 11 bits of flags is currently unassigned and should
+ * stay unassigned until absolutely needed, or until it turns out we get a
+ * node with more than 32 addresses after all.
  */
 static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsigned char *boundary) {
 	value t;
-	int i, flags, numchildren;
+	uint16_t flags;
 
 	if (buffer >= boundary)
 	  return NULL;
 
-	numchildren = 0;
+	((in_addr_t *)buffer)[0] = get_addr(Field(node, 0));
+	buffer += sizeof(in_addr_t);
+
+	// start by counting up the children in the low bits
+	flags = 0;
 	for (t = Field(node, 3); t != Val_emptylist; t = Field(t, 1))
-	  numchildren++;
-	/* put the number of children in the six sixth-to-last bits */
-	i = numchildren << 20;
-	/* or in the the "eth" boolean in the upper six bits */
-	flags = Bool_val(Field(node, 1)); // eth
-	flags |= Bool_val(Field(node, 2)) << 1; // gateway
-	i |= flags << 26;
-	/* mask out the 20 relevant bits and or the address in */
-	i |= get_addr(Field(node, 0)) & ((1 << 20) - 1);
-	/* that's all for this node. store it. */
-	*(int *)buffer = htonl(i);
-	buffer += sizeof(int);
+	  flags++;
+	assert(flags <= 32);
+
+	// add in the rest of the flags
+	flags |= Bool_val(Field(node, 1)) << 15; // eth
+	flags |= Bool_val(Field(node, 2)) << 14; // gateway
+
+	// store it
+	((uint16_t *)buffer)[0] = htonl(flags);
+	buffer += sizeof(flags);
 
 	/* and recurse into the children */
 	for (t = Field(node, 3); t != Val_emptylist; t = Field(t, 1)) {
@@ -829,32 +831,28 @@ CAMLprim value tree_to_string(value node) {
 /* This is the converse of tree_to_string_rec(). Unpack the packed-together
  * number of children and node address. It reads slightly more difficult
  * because there's high-level data structures to be created and filled.
- *
- * NOTE: the upper six bits are reserved and not relevant to this branch of
- * the code. They are explicitly ignored here in order not to trip up if
- * there's anything there.
  */
 static CAMLprim value string_to_tree_rec(unsigned char **pp,
 					 unsigned char *limit) {
 	CAMLparam0();
 	CAMLlocal4(a, node, child, chain);
-	int flags, i;
+	uint16_t flags;
 
 	if (*pp > limit - sizeof(int))
 	  failwith("faulty packet");
-	i = ntohl(*(int *)(*pp));
-	*pp += sizeof(int);
-	a = alloc_string(4);
-	*(int *)(String_val(a)) = htonl(0xac100000 + (i & ((1 << 20) - 1)));
 	node = alloc_small(4, 0);
+	a = alloc_string(4);
+	*(int *)(String_val(a)) = htonl(((in_addr_t *)*pp)[0]);
 	Field(node, 0) = a;
-	flags = i >> 26;
-	Field(node, 1) = Val_bool(flags & 1);
-	Field(node, 2) = Val_bool(flags & 2);
-	Field(node, 3) = Val_emptylist;
+	*pp += sizeof(in_addr_t);
+
+	flags = ntohl(((uint16_t *)*pp)[0]);
+	*pp += sizeof(flags);
+	Field(node, 1) = Val_bool(flags & (1 << 15));
+	Field(node, 2) = Val_bool(flags & (1 << 14));
 
 	chain = Val_unit;
-	for (i = (i >> 20) & ((1 << 6) - 1); i > 0; i--) {
+	for (flags &= (1 << 5) - 1; flags > 0; flags--) {
 		child = alloc_small(2, 0);
 		/*
 		 * The rules say alloc_small()ed stuff needs to be initialized
