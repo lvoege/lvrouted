@@ -21,11 +21,11 @@ external iface_is_associated: string -> bool
 external daemon: bool -> bool -> unit
   = "caml_daemon"
 
-(* bzip2 the given string. NEEDS TESTING. *)
+(* lz4 the given string. NEEDS TESTING. *)
 external string_compress: string -> string
   = "string_compress"
 
-(* bzip2 -d the given string. NEEDS TESTING. *)
+(* lz4 -d the given string. NEEDS TESTING. *)
 external string_decompress: string -> string
   = "string_decompress"
 

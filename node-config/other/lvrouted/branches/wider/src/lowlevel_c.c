@@ -49,7 +49,7 @@
 
 #include <openssl/sha.h>
 
-#include <bzlib.h>
+#include "lz4.h"
 
 #include <caml/alloc.h>
 #include <caml/fail.h>
@@ -202,66 +202,29 @@ CAMLprim value caml_daemon(value nochdir, value noclose) {
 CAMLprim value string_compress(value s) {
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code;
-	unsigned int buflen;
-	char *buffer;
+	char *buf;
 
-	buffer = 0;
-	buflen = string_length(s);
-	do {
-		buffer = realloc(buffer, buflen);
-		code = BZ2_bzBuffToBuffCompress(
-				buffer,
-				&buflen,
-				String_val(s),
-				string_length(s),
-				1,
-				0,
-				0);
-		if (code == BZ_OUTBUFF_FULL)
-		  buflen *= 2;
-	} while (code == BZ_OUTBUFF_FULL);	
-	if (code == BZ_OK) {
-		result = alloc_string(buflen);
-		memcpy(String_val(result), buffer, buflen);	
-		free(buffer);
-		CAMLreturn(result);
-	} else {
-		free(buffer);
-		failwith("Cannot handle error in string_compress");
-	}
+	int input_len = string_length(s);
+	buf = malloc(LZ4_compressBound(input_len));
+	int output_len = LZ4_compress(String_val(s), buf, input_len);
+
+	result = alloc_string(output_len);
+	memcpy(String_val(result), buf, output_len);
+	free(buf);
+	CAMLreturn(result);
 }
 
 CAMLprim value string_decompress(value s) {
 	CAMLparam1(s);
 	CAMLlocal1(result);
-	int code;
-	unsigned int buflen;
-	char *buffer;
+	char *buf;
 
-	buffer = 0;
-	buflen = string_length(s) * 2;
-	do {
-		buffer = realloc(buffer, buflen);
-		code = BZ2_bzBuffToBuffDecompress(
-				buffer,
-				&buflen,
-				String_val(s),
-				string_length(s),
-				0,
-				0);
-		if (code == BZ_OUTBUFF_FULL)
-		  buflen *= 2;
-	} while (code == BZ_OUTBUFF_FULL);	
-	if (code == BZ_OK) {
-		result = alloc_string(buflen);
-		memcpy(String_val(result), buffer, buflen);	
-		free(buffer);
-		CAMLreturn(result);
-	} else {
-		free(buffer);
-		failwith("Cannot handle error in string_decompress");
-	}
+	buf = malloc(65536);
+	int output_len = LZ4_decompress_fast(String_val(s), buf, 65536);
+	result = alloc_string(output_len);
+	memcpy(String_val(result), buf, output_len);
+	free(buf);
+	CAMLreturn(result);
 }
 
 #ifdef HAVE_RTMSG
