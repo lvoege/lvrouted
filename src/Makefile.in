@@ -72,7 +72,7 @@ $(NAME).prof: $(SOURCES) lowlevel_c.c lz4.o
 	$(OCAMLOPT) $(OFLAGS) -o $@ -p $(SOURCES) lowlevel_c.o
 
 test.opt: test.ml $(CMX) lowlevel_c.o lz4.o
-	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) test.ml lowlevel_c.o
+	$(OCAMLOPT) $(OFLAGS) -o $@ $(CMX) test.ml lowlevel_c.o lz4.c
 
 Version.ml:
 	../tools/version.sh
