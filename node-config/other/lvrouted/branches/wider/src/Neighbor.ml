@@ -37,8 +37,6 @@ let show n = Unix.string_of_inet_addr n.addr ^ " on " ^ n.iface ^ "\n"
    the given file descriptor. *)
 let bcast fd nodes ns =
 	let s = Tree.to_string nodes in
-	let s = if Common.compress_data then LowLevel.string_compress s
-		else s in
 	Set.iter (fun n ->
 		let now = LowLevel.pack_int (int_of_float (Unix.time ())) in
 		let s = Common.sign_string (now ^ s) in
@@ -77,8 +75,6 @@ let handle_data ns s sockaddr =
 		 *)
 
 	let s = String.sub s 4 (len - 4) in
-	let s = if Common.compress_data then LowLevel.string_decompress s
-		else s in
 	Log.log Log.debug ("deserializing from " ^ addr_s);	
 	begin try
 		n.tree <- Some (Tree.from_string s addr);

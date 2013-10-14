@@ -21,14 +21,6 @@ external iface_is_associated: string -> bool
 external daemon: bool -> bool -> unit
   = "caml_daemon"
 
-(* lz4 the given string. NEEDS TESTING. *)
-external string_compress: string -> string
-  = "string_compress"
-
-(* lz4 -d the given string. NEEDS TESTING. *)
-external string_decompress: string -> string
-  = "string_decompress"
-
 (* ether_aton(3) *)
 external ether_aton: string -> string -> bool
   = "caml_ether_aton"
