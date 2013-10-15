@@ -178,11 +178,9 @@ let add_address iface addr mask =
 			addr ^ " on " ^ iface ^ " ignored [netmask greater than " ^
 			string_of_int !Common.interlink_netmask ^ "]");
 		true
-	end else  begin
+	end else begin
 		Log.log Log.warnings ("Address at " ^ Unix.string_of_inet_addr
-			addr ^ " on " ^ iface ^ " ignored [not in range " ^
-			Unix.string_of_inet_addr Common.min_routable ^ " - " ^ 
-			Unix.string_of_inet_addr Common.max_routable ^ "]");
+			addr ^ " on " ^ iface ^ " ignored [not in routable range]");
 		false
 	end	
 

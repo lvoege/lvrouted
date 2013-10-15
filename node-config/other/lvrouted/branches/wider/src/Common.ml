@@ -42,8 +42,11 @@ let use_syslog = ref false
 let min_mask = ref 24
 (* The IPv4 boundaries of the routable range. Min is inclusive, max is
    exclusive. *)
-let min_routable = Unix.inet_addr_of_string "172.16.0.0"
-let max_routable = Unix.inet_addr_of_string "172.31.255.0"
+let routable_ranges = [
+	("172.16.0.0", "172.31.255.0");
+	]
+let routable_ranges = List.map (fun (min, max) -> (Unix.inet_addr_of_string min, Unix.inet_addr_of_string max)) routable_ranges
+
 (* Use Tree.(de)serialize instead of the Marshal module. *)
 let own_marshaller = true
 (* Where to dump debug stuff and such *)
@@ -147,5 +150,6 @@ let try_max_times max f =
 		else t (i + 1) in
 	t 0
 
-let addr_in_range a = a >= min_routable && a < max_routable
+let addr_in_range a = List.exists (fun (min, max) ->
+	a >= min && a < max) routable_ranges
 
