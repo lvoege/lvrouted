@@ -763,9 +763,10 @@ CAMLprim value tree_to_string(value node) {
 	free(uncompressed_buffer);
 
 	// make a string with the input size and then the compressed buffer
-	result = alloc_string(sizeof(int) + actual_len);
-	*(int *)(String_val(result)) = htonl(t - uncompressed_buffer);
-	memcpy(String_val(result) + sizeof(int), compressed_buffer, actual_len);
+	result = alloc_string(1 + sizeof(int) + actual_len);
+	String_val(result)[0] = 2; // version
+	*(int *)(String_val(result) + 1) = htonl(t - uncompressed_buffer);
+	memcpy(String_val(result) + 1 + sizeof(int), compressed_buffer, actual_len);
 	free(compressed_buffer);
 	CAMLreturn(result);
 }
@@ -822,15 +823,29 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
  */
 CAMLprim value string_to_tree(value s) {
 	CAMLparam1(s);
-	CAMLlocal1(res);
+	CAMLlocal2(res, a);
 	int len;
 	unsigned char *buffer, *p;
 
 	p = buffer = malloc(65536);
-	len = ntohl(*(int *)(String_val(s)));
-	LZ4_decompress_fast(String_val(s) + sizeof(int), (char *)buffer, len);
-	res = string_to_tree_rec(&p, p + len);
-	free(buffer);
+	res = Val_unit;
+	if (String_val(s)[0] == 2) {
+		len = ntohl(*(int *)(String_val(s)));
+		if (len < 65536) {
+			LZ4_decompress_fast(String_val(s) + sizeof(int), (char *)buffer, len);
+			res = string_to_tree_rec(&p, p + len);
+		} // else wtf?
+		free(buffer);
+	}
+	if (res == Val_unit) {
+		res = alloc_small(4, 0);
+		a = alloc_string(4);
+		*(int *)(String_val(a)) = 0;
+		Field(res, 0) = a;
+		Field(res, 1) = Val_bool(0);
+		Field(res, 2) = Val_bool(0);
+		Field(res, 3) = Val_emptylist;
+	}
 	CAMLreturn(res);
 }
 
