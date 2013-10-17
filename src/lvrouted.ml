@@ -225,9 +225,15 @@ let read_config _ =
 		let chan = open_in !configfile in
 		let lines = snarf_lines_from_channel chan in
 		close_in chan;
-		let extraaddrs = List.map Unix.inet_addr_of_string lines in
-		direct := !direct@(List.map (fun a -> Tree.make a false !is_gateway []) extraaddrs);
-		directnets := !directnets@(List.map (fun a -> a, 32) extraaddrs);
+		let extranets = List.map (fun line -> 
+			let fields = Str.split (Str.regexp "/") line in
+			match fields with
+			| [a] -> (Unix.inet_addr_of_string a, 32)
+			| [a; b] -> (Unix.inet_addr_of_string a, int_of_string b)
+			| _ -> raise (Failure ("Parse error on line '" ^ line ^ "'"))
+		) lines in
+		direct := !direct@(List.map (fun (a, _) -> Tree.make a false !is_gateway []) extranets);
+		directnets := !directnets@extranets;
 	with _ ->
 		Log.log Log.warnings ("Couldn't read the specified config file '" ^ !configfile ^ "'");
 	end
