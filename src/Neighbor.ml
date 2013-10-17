@@ -45,6 +45,8 @@ let bcast fd nodes ns =
 				   (Unix.ADDR_INET (n.addr, !Common.port)))
 		with _ -> ()) ns
 
+let zero_addr = Unix.inet_addr_of_string "0.0.0.0"
+
 (* Given a set of neighbors, data in a string and the sockaddr it came from,
    handle it. Verify the signature, find the neighbor associated with the
    address, verify the sequence number, parse the tree and mark the time. *)
@@ -77,7 +79,11 @@ let handle_data ns s sockaddr =
 	let s = String.sub s 4 (len - 4) in
 	Log.log Log.debug ("deserializing from " ^ addr_s);	
 	begin try
-		n.tree <- Some (Tree.from_string s addr);
+		let t = Tree.from_string s addr in
+		ignore(if Tree.addr t == zero_addr then
+			raise InvalidPacket;
+		);
+		n.tree <- Some t
 	with Failure f ->
 		Log.log Log.debug ("failed: " ^ f);	
 		raise InvalidPacket
