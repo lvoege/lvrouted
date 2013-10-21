@@ -830,9 +830,9 @@ CAMLprim value string_to_tree(value s) {
 	p = buffer = malloc(65536);
 	res = Val_unit;
 	if (String_val(s)[0] == 2) {
-		len = ntohl(*(int *)(String_val(s)));
+		len = ntohl(*(int *)(String_val(s) + 1));
 		if (len < 65536) {
-			LZ4_decompress_fast(String_val(s) + sizeof(int), (char *)buffer, len);
+			LZ4_decompress_fast(String_val(s) + 1 + sizeof(int), (char *)buffer, len);
 			res = string_to_tree_rec(&p, p + len);
 		} // else wtf?
 		free(buffer);
