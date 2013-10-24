@@ -58,12 +58,11 @@ let configfile = ref "/usr/local/etc/lvrouted.conf"
 
 module StringMap = Map.Make(String)
 (* Define a struct that can be passed to the functorized Set, Map en Hashtbl modules *)
-module IPStruct = struct
-	(* the OrderedType signature *)
-	type t = Unix.inet_addr
-	let compare = LowLevel.compare_ipv4_addrs
+module IPStruct = struct (* the OrderedType signature *)
+	type t = (Unix.inet_addr * int) (* address, netmask *)
+	let compare (a, _) (b, _) = LowLevel.compare_ipv4_addrs a b
 	(* the HashedType signature *)
-	let equal a b = LowLevel.compare_ipv4_addrs a b = 0
+	let equal (a, _) (b, _) = LowLevel.compare_ipv4_addrs a b = 0
 	let hash = Hashtbl.hash
 end
 module IPSet = Set.Make(IPStruct)
@@ -73,7 +72,11 @@ module IPHash = Hashtbl.Make(IPStruct)
 (* Convenience functions *)
 
 let string_of_ipset ss = 
-	"{" ^ (String.concat ", " (List.map Unix.string_of_inet_addr (IPSet.elements ss))) ^ "}"
+	"{" ^ (String.concat ", "
+		(List.map (fun (a, m) -> (Unix.string_of_inet_addr a) ^
+					 "/" ^
+					 (string_of_int m))
+			  (IPSet.elements ss))) ^ "}"
 
 (* Given an 'a option, it it a Some of a? *)
 let is_some = function

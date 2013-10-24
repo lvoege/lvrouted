@@ -17,7 +17,7 @@ lineno = 0
 def foo(depth):
 	global lineno, lines
 	nodes = []
-	while True:
+	while lineno < len(lines):
 		line = lines[lineno]
 		this_depth = line.count('\t')
 		if this_depth != depth:
@@ -26,6 +26,7 @@ def foo(depth):
 		if lineno == len(lines):
 			return nodes
 		nodes.append(make_node(line, depth, foo))
+	return nodes
 
 print foo(0)[0]
 		
