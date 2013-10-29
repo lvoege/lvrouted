@@ -110,7 +110,7 @@ let merge nodes directnets =
 			  default_gw := gw;
 			let key = (node.addr, node.mask) in
 			try
-				let (existing_cost, existing_gw) = IPHash.find routes node.addr in
+				let (existing_cost, existing_gw) = IPHash.find routes key in
 				if prio == existing_cost && gw < existing_gw then begin
 					IPHash.remove routes key;
 					IPHash.add routes key (prio, gw);
@@ -144,8 +144,8 @@ let merge nodes directnets =
 	let routes' = IPHash.create 512 in
 	IPHash.iter (fun (addr, mask) (_, gw) ->
 		if not (List.exists (fun (a', n) ->
-				LowLevel.route_includes_impl a' n a 32) directnets) then
-		  IPHash.add routes' (a, n) gw) routes;
+				LowLevel.route_includes_impl a' n addr mask) directnets) then
+		  IPHash.add routes' (addr, mask) gw) routes;
 	fake.nodes, routes', !default_gw
 
 external serialize: node -> string = "tree_to_string"

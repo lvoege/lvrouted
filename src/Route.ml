@@ -48,47 +48,6 @@ let showroutes rs =
 	List.fold_left (fun a r -> a ^ "\t" ^ show r ^ "\n")
 		       "Route table:\n" (Set.elements rs)
 
-(* Given a list of routes, try to clump together as many routes as possible.
-
-   Take the first route on the todo list:
-
-     If the netmask is the minimum netmask, move the route to the done list
-     and recurse.
-
-     If the address is the same as the gateway address and it's a host route,
-     drop it. Tree.merge can pass these in the routing table, and this is the
-     most convenient place to remove them code-wise.
-    
-     Else expand the netmask by one bit. Check if it gobbles up any routes
-     to different gateways.
-       If so, move the unexpanded route to the done list and recurse.
-       If not, remove all routes now covered by the newly expanded route from
-         the todo list and recurse.
-
-   Finally, take the now aggregated list of routes and create a set of routes,
-   with the addresses of the routes masked according to their netmask.
-*)
-let aggregate routes =
-	let rec aggregate' todo done_ = match todo with
-		  []	-> done_
-		| r::rs	->
-			if r.mask = !Common.min_mask then
-			  aggregate' rs (r::done_)
-			else if r.addr = r.gw && r.mask = 32 then
-			  aggregate' rs done_
-			else begin
-			  let r' = { r with mask = r.mask - 1 } in
-			  let f t = t.gw <> r.gw && includes r' t in
-			  if List.exists f (rs@done_) then
-				aggregate' rs (r::done_)
-			  else let rs' = List.filter (fun t ->
-						not (includes r' t)) rs in
-				   aggregate' (r'::rs') done_
-			end in
-	List.fold_left (fun set r ->
-			Set.add { r with addr = LowLevel.mask_addr r.addr r.mask} set)
-		       Set.empty (aggregate' (Set.elements routes) [])
-
 (* Given a set of old routes and a set of new routes, produce a list
    of routes to delete, a list of routes to add and a list of routes
    that changed their gateway.
@@ -108,14 +67,14 @@ let diff oldroutes newroutes =
 	let dels = Set.diff oldroutes newroutes in
 	let adds = Set.diff newroutes oldroutes in
 
-	let oldmap = Set.fold (fun r -> IPMap.add r.addr r)
+	let oldmap = Set.fold (fun r -> IPMap.add (r.addr, r.mask) r)
 		     oldroutes IPMap.empty in
-	let newmap = Set.fold (fun r -> IPMap.add r.addr r)
+	let newmap = Set.fold (fun r -> IPMap.add (r.addr, r.mask) r)
 		     newroutes IPMap.empty in
 	let isect = Set.inter oldroutes newroutes in
 	let changes = Set.fold (fun r set ->
-			let old_r = IPMap.find r.addr oldmap in
-			let new_r = IPMap.find r.addr newmap in
+			let old_r = IPMap.find (r.addr, r.mask) oldmap in
+			let new_r = IPMap.find (r.addr, r.mask) newmap in
 			if old_r.gw <> new_r.gw then
 			  Set.add new_r set
 			else

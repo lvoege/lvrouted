@@ -122,7 +122,7 @@ let derive_routes_and_mytree directips ns default_addrs f =
 	let nodes = Set.fold (fun e a -> match e.tree with
 		| None -> a
 		| Some t -> 
-			let t' = Tree.make (Tree.addr t) (f e.iface) (Tree.gateway t) (Tree.nodes t) in
+			let t' = Tree.make (Tree.addr t) (Tree.mask t) (f e.iface) (Tree.gateway t) (Tree.nodes t) in
 			t'::a) ns [] in
 	Log.log Log.debug ("Number of eligible neighbors: " ^
 			   string_of_int (List.length nodes));
@@ -131,17 +131,17 @@ let derive_routes_and_mytree directips ns default_addrs f =
 
 	(* Fold the IPMap.t into a Route.Set.t *)
 	let routeset =
-		Common.IPHash.fold (fun addr gw ->
-				     Route.Set.add (Route.make addr 32 gw))
+		Common.IPHash.fold (fun (addr, mask) gw ->
+				     Route.Set.add (Route.make addr mask gw))
 				  routemap Route.Set.empty in
 	(* Insert a default route to the nearest entry in default_addrs, if
 	   any *)
 	let look_for_default_addr n = 
 		let a = Tree.addr n in
-		match Common.IPSet.mem a default_addrs with
+		match Common.IPSet.mem (a, 32) default_addrs with
 		| true -> Some a
 		| false -> None in
-	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") true false nodes' in
+	let bogus_top_node = Tree.make (Unix.inet_addr_of_string "255.255.255.255") 32 true false nodes' in
 	let first_default_addr = Tree.bfs bogus_top_node look_for_default_addr in
 	let default_route = match first_default_addr with
 		| None -> None
@@ -154,7 +154,7 @@ let derive_routes_and_mytree directips ns default_addrs f =
 					  else
 					  	None) None directips in
 			let gw = match gw with
-				| None -> (try Some (Common.IPHash.find routemap a)
+				| None -> (try Some (Common.IPHash.find routemap (a, 32))
 					   with Not_found -> None)
 				| Some x -> Some x in
 			match gw with
@@ -173,19 +173,18 @@ let derive_routes_and_mytree directips ns default_addrs f =
 		| _ -> default_route in
 	Log.log Log.debug ("Done default addrs");
 
-	let routeset' = Route.aggregate routeset in
-	let routeset'' = match default_route' with
-		| None -> routeset'
-		| Some r -> Route.Set.add r routeset' in
+	let routeset' = match default_route' with
+		| None -> routeset
+		| Some r -> Route.Set.add r routeset in
 
-	routeset'', nodes'
+	routeset', nodes'
 
 (* Check if the given neighbor is reachable over the given Iface.t. If it
    isn't, set the neighbor's tree to None. *)
 let check_reachable n iface = 
 	if Common.is_none n.macaddr then begin
 		let arptable = MAC.get_arptable n.iface in
-		try  n.macaddr <- Some (Common.IPMap.find n.addr arptable)
+		try  n.macaddr <- Some (Common.IPMap.find (n.addr, 32) arptable)
 		with Not_found ->
 			Log.log Log.debug ("Cannot determine MAC address for " ^
 					   "neighbor " ^ name n);
