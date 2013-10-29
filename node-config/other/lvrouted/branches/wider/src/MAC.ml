@@ -38,7 +38,7 @@ let get_arptable iface : arptable =
 		arptables := List.fold_left (fun map (iface, ip, mac) ->
 			let ifmap = try  StringMap.find iface map
 				    with Not_found -> IPMap.empty in
-			let ifmap = IPMap.add ip mac ifmap in
+			let ifmap = IPMap.add (ip, 32) mac ifmap in
 			StringMap.add iface ifmap map) StringMap.empty a;
 		arptables_last_update := now
 	end;
@@ -46,7 +46,7 @@ let get_arptable iface : arptable =
 	with Not_found -> IPMap.empty
 
 let show_arptable h =
-	IPMap.fold (fun addr mac a ->
+	IPMap.fold (fun (addr, _) mac a ->
 		a ^ "\t" ^
 		Unix.string_of_inet_addr addr ^ " -> " ^
 		ether_ntoa mac ^ "\n") h "Arptable: \n"

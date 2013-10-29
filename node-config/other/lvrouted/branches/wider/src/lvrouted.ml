@@ -11,9 +11,7 @@ open Printexc
 let neighbors = ref Neighbor.Set.empty
 (* A dictionary mapping from interface name ('ep0', 'sis1', etc) to Iface.t *)
 let ifaces = ref StringMap.empty
-(* A list of Tree.nodes's for every one of 'our' addresses. *)
-let direct : Tree.node list ref = ref []
-(* A list of address, netmask tuples of the same *)
+(* A list of address, netmask tuples of our addresses *)
 let directnets : (Unix.inet_addr * int) list ref = ref []
 (* last broadcast timestamp *)
 let last_time = ref 0.0
@@ -82,7 +80,6 @@ let broadcast_run udpsockfd rtsockfd =
 						  !neighbors
 						  !default_addrs
 						  is_eth in
-	  let nodes = List.append nodes !direct in 
 
 	  (* DEBUG: dump the derived tree to the filesystem *)
 	  Tree.dump_tree "lvrouted.mytree" nodes;
@@ -166,9 +163,7 @@ let add_address iface addr mask =
 	if Common.addr_in_range addr then begin
 		Log.log Log.info ("New address " ^
 			Unix.string_of_inet_addr addr ^ " on " ^ iface);
-		let node = Tree.make addr false !is_gateway [] in
-		if not (List.mem node !direct) then begin
-			direct := node::!direct;
+		if not (List.mem (addr, mask) !directnets) then begin
 			directnets := (addr, mask)::!directnets;
 		end;
 		if mask >= !Common.interlink_netmask then 
@@ -195,8 +190,6 @@ let handle_routemsg udpsockfd rtsockfd = function
 		if Common.addr_in_range addr then begin
 			Log.log Log.info ("Deleted address " ^
 				Unix.string_of_inet_addr addr ^ " on " ^ iface);
-			direct := List.filter (fun n -> Tree.addr n <> addr)
-					      !direct;
 			directnets := List.filter (fun (a, _) -> a <> addr)
 						  !directnets;
 			if mask >= !Common.interlink_netmask then
@@ -210,7 +203,6 @@ let read_config _ =
 	(*Log.reopen_log ();*)
 	Log.log Log.debug ("(Re)opening the config file '" ^ !Common.configfile ^ "'");
 
-	direct := [];
 	directnets := [];
 	ifaces := StringMap.empty;
 	neighbors := Neighbor.Set.empty;
@@ -232,7 +224,6 @@ let read_config _ =
 			| [a; b] -> (Unix.inet_addr_of_string a, int_of_string b)
 			| _ -> raise (Failure ("Parse error on line '" ^ line ^ "'"))
 		) lines in
-		direct := !direct@(List.map (fun (a, _) -> Tree.make a false !is_gateway []) extranets);
 		directnets := !directnets@extranets;
 	with _ ->
 		Log.log Log.warnings ("Couldn't read the specified config file '" ^ !configfile ^ "'");
@@ -262,18 +253,17 @@ let dump_version _ =
    it and go from there. *)
 let dump_state _ =
 	let state = !neighbors,
-		!ifaces, !direct, !directnets,
+		!ifaces, !directnets,
 		!unreachable, !MAC.arptables in
 	let out = open_out (!Common.tmpdir ^ "lvrouted.state") in
 	output_string out (Marshal.to_string state []);
 	close_out out
 
 let read_state s =
-	let neighbors', ifaces', direct', directnets', unreachable',
+	let neighbors', ifaces', directnets', unreachable',
 		arptables' = Marshal.from_string s 0 in
 	neighbors := neighbors';
 	ifaces := ifaces';
-	direct := direct';
 	directnets := directnets';
 	unreachable := unreachable';
 	MAC.arptables := arptables'
@@ -282,7 +272,7 @@ let parse_proxies s =
 	Log.log Log.info ("default string " ^ s);
 	let ss = Str.split (Str.regexp_string ",") s in
 	let addrs = List.map Unix.inet_addr_of_string ss in
-	default_addrs := List.fold_left (fun a e -> IPSet.add e a) IPSet.empty addrs
+	default_addrs := List.fold_left (fun a e -> IPSet.add (e, 32) a) IPSet.empty addrs
 
 let argopts = [
 	"-a", Arg.Set_float Common.alarm_timeout, "Interval between checking for interesting things";

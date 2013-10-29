@@ -729,20 +729,24 @@ static unsigned char *tree_to_string_rec(value node, unsigned char *buffer, unsi
 
 	// start by counting up the children in the low bits
 	flags = 0;
-	for (t = Field(node, 3); t != Val_emptylist; t = Field(t, 1))
+	for (t = Field(node, 4); t != Val_emptylist; t = Field(t, 1))
 	  flags++;
 	assert(flags <= 32);
 
+	// or in the netmask
+	assert(Int_val(Field(node, 1)) <= 32);
+	flags |= Int_val(Field(node, 1)) << 8;
+
 	// add in the rest of the flags
-	flags |= Bool_val(Field(node, 1)) << 15; // eth
-	flags |= Bool_val(Field(node, 2)) << 14; // gateway
+	flags |= Bool_val(Field(node, 2)) << 15; // eth
+	flags |= Bool_val(Field(node, 3)) << 14; // gateway
 
 	// store it
 	((uint16_t *)buffer)[0] = htons(flags);
 	buffer += sizeof(flags);
 
 	/* and recurse into the children */
-	for (t = Field(node, 3); t != Val_emptylist; t = Field(t, 1)) {
+	for (t = Field(node, 4); t != Val_emptylist; t = Field(t, 1)) {
 		buffer = tree_to_string_rec(Field(t, 0), buffer, boundary);
 		if (buffer == NULL)
 		  failwith("Ouch in tree_to_string_rec!");
@@ -791,10 +795,14 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 
 	flags = ntohs(((uint16_t *)*pp)[0]);
 	*pp += sizeof(flags);
-	Field(node, 1) = Val_bool(flags & (1 << 15));
-	Field(node, 2) = Val_bool(flags & (1 << 14));
+	Field(node, 1) = Val_int((flags >> 8) & 63);
+	if (Val_int((flags >> 8) & 63) > 32)
+	  failwith("faulty netmask");
 
-	Field(node, 3) = Val_emptylist;
+	Field(node, 2) = Val_bool(flags & (1 << 15));
+	Field(node, 3) = Val_bool(flags & (1 << 14));
+
+	Field(node, 4) = Val_emptylist;
 	chain = Val_unit;
 	for (flags &= (1 << 5) - 1; flags > 0; flags--) {
 		child = alloc_small(2, 0);
@@ -808,7 +816,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 		Field(child, 1) = Val_emptylist;
 		modify(&Field(child, 0), string_to_tree_rec(pp, limit));
 		if (chain == Val_unit)
-		  modify(&Field(node, 3), child);
+		  modify(&Field(node, 4), child);
 		else
 		  modify(&Field(chain, 1), child);
 		chain = child;
