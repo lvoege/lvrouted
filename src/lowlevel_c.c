@@ -787,8 +787,8 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 
 	if (*pp > limit - sizeof(int))
 	  failwith("faulty packet");
-	node = alloc_small(4, 0);
-	a = alloc_string(4);
+	node = alloc_small(5, 0);
+	a = alloc_string(5);
 	*(int *)(String_val(a)) = htonl(((in_addr_t *)*pp)[0]);
 	Field(node, 0) = a;
 	*pp += sizeof(in_addr_t);
@@ -796,7 +796,7 @@ static CAMLprim value string_to_tree_rec(unsigned char **pp,
 	flags = ntohs(((uint16_t *)*pp)[0]);
 	*pp += sizeof(flags);
 	Field(node, 1) = Val_int((flags >> 8) & 63);
-	if (Val_int((flags >> 8) & 63) > 32)
+	if ((flags >> 8) & 63 > 32)
 	  failwith("faulty netmask");
 
 	Field(node, 2) = Val_bool(flags & (1 << 15));
@@ -846,13 +846,14 @@ CAMLprim value string_to_tree(value s) {
 		free(buffer);
 	}
 	if (res == Val_unit) {
-		res = alloc_small(4, 0);
-		a = alloc_string(4);
+		res = alloc_small(5, 0);
+		a = alloc_string(5);
 		*(int *)(String_val(a)) = 0;
 		Field(res, 0) = a;
-		Field(res, 1) = Val_bool(0);
+		Field(res, 1) = Val_int(0);
 		Field(res, 2) = Val_bool(0);
-		Field(res, 3) = Val_emptylist;
+		Field(res, 3) = Val_bool(0);
+		Field(res, 4) = Val_emptylist;
 	}
 	CAMLreturn(res);
 }
