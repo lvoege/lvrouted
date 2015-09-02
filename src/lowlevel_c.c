@@ -552,7 +552,7 @@ CAMLprim value get_arp_entries(value unit) {
 			);
 			if (sdl->sdl_alen == 0)
 			  continue; /* incomplete entry */
-			if (sdl->sdl_type != IFT_ETHER ||
+			if ((sdl->sdl_type != IFT_ETHER  && sdl->sdl_type != IFT_L2VLAN) ||
 			    sdl->sdl_alen != ETHER_ADDR_LEN)
 			  continue; /* huh? */
 			if (if_indextoname(sdl->sdl_index, ifname) == 0)
